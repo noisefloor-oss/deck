@@ -19,7 +19,7 @@ ARG CRUSH_VERSION=0.98.1
 FROM scratch AS licensed-fonts
 COPY deploy/fonts-unsupplied /.no-licensed-fonts
 
-FROM node:26.5.0-bookworm-slim@sha256:2d49d876e96237d76de412761cf05dbfe5aee325cc4406a4d41d5824c5bb8beb AS web-build
+FROM node:26.12.1-bookworm-slim@sha256:28147155d47dc31abe0a46e0d12b59b2fb3d0a2dcc5dc65fce76a074180b16fe AS web-build
 
 WORKDIR /src/web
 RUN npm install --global pnpm@11.18.0 \
@@ -131,13 +131,13 @@ RUN --mount=type=secret,id=github_token \
       -o /out/usr/local/libexec/noise/noise-sdlc ./cmd/noise-sdlc \
     && test "$(/out/usr/local/libexec/noise/noise-sdlc --version)" = "${NOISE_SDLC_VERSION}"
 
-FROM node:24.18.1-bookworm@sha256:19cd848a0e073d34bd8cd5545a1b6b4d28489b3e3b607366621ced442bd5f6b4 AS noise-visual-diff-build
+FROM node:24.22.1-bookworm@sha256:6449e19d8184d84062525b6a7524def03146c2cb04a7f08b076680d0e8e4240a AS noise-visual-diff-build
 
 # The design-fidelity tool is packaged from an exact reviewed revision, same
 # contract as noise-tasks above. The revision is the commit the release tag
 # points at; the ref and version gates below are what bind it. Its SEA build
 # postjects the stage's own Node binary, so the base image must equal the
-# tool's pinned .nvmrc (24.18.1); the multi-arch base yields per-arch payloads
+# tool's pinned .nvmrc (24.22.1); the multi-arch base yields per-arch payloads
 # for free.
 ARG NOISE_VISUAL_DIFF_REPO=https://github.com/noisefloor-oss/visual-diff.git
 ARG NOISE_VISUAL_DIFF_REF
@@ -194,7 +194,7 @@ RUN set -eu; \
     test "$(/out/usr/local/bin/tmux -V)" = "tmux ${TMUX_VERSION}"
 
 # Install the large npm harness bundle while Deck and Noise tools compile.
-FROM node:26.5.0-bookworm-slim@sha256:2d49d876e96237d76de412761cf05dbfe5aee325cc4406a4d41d5824c5bb8beb AS npm-harnesses
+FROM node:26.12.1-bookworm-slim@sha256:28147155d47dc31abe0a46e0d12b59b2fb3d0a2dcc5dc65fce76a074180b16fe AS npm-harnesses
 
 ARG TARGETARCH
 ARG KIMI_VERSION
@@ -266,7 +266,7 @@ RUN --mount=type=cache,target=/root/.npm,sharing=locked \
 
 # Shared Deck runtime, utilities, and Noise tools. Go remains a build
 # dependency; optional runtime toolchains use derived images.
-FROM node:26.5.0-bookworm-slim@sha256:2d49d876e96237d76de412761cf05dbfe5aee325cc4406a4d41d5824c5bb8beb AS core
+FROM node:26.12.1-bookworm-slim@sha256:28147155d47dc31abe0a46e0d12b59b2fb3d0a2dcc5dc65fce76a074180b16fe AS core
 
 ARG NOISE_TASKS_VERSION
 ARG NOISE_VISUAL_DIFF_VERSION
@@ -773,7 +773,7 @@ USER ${NOISEDECK_RUNTIME_UID}:${NOISEDECK_RUNTIME_GID}
 # inherit the Deck server, Tasks engine, application healthcheck, or build
 # toolchain. Provider artifacts are added by a separately pinned profile image;
 # the trusted materializer supplies its exact argv and environment.
-FROM node:26.5.0-bookworm-slim@sha256:2d49d876e96237d76de412761cf05dbfe5aee325cc4406a4d41d5824c5bb8beb AS task-workload-substrate
+FROM node:26.12.1-bookworm-slim@sha256:28147155d47dc31abe0a46e0d12b59b2fb3d0a2dcc5dc65fce76a074180b16fe AS task-workload-substrate
 
 ARG NOISEDECK_TASK_UID=1026
 ARG NOISEDECK_TASK_GID=100

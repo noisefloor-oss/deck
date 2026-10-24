@@ -21,7 +21,7 @@ func TestTaskWorktreeExactInspectProfile(t *testing.T) {
 }
 
 func TestCanonicalTaskWorktreePolicyVectorsAreExactAndCopied(t *testing.T) {
-	wantEnv := []string{"HOME=/home/agent", "PATH=/usr/local/bin:/usr/bin:/bin", "NODE_VERSION=26.5.0", "YARN_VERSION=1.22.22", "TERM=xterm-256color"}
+	wantEnv := []string{"HOME=/home/agent", "PATH=/usr/local/bin:/usr/bin:/bin", "NODE_VERSION=26.12.1", "YARN_VERSION=1.22.22", "TERM=xterm-256color"}
 	wantMasked := []string{"/proc/acpi", "/proc/asound", "/proc/interrupts", "/proc/kcore", "/proc/keys", "/proc/latency_stats", "/proc/sched_debug", "/proc/scsi", "/proc/timer_list", "/proc/timer_stats", "/sys/devices/virtual/powercap", "/sys/firmware"}
 	wantReadonly := []string{"/proc/bus", "/proc/fs", "/proc/irq", "/proc/sys", "/proc/sysrq-trigger"}
 	if !slices.Equal(CanonicalTaskWorktreeConfigEnv(), wantEnv) || !slices.Equal(CanonicalTaskWorktreeMaskedPaths(), wantMasked) || !slices.Equal(CanonicalTaskWorktreeReadonlyPaths(), wantReadonly) || !reflect.DeepEqual(CanonicalTaskWorktreeMountRoles(), goldenMountRoles()) {

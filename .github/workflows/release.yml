@@ -17,7 +17,7 @@ jobs:
       github.event.repository.fork == false &&
       (github.repository == 'noisefloor-oss/deck' ||
        vars.NOISEDECK_PUBLIC_RELEASE_REPOSITORY == github.repository)
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Linux, ARM64]
     permissions:
       contents: write
     steps:
@@ -39,14 +39,16 @@ jobs:
       (github.repository == 'noisefloor-oss/deck' ||
        vars.NOISEDECK_PUBLIC_RELEASE_REPOSITORY == github.repository)
     needs: release-create
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-24.04
+            runner: [self-hosted, Linux, X64, ubuntu-24.04]
             arch: amd64
           - os: ubuntu-24.04-arm
+            runner: [self-hosted, Linux, ARM64]
             arch: arm64
     steps:
       - name: Check out source
@@ -63,8 +65,7 @@ jobs:
       - name: Install pinned Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 26.5.0
-
+          node-version: 26.12.1
       - name: Install frontend dependencies
         working-directory: web
         run: pnpm install --frozen-lockfile
@@ -116,7 +117,7 @@ jobs:
       (github.repository == 'noisefloor-oss/deck' ||
        vars.NOISEDECK_PUBLIC_RELEASE_REPOSITORY == github.repository)
     needs: build
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Linux, ARM64]
     permissions:
       contents: write
     steps:

@@ -15,13 +15,21 @@ func TestSelectNativeRunner(t *testing.T) {
 		want    []string
 	}{
 		{
-			name: "automatic GitHub-hosted runner",
+			name: "automatic self-hosted runner",
+			want: []string{`backend=self-hosted`, `runner=["self-hosted","Linux","X64"]`},
+		},
+		{
+			name:    "legacy automatic runner uses self-hosted",
+			backend: "auto",
+			want:    []string{`backend=self-hosted`, `runner=["self-hosted","Linux","X64"]`},
+		},
+		{
+			name: "explicit GitHub override", backend: "github",
 			want: []string{`backend=github`, `runner="ubuntu-24.04"`},
 		},
 		{
-			name:    "legacy automatic runner remains GitHub-hosted",
-			backend: "auto",
-			want:    []string{`backend=github`, `runner="ubuntu-24.04"`},
+			name: "explicit self-hosted", backend: "self-hosted",
+			want: []string{`backend=self-hosted`, `runner=["self-hosted","Linux","X64"]`},
 		},
 		{
 			name:    "explicit Blacksmith override",
@@ -61,7 +69,7 @@ func TestSelectNativeRunnerRejectsInvalidBackend(t *testing.T) {
 			if err == nil {
 				t.Fatalf("invalid backend succeeded: %s", output)
 			}
-			if !strings.Contains(string(output), "must be auto, github, or blacksmith") {
+			if !strings.Contains(string(output), "must be auto, self-hosted, github, or blacksmith") {
 				t.Fatalf("unexpected diagnostic: %s", output)
 			}
 		})

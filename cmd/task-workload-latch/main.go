@@ -48,7 +48,7 @@ func validateEnvironment(environment []string) error {
 		if (name == "HOME" && value != "/home/agent") || (name == "PATH" && value != "/usr/local/bin:/usr/bin:/bin") {
 			return fmt.Errorf("unsafe environment value")
 		}
-		if (name == "NODE_VERSION" && value != "26.5.0") || (name == "YARN_VERSION" && value != "1.22.22") {
+		if (name == "NODE_VERSION" && value != "26.12.1") || (name == "YARN_VERSION" && value != "1.22.22") {
 			return fmt.Errorf("unrecognized substrate environment value")
 		}
 		if name == "TERM" && value != "xterm-256color" || name == "HOSTNAME" && !validHostname(value) {

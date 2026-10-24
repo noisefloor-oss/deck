@@ -98,7 +98,7 @@ func TestLatchRejectsRelativePathAndDangerousEnvironment(t *testing.T) {
 }
 
 func TestEnvironmentValidationRejectsDuplicateMalformedAndGitSelection(t *testing.T) {
-	valid := []string{"HOME=/home/agent", "PATH=/usr/local/bin:/usr/bin:/bin", "NODE_VERSION=26.5.0", "YARN_VERSION=1.22.22", "TERM=xterm-256color", "HOSTNAME=ndq-" + strings.Repeat("a", 32)}
+	valid := []string{"HOME=/home/agent", "PATH=/usr/local/bin:/usr/bin:/bin", "NODE_VERSION=26.12.1", "YARN_VERSION=1.22.22", "TERM=xterm-256color", "HOSTNAME=ndq-" + strings.Repeat("a", 32)}
 	cases := [][]string{
 		{"HOME=x", "HOME=y"}, {"bad=x"}, {"GIT_EXEC_PATH=/tmp"}, {"GIT_CONFIG_COUNT=1"}, {"BASH_ENV=/tmp/x"}, {"UNKNOWN=value"},
 		valid[:len(valid)-1], append(append([]string(nil), valid...), "HOSTNAME=ndq-"+strings.Repeat("b", 32)),
@@ -125,7 +125,7 @@ func TestEnvironmentValidationRejectsDuplicateMalformedAndGitSelection(t *testin
 }
 
 func TestProviderEnvironmentPreservesCanonicalHostname(t *testing.T) {
-	environment := []string{"HOME=/home/agent", "PATH=/usr/local/bin:/usr/bin:/bin", "NODE_VERSION=26.5.0", "YARN_VERSION=1.22.22", "TERM=xterm-256color", "HOSTNAME=ndq-" + strings.Repeat("a", 32)}
+	environment := []string{"HOME=/home/agent", "PATH=/usr/local/bin:/usr/bin:/bin", "NODE_VERSION=26.12.1", "YARN_VERSION=1.22.22", "TERM=xterm-256color", "HOSTNAME=ndq-" + strings.Repeat("a", 32)}
 	got := providerEnvironment(environment)
 	if len(got) != len(environment) {
 		t.Fatalf("provider environment length = %d, want %d", len(got), len(environment))
@@ -212,7 +212,7 @@ func latchEnvironment(helper, runID string) []string {
 	environment := []string{
 		"HOME=/home/agent",
 		"PATH=/usr/local/bin:/usr/bin:/bin",
-		"NODE_VERSION=26.5.0",
+		"NODE_VERSION=26.12.1",
 		"YARN_VERSION=1.22.22",
 		"TERM=xterm-256color",
 		"HOSTNAME=ndq-" + runID,

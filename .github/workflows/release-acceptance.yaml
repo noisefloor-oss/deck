@@ -19,16 +19,17 @@ on:
         type: string
       native_backend:
         required: false
-        default: github
+        default: self-hosted
         type: string
   workflow_dispatch:
     inputs:
       native_backend:
         description: Native acceptance backend override
         required: false
-        default: github
+        default: self-hosted
         type: choice
         options:
+          - self-hosted
           - github
           - auto
           - blacksmith
@@ -50,7 +51,7 @@ concurrency:
 
 jobs:
   source:
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Linux, ARM64]
     timeout-minutes: 5
     outputs:
       sha: ${{ steps.source.outputs.sha }}
@@ -80,7 +81,7 @@ jobs:
   bwrap-proof:
     needs: source
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 15
 
     steps:
@@ -100,8 +101,8 @@ jobs:
           : > "${proof_root}/amd64"
           for run in 1 2; do
             docker run --rm \
-              --volume "${PWD}:/src" --workdir /src \
-              --volume "${proof_root}:/proof" \
+              --volume "${PWD}:/src:Z" --workdir /src \
+              --volume "${proof_root}:/proof:Z" \
               --env TMPDIR=/tmp \
               "${image}" deploy/bwrap/build-bwrap.sh amd64 "/proof/build-${run}" \
               | tee -a "${proof_root}/amd64"
@@ -141,7 +142,7 @@ jobs:
             exit 0
           fi
           image="golang:1.26.10-bookworm@sha256:ee3901c61e423732605a51f1b8157c849ec01194ea0a274213b5202b2c11e7bf"
-          docker run --rm --volume "${BWRAP_PROOF_ROOT}:/proof" \
+          docker run --rm --volume "${BWRAP_PROOF_ROOT}:/proof:Z" \
             "${image}" sh -c 'find /proof -mindepth 1 -delete'
           rmdir "${BWRAP_PROOF_ROOT}"
 
@@ -149,7 +150,7 @@ jobs:
   portable-checks:
     needs: source
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Linux, ARM64]
     timeout-minutes: 30
     outputs:
       native_backend: ${{ steps.select_native_runner.outputs.backend }}
@@ -180,8 +181,7 @@ jobs:
       - name: Install pinned Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 26.5.0
-
+          node-version: 26.12.1
       - name: Check Go formatting
         run: test -z "$(gofmt -l .)"
 
@@ -200,11 +200,11 @@ jobs:
         id: select_native_runner
         env:
           GH_TOKEN: ${{ github.token }}
-          NOISEDECK_NATIVE_BACKEND: ${{ inputs.native_backend || vars.NOISEDECK_NATIVE_BACKEND || 'github' }}
+          NOISEDECK_NATIVE_BACKEND: ${{ inputs.native_backend || vars.NOISEDECK_NATIVE_BACKEND || 'self-hosted' }}
         run: deploy/select-native-runner.sh
 
   native-worker:
-    name: ${{ needs.portable-checks.outputs.native_backend == 'blacksmith' && 'blacksmith-linux-amd64-acceptance' || 'github-hosted-linux-amd64-acceptance' }}
+    name: ${{ needs.portable-checks.outputs.native_backend == 'blacksmith' && 'blacksmith-linux-amd64-acceptance' || (needs.portable-checks.outputs.native_backend == 'self-hosted' && 'self-hosted-linux-amd64-acceptance' || 'github-hosted-linux-amd64-acceptance') }}
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     needs: [source, portable-checks]
     runs-on: ${{ fromJSON(needs.portable-checks.outputs.native_runner) }}
@@ -226,6 +226,9 @@ jobs:
           fetch-depth: 0
           ref: ${{ needs.source.outputs.sha }}
 
+      - name: Require native Linux AMD64
+        run: test "$(uname -m)" = x86_64
+
       - name: Define disposable paths
         run: |
           ci_root="${RUNNER_TEMP}/deck-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
@@ -245,7 +248,7 @@ jobs:
           CANDIDATE: ${{ inputs.source_sha }}
         run: |
           case "${NOISEDECK_CI_BACKEND}" in
-            github) ;;
+            github|self-hosted) ;;
             blacksmith) test -n "${CANDIDATE}" || test -f docker-container-buildkitd.toml ;;
             *) echo "unexpected Linux backend: ${NOISEDECK_CI_BACKEND}" >&2; exit 1 ;;
           esac
@@ -253,7 +256,7 @@ jobs:
           test -z "$(git status --porcelain)"
 
       - name: Reclaim hosted runner disk before image builds
-        if: runner.os == 'Linux' && needs.portable-checks.outputs.native_backend == 'github'
+        if: runner.environment == 'github-hosted' && (runner.os == 'Linux' && needs.portable-checks.outputs.native_backend == 'github')
         run: |
           # The GitHub-hosted Ubuntu image carries ~20 GB of preinstalled
           # toolchains this job never touches. The runtime, browser, and
@@ -280,6 +283,24 @@ jobs:
             "${CI_ROOT}/tmp"
           sudo chown 1000:1000 "${CI_ROOT}/tmp"
           sudo chmod 1777 "${CI_ROOT}/tmp"
+          # Relabel only disposable CI paths, never the host's machine-id.
+          cp /etc/machine-id "${CI_ROOT}/machine-id"
+          python3 - <<'PYTHON'
+          import json, os, pathlib
+          root = pathlib.Path(os.environ['CI_ROOT'])
+          mounts = [
+              ('projects', '/workspace', False),
+              ('gh', '/home/agent/.config/gh', False),
+              ('machine-id', '/run/noisedeck-host-machine-id', True),
+          ]
+          overlay = {'services': {'app': {'volumes': [
+              {'type': 'bind', 'source': str(root / source), 'target': target,
+               'read_only': read_only, 'bind': {'selinux': 'Z'}}
+              for source, target, read_only in mounts
+          ]}}}
+          (root / 'compose-ci.json').write_text(json.dumps(overlay))
+          PYTHON
+          echo "COMPOSE_FILE=compose.yaml:${CI_ROOT}/compose-ci.json" >>"${GITHUB_ENV}"
           deployment_host_sha256=$(sha256sum /etc/machine-id | awk '{print $1}')
           cat >"${COMPOSE_ENV_FILE}" <<EOF
           NOISEDECK_HOST_PORT=0
@@ -289,6 +310,7 @@ jobs:
           NOISEDECK_RUNTIME_GID=1000
           NOISEDECK_DEPLOYMENT_HOST_SHA256=${deployment_host_sha256}
           NOISEDECK_PUBLIC_ORIGIN=http://127.0.0.1
+          NOISEDECK_HOST_ID_PATH=${CI_ROOT}/machine-id
           NOISEDECK_PROJECTS_HOST_PATH=${CI_ROOT}/projects
           NOISEDECK_GH_CONFIG_HOST_PATH=${CI_ROOT}/gh
           NOISEDECK_MEMPALACE_HOST_PATH=${CI_ROOT}/mempalace
@@ -500,7 +522,7 @@ jobs:
       always() && !cancelled() &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     needs: [portable-checks, bwrap-proof, native-worker]
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Linux, ARM64]
     timeout-minutes: 5
     steps:
       - name: Certify selected native backend
@@ -514,6 +536,6 @@ jobs:
           test "${BWRAP_RESULT}" = success
           test "${WORKER_RESULT}" = success
           case "${BACKEND}" in
-            github|blacksmith) ;;
+            self-hosted|github|blacksmith) ;;
             *) echo "unexpected backend: ${BACKEND}" >&2; exit 1 ;;
           esac

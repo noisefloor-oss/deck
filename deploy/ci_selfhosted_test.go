@@ -1,20 +1,21 @@
 package deploy
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
 )
 
-const privateCIRunner = `${{ vars.NOISEDECK_SELF_HOSTED_CI == 'true' && github.event.repository.private && fromJSON('["self-hosted","Linux","deck-ci-private"]') || 'ubuntu-24.04' }}`
-const privateCIAdmission = "vars.NOISEDECK_SELF_HOSTED_CI != 'true' || !github.event.repository.private || github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository"
+const privateCIRunner = `[self-hosted Linux ARM64]`
+const privateCIAdmission = "github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository"
 const privateCIGate = "always()"
 
 func TestPrivateCIRouting(t *testing.T) {
 	var workflow struct {
 		Jobs map[string]struct {
-			RunsOn string `yaml:"runs-on"`
+			RunsOn []string `yaml:"runs-on"`
 			If     string
 			Steps  []struct {
 				If   string
@@ -29,10 +30,7 @@ func TestPrivateCIRouting(t *testing.T) {
 	}
 	for name, job := range workflow.Jobs {
 		want := privateCIRunner
-		if name == "fast-checks" {
-			want = "ubuntu-24.04"
-		}
-		if job.RunsOn != want {
+		if !slices.Equal(job.RunsOn, []string{"self-hosted", "Linux", "ARM64"}) {
 			t.Errorf("%s must use %s", name, want)
 		}
 		for _, step := range job.Steps {

@@ -2,22 +2,24 @@
 
 ## Private runner routing
 
-Private installations can set the repository variable
-`NOISEDECK_SELF_HOSTED_CI=true` to run Fast checks on the
-`self-hosted`, `Linux`, `deck-ci-private` labels. There is no hosted fallback
-if that runner is unavailable: jobs queue rather than spend hosted minutes.
-The one exception is the `fast-checks` aggregate gate, which always runs on
-`ubuntu-24.04` so a missing runner cannot leave the required check pending.
-The runner must be isolated from production data, personal home directories and
-provider credentials, with repository-restricted access and bounded capacity.
+All Linux Fast checks jobs, including the `fast-checks` aggregate, use
+`self-hosted`, `Linux`, `ARM64` runners. Jobs queue when no matching runner
+is online; there is no automatic GitHub-hosted fallback. Private runner-group
+access is restricted to the selected repositories. Public mirrors require
+separate organization-owned runners; they never share the private pool.
 
-Public repositories and installations without that opt-in continue to use
-standard GitHub-hosted Ubuntu runners.
-Private fork PRs are not admitted to the persistent runner; public fork
-checks retain their existing hosted execution. Go, Chromium, linter and tmux
-caches include the actual runner architecture to prevent AMD64 cache reuse
-on ARM64. Passing ARM64 checks does not certify native Linux/AMD64 images
-or native macOS installation.
+Private repositories disable fork PR workflow execution in GitHub's Actions
+policy, outside the candidate workflow's control. Public mirrors require
+maintainer workflow approval for all external contributors and an isolated
+public runner pool; never approve fork workflow execution on a private pool.
+The YAML rejection step is defense in depth, not an isolation boundary.
+Repository code from fork pull requests is not automatically admitted.
+A metadata-only rejection step fails required checks before checkout; import
+the change to a same-repository branch to run CI. The aggregate always runs
+and retains its result validation for admitted changes. Native
+Linux/AMD64, macOS and Windows release jobs retain explicit OS/architecture
+labels; ARM64 checks do not certify another architecture. Hosted-only disk
+cleanup is disabled on self-hosted machines.
 
 Review and required-check protections are unchanged. Old PR heads must
 acquire fresh checks from the updated workflow
@@ -48,8 +50,8 @@ The merge-queue scope job waits up to one minute for that plan. Missing credenti
 failure, stale or malformed plans, unsupported or oversized patches and
 unknown queue layouts use the Python path map below. The fallback uses the
 complete local merge-base-to-head Git diff, not the last commit or a truncated
-API list. Public repositories and forks keep their existing Python/trust
-behavior. The workflow summary names the selector and selected checks.
+API list. Public repositories keep the Python selector. Private fork workflows remain
+disabled by GitHub policy; public forks require an isolated public pool. The workflow summary names the selector and selected checks.
 
 | Changed area | Python fallback checks |
 | --- | --- |
@@ -83,7 +85,7 @@ Merge-queue runs use the complete queue base-to-head diff, including every
 change in a grouped batch. If a selected queue test fails, the PR does not
 merge: inspect and fix the failure, then enqueue it again. Running regression
 tests only at that revision avoids repeating the same suites before and
-after queueing. Public repositories and fork PRs retain their existing checks;
+after queueing. Fork contributions must first be imported to a same-repository branch;
 this private-repository policy assumes changes land through the merge queue.
 Do not use a private PR preflight as evidence for a direct merge or push.
 
@@ -93,8 +95,9 @@ that lands. Installations that allow direct pushes to main must explicitly
 dispatch Fast checks to validate those commits. Release Acceptance, image
 publication, schedules and independent review are unchanged.
 
-Fork PRs retain the existing trust boundary: public archive/Markdown checks
-and full tests of the exported source run; trusted-only jobs remain skipped.
+Private fork workflows are disabled by GitHub policy. Public fork execution
+requires an isolated public pool; persistent CI requires importing the change
+to a same-repository branch, which receives the ordinary required checks.
 
 The required `fast-checks` gate always runs. It fails if scope selection fails,
 if a selected job fails, is cancelled or skips unexpectedly, or if an
@@ -109,7 +112,9 @@ remain mandatory in the full suite. All test invocations retain `-count=1`.
 ## Jev credentials and repair advice
 
 `TYPESAFE_API_KEY` stays in the existing Actions repository secret and is
-received only by trusted-main code on an ephemeral hosted runner. The advisor
+received only by trusted-main code on the workflow-restricted
+`deck-trusted-review` runner group. The planner never checks out candidate
+source; the group admits only its explicitly listed main-branch workflows. The advisor
 is not itself a required check: its absence selects the Python fallback,
 not a green exemption from tests. The existing repair workflow's Jev failure
 advice remains separate and does not acquire new repair authority.

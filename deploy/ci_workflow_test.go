@@ -297,7 +297,7 @@ func TestReleaseAcceptanceWorkflowContract(t *testing.T) {
 	if !ok {
 		t.Fatal("release acceptance workflow has no portable-checks job")
 	}
-	assertRunnerName(t, "portable-checks", portableJob, "ubuntu-24.04")
+	assertRunnerName(t, "portable-checks", portableJob, "[self-hosted Linux ARM64]")
 	assertJobLacksStep(t, "portable-checks", portableJob, "Reconcile M1 runner watchdog")
 	assertJobHasStep(t, "portable-checks", portableJob, "Test and build frontend")
 	assertJobHasStep(t, "portable-checks", portableJob, "Select the native acceptance runner")
@@ -352,7 +352,7 @@ func TestReleaseAcceptanceWorkflowContract(t *testing.T) {
 	if !ok {
 		t.Fatal("release acceptance workflow has no bwrap-proof job")
 	}
-	assertRunnerName(t, "bwrap-proof", bwrapProof, "ubuntu-24.04")
+	assertRunnerName(t, "bwrap-proof", bwrapProof, "[self-hosted Linux X64]")
 	for _, step := range []string{
 		"Check out source",
 		"Prove the pinned Bubblewrap executable identity",
@@ -370,7 +370,7 @@ func TestReleaseAcceptanceWorkflowContract(t *testing.T) {
 	if !ok {
 		t.Fatal("release acceptance workflow has no native-linux-amd64 certification job")
 	}
-	assertRunnerName(t, "native-linux-amd64", gate, "ubuntu-24.04")
+	assertRunnerName(t, "native-linux-amd64", gate, "[self-hosted Linux ARM64]")
 	assertJobHasStep(t, "native-linux-amd64", gate, "Certify selected native backend")
 	gateNeeds, ok := gate["needs"].([]any)
 	if !ok || len(gateNeeds) != 3 {
@@ -384,7 +384,7 @@ func TestReleaseAcceptanceWorkflowContract(t *testing.T) {
 		"deploy/select-native-runner.sh",
 		`group: release-acceptance-${{ github.event_name == 'push' && 'push' || github.run_id }}`,
 		`test "${BWRAP_RESULT}" = success`,
-		"NOISEDECK_NATIVE_BACKEND: ${{ inputs.native_backend || vars.NOISEDECK_NATIVE_BACKEND || 'github' }}",
+		"NOISEDECK_NATIVE_BACKEND: ${{ inputs.native_backend || vars.NOISEDECK_NATIVE_BACKEND || 'self-hosted' }}",
 		"fromJSON(needs.portable-checks.outputs.native_runner)",
 		"useblacksmith/setup-docker-builder@9309da73a81f66976a6d750572e221508b1e2682",
 		`max-cache-size-mb: "5120"`,
@@ -455,7 +455,7 @@ func TestReleaseAcceptanceWorkflowContract(t *testing.T) {
 		t.Fatalf("hosted runner disk reclaim must precede the native build: reclaim=%d build=%d", reclaim, build)
 	}
 	assertJobStepIf(t, "native-worker", worker, "Reclaim hosted runner disk before image builds",
-		"runner.os == 'Linux' && needs.portable-checks.outputs.native_backend == 'github'")
+		"runner.environment == 'github-hosted' && (runner.os == 'Linux' && needs.portable-checks.outputs.native_backend == 'github')")
 	for _, reclaimed := range []string{
 		"/usr/local/lib/android",
 		"/opt/hostedtoolcache",
@@ -555,6 +555,19 @@ func assertActionsPinnedBySHA(t *testing.T, raw []byte) {
 
 func assertRunnerName(t *testing.T, jobName string, job map[string]any, want string) {
 	t.Helper()
+	if strings.HasPrefix(want, "[") {
+		labels, ok := job["runs-on"].([]any)
+		expected := strings.Fields(strings.Trim(want, "[]"))
+		if !ok || len(labels) != len(expected) {
+			t.Fatalf("%s runs-on = %v, want label list %q", jobName, job["runs-on"], want)
+		}
+		for i, label := range labels {
+			if label != expected[i] {
+				t.Fatalf("%s runner label %d = %v, want %s", jobName, i, label, expected[i])
+			}
+		}
+		return
+	}
 	if got, ok := job["runs-on"].(string); !ok || got != want {
 		t.Fatalf("%s runs-on = %v, want %q", jobName, job["runs-on"], want)
 	}
