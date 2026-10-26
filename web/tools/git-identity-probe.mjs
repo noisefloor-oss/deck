@@ -176,6 +176,10 @@ try {
   await startCline("alpha");
   const form = page.locator("[data-git-identity-onboarding]");
   await form.waitFor();
+  for (const label of ["Author name", "Author email"]) {
+    assert.equal(await form.getByText(label, { exact: true }).evaluate((el) => getComputedStyle(el).fontSize), "13px",
+      `${label} uses the label type token`);
+  }
   await form.getByRole("button", { name: "Connect GitHub", exact: true }).waitFor();
   assert.equal(await form.locator("[data-git-identity-note]").innerText(), "Cline starts as soon as you save this.");
   assert.equal(await form.getByRole("textbox", { name: "Git author name" }).inputValue(), "");

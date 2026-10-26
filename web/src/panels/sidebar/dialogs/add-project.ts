@@ -178,7 +178,7 @@ export function addProjectModalHtml(state: AddProjectState): string {
   const job = state.job;
   const invalid = v.failed || v.kind === "dup" || state.inspectError !== "";
   const browsable = state.source !== "url";
-  const fieldClass = `font-input h-9 w-full rounded-control border bg-surface-card pl-(--field-px) ${browsable ? "pr-10" : "pr-(--field-px)"} text-[16px] text-text-primary placeholder:text-text-tertiary sm:text-body-sm ${invalid ? "border-error" : "border-border-strong"}`;
+  const fieldClass = `font-input h-9 w-full rounded-control border bg-surface-card pl-(--field-px) ${browsable ? "pr-10" : "pr-(--field-px)"} text-[length:var(--type-input-size)] text-text-primary placeholder:text-text-tertiary sm:text-body-sm ${invalid ? "border-error" : "border-border-strong"}`;
 
   const fieldErrors = [
     v.failed && job?.failure === "auth" ? `<span class="text-caption text-error-on-tint">The server refused this machine's key.</span>` : "",

@@ -84,8 +84,8 @@ type AssetEntry struct {
 	Kind  string `json:"kind"`
 	Size  int64  `json:"size"`
 	MTime string `json:"mtime"`
-	// Version is the same opaque identity an upload conflict reports;
-	// a delete must quote it.
+	// Version is the cheap metadata identity a delete must quote. Content-
+	// checked upload consent uses a separate version on its own path.
 	Version string `json:"version"`
 	// Locked is why the entry cannot be selected for delete, or null when
 	// it can.

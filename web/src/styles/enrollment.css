@@ -46,7 +46,7 @@
 .enroll-button-secondary { color: var(--color-text-primary); background: var(--color-surface-card); border-color: var(--color-border-strong); }
 .enroll-button-ghost, .enroll-button-password-choice { color: var(--color-text-secondary); background: transparent; }
 .enroll-button-secondary:hover:not(:disabled), .enroll-button-ghost:hover:not(:disabled), .enroll-button-password-choice:hover:not(:disabled), .enroll-button:focus-visible { background: var(--color-wash-hover); color: var(--color-text-primary); }
-.enroll-button-small { min-height: var(--control-h-sm); padding: 0 10px; font-size: 13px; border-radius: var(--radius-control-sm); }
+.enroll-button-small { min-height: var(--control-h-sm); padding: 0 10px; font-size: var(--type-control-sm-size); border-radius: var(--radius-control-sm); }
 .enroll-actions { display: flex; align-items: center; gap: 10px; }
 .enroll-actions-vertical { display: flex; flex-direction: column; gap: 10px; }
 .enroll-disclosure { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; font-size: var(--type-body-sm-size); letter-spacing: normal; color: var(--color-accent); cursor: pointer; }
@@ -105,9 +105,9 @@
 .enroll-key-card { display: flex; flex-direction: column; gap: 14px; background: var(--color-surface-sunken); }
 .enroll-key-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .enroll-key-heading .enroll-mono { font-size: inherit; color: var(--color-text-secondary); }
-.enroll-key-groups { display: grid; grid-template-columns: repeat(4, max-content); gap: 7px 22px; font-family: var(--font-mono); font-size: 15px; line-height: 1.5; letter-spacing: .04em; }
+.enroll-key-groups { display: grid; grid-template-columns: repeat(4, max-content); gap: 7px 22px; font-family: var(--font-mono); font-size: min(var(--type-mono-size), calc(var(--type-body-size) * var(--type-mono-xh-ratio))); line-height: 1.5; letter-spacing: .04em; }
 .enroll-key-check { display: flex; align-items: baseline; gap: 10px; padding-top: 11px; border-top: 1px solid var(--color-border); }
-.enroll-key-check > span:last-child { font-family: var(--font-mono); font-size: 15px; letter-spacing: .04em; color: var(--color-text-secondary); }
+.enroll-key-check > span:last-child { font-family: var(--font-mono); font-size: min(var(--type-mono-size), calc(var(--type-body-size) * var(--type-mono-xh-ratio))); letter-spacing: .04em; color: var(--color-text-secondary); }
 .enroll-kit-note { display: flex; flex-direction: column; gap: 9px; }
 .enroll-kit-note .enroll-copy-small { line-height: 1.5; }
 .enroll-kit-note .enroll-warning-copy { gap: 9px; }

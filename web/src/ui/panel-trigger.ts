@@ -72,7 +72,7 @@ export function panelTriggerHtml(
 // can arrive without rebuilding the trigger.
 function assetsBadgeHtml(count: number): string {
   return `<span data-assets-badge aria-hidden="true"${count > 0 ? "" : " hidden"}
-      class="pointer-events-none absolute -top-[3px] -right-[5px] box-border h-[14px] min-w-[14px] rounded-[7px] bg-accent px-[3px] text-center font-ui text-[10px] leading-[14px] font-normal tracking-normal text-text-on-accent">${count}</span>`;
+      class="pointer-events-none absolute -top-[3px] -right-[5px] box-border h-[14px] min-w-[14px] rounded-[7px] bg-accent px-[3px] text-center font-ui text-(length:--type-badge-size) leading-[14px] font-normal tracking-normal text-text-on-accent">${count}</span>`;
 }
 
 // panelsLabel is the compact Panels button's accessible name: its badge is

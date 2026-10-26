@@ -8,6 +8,7 @@ type clientTestHooks struct {
 	spawnRunResult     func(string, string, error) (string, error)
 	beforeMarkerWrite  func(string) error
 	beforeIdentityKill func()
+	beforeServerKill   func()
 }
 
 // SetSpawnFailureForTest injects an error after tmux has physically created

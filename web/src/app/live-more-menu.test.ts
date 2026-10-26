@@ -9,6 +9,8 @@ import { stripTypeScriptTypes } from "node:module";
 import test from "node:test";
 import { confirmsBeforeClose, confirmsBeforeRemove, sessionMenuHtml } from "./session-menu.ts";
 import { DEFAULT_CUSTOM_SLOTS } from "../terminal/themes.ts";
+import { menuRows } from "../ui/dialog-focus.ts";
+import { restoreModalFocus } from "../ui/modal-fields.ts";
 
 const source = readFileSync(new URL("./live.ts", import.meta.url), "utf8");
 let active: FakeElement | null = null;
@@ -118,6 +120,9 @@ function fixture() {
     terminalThemeName: () => "noisefloor",
     customThemeSlots: () => DEFAULT_CUSTOM_SLOTS,
     setTerminalFontSize: (value: number) => fontSize = value,
+    menuRows,
+    focusedModalControl: () => null,
+    restoreModalFocus,
   };
   const names = ["anchorPopover", "positionMoreMenu", "focusInMore", "applyMoreFocus", "menuIsNarrow", "closePopover", "refreshOpenPopover", "showMore", "moreMenuHtml", "loginActionLabel", "openMore"];
   const code = stripTypeScriptTypes(`class MenuHarness {\n${names.map(method).join("\n")}\n}`);
@@ -163,7 +168,10 @@ test("a missing retained-menu record replaces the mounted controls", () => {
 test("fresh unchanged settings retain nodes; actual changed settings redraw", async () => {
   const f = fixture(); f.workspace.showMore(); const button = f.logout; assert.equal(f.settingsRequests, 1);
   await f.settleSettings({ skip_permissions: false, skip_close_confirm: false, skip_remove_project_confirm: false });
-  assert.equal(f.logout, button); assert.equal(f.settingsRequests, 1); assert.equal(f.workspace.skipPermissions, false);
+  assert.notEqual(f.logout, button, "resolving the unread yolo state removes its unavailable presentation");
+  const settled = f.logout;
+  f.workspace.refreshOpenPopover();
+  assert.equal(f.logout, settled); assert.equal(f.settingsRequests, 1); assert.equal(f.workspace.skipPermissions, false);
   f.workspace.closePopover(); f.workspace.showMore(); const reopened = f.logout; assert.equal(f.settingsRequests, 2);
   await f.settleSettings({ skip_permissions: true, skip_close_confirm: true, skip_remove_project_confirm: true });
   assert.notEqual(f.logout, reopened); assert.equal(reopened.isConnected, false); assert.equal(f.workspace.skipCloseConfirm, true);

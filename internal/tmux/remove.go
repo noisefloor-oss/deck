@@ -91,12 +91,38 @@ func (c *Client) KillPaneIfIdentity(ctx context.Context, identity PaneIdentity) 
 	}
 }
 
+type pidWaiter struct {
+	wait  func(context.Context) error
+	close func()
+}
+
 // KillServer terminates the tmux server on this socket, and every session with
 // it. Intended for test cleanup and manual recovery.
 func (c *Client) KillServer(ctx context.Context) error {
-	_, err := c.run(ctx, "kill-server")
+	pidText, err := c.run(ctx, "display-message", "-p", "#{pid}")
 	if err != nil && (errors.Is(err, ErrNoSession) || errors.Is(err, ErrNoServer)) {
 		return nil
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	pid, err := strconv.Atoi(pidText)
+	if err != nil || pid <= 0 {
+		return fmt.Errorf("tmux: invalid server pid %q", pidText)
+	}
+	wait, err := preparePIDWait(c, pid)
+	if err != nil {
+		return err
+	}
+	defer wait.close()
+	if c.testHooks != nil && c.testHooks.beforeServerKill != nil {
+		c.testHooks.beforeServerKill()
+	}
+	_, err = c.run(ctx, "kill-server")
+	if err != nil && !errors.Is(err, ErrNoSession) && !errors.Is(err, ErrNoServer) {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	return wait.wait(ctx)
 }

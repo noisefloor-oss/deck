@@ -603,7 +603,7 @@ export class FilesPanel {
         class="min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain bg-surface-sunken">
         <pre data-files-text
           data-files-wrapped="${this.wrapLines ? "true" : "false"}"
-          class="m-0 pb-4 pr-4 pt-3 font-mono text-[12px] leading-[1.62] text-text-secondary ${this.wrapLines ? "w-full min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere]" : "min-w-max whitespace-pre"}"></pre>
+          class="m-0 pb-4 pr-4 pt-3 font-mono text-[min(var(--type-mono-size),calc(var(--type-caption-size)*var(--type-mono-xh-ratio)))] leading-[1.62] text-text-secondary ${this.wrapLines ? "w-full min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere]" : "min-w-max whitespace-pre"}"></pre>
       </div>
     `;
   }
@@ -1145,7 +1145,7 @@ export class FilesPanel {
               <label for="files-conflict-name" class="eyebrow text-text-secondary">Or upload as</label>
               <input id="files-conflict-name" data-files-conflict-name type="text" value="${escapeHtml(m.conflictName)}"
                 ${busy} autocomplete="off" spellcheck="false"
-                class="font-input h-9 w-full rounded-control border border-border-strong bg-surface-card px-3 text-[16px] text-text-primary sm:text-body-sm">
+                class="font-input h-9 w-full rounded-control border border-border-strong bg-surface-card px-3 text-[length:var(--type-input-size)] text-text-primary sm:text-body-sm">
               <p data-files-conflict-name-error class="text-caption text-error-on-tint">${escapeHtml(m.conflictNameError ?? "")}</p>
             </div>
             ${sameChoice}

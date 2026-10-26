@@ -9,6 +9,8 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+
+	"golang.org/x/sys/unix"
 )
 
 // This endpoint takes a user-supplied path and turns it into a
@@ -757,6 +759,102 @@ func TestWriteFileRefusesInPlaceRewriteRestoringSizeAndMTime(t *testing.T) {
 	}
 	if body, err := os.ReadFile(readme); err != nil || string(body) != rewritten {
 		t.Fatalf("the in-place writer was destroyed: %q, %v", body, err)
+	}
+}
+
+func TestUploadContentDigestRejectsFIFOBeforeReading(t *testing.T) {
+	root := projectWithFiles(t)
+	const leaf = "replacement.fifo"
+	if err := unix.Mkfifo(root+"/"+leaf, 0o600); err != nil {
+		t.Fatalf("create FIFO: %v", err)
+	}
+	parent, err := os.Open(root)
+	if err != nil {
+		t.Fatalf("open project: %v", err)
+	}
+	defer parent.Close()
+	digest, opened, err := uploadContentDigest(parent, leaf, &unix.Stat_t{Mode: unix.S_IFREG})
+	if err != nil {
+		t.Fatalf("digest swapped FIFO: %v", err)
+	}
+	if opened.Mode&unix.S_IFMT == unix.S_IFREG {
+		t.Fatal("the opened FIFO was treated as a regular file")
+	}
+	if digest != "" {
+		t.Fatal("the FIFO was read despite being nonregular")
+	}
+}
+
+func TestUploadConsentVersionUsesActualFileBytes(t *testing.T) {
+	root := projectWithFiles(t)
+	const leaf = "README.md"
+	parent, err := os.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer parent.Close()
+	st, err := lstatUploadTarget(parent, leaf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, opened, err := uploadContentDigest(parent, leaf, st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repeated, _, err := uploadContentDigest(parent, leaf, st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != repeated {
+		t.Fatal("unchanged bytes produced different content digests")
+	}
+	if err := os.WriteFile(filepath.Join(root, leaf), []byte("changed"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	second, _, err := uploadContentDigest(parent, leaf, st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second {
+		t.Fatal("different bytes produced the same content digest")
+	}
+	if uploadVersion(opened, first) == uploadVersion(opened, second) {
+		t.Fatal("identical metadata produced the same consent version for different bytes")
+	}
+}
+
+func TestWriteFileWriteOnlyTargetKeepsConsentFlow(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores file read permissions")
+	}
+	root := projectWithFiles(t)
+	if err := os.Chmod(filepath.Join(root, "README.md"), 0o200); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := WriteFile(root, "README.md", strings.NewReader("replacement\n"), nil)
+	var conflict *UploadConflict
+	if !errors.As(err, &conflict) {
+		t.Fatalf("write-only target = %v, want a consent conflict", err)
+	}
+	if _, _, err := WriteFile(root, "README.md", strings.NewReader("replacement\n"),
+		&UploadConsent{Version: conflict.Version}); err != nil {
+		t.Fatalf("consented replacement of write-only target: %v", err)
+	}
+	body, err := os.ReadFile(filepath.Join(root, "README.md"))
+	if err != nil || string(body) != "replacement\n" {
+		t.Fatalf("replacement = %q, %v", body, err)
+	}
+}
+
+func TestUploadVersionIncludesContentDigest(t *testing.T) {
+	st := unix.Stat_t{}
+	first := uploadVersion(&st, "first-content")
+	second := uploadVersion(&st, "changed-content")
+	if first == second {
+		t.Fatal("identical metadata produced the same version for changed bytes")
+	}
+	if first != uploadVersion(&st, "first-content") {
+		t.Fatal("identical metadata and content did not produce a stable version")
 	}
 }
 

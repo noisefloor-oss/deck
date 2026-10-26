@@ -901,29 +901,29 @@ export class TaskmasterPanel {
 
   private renderAddTaskModal(): string {
     const busy = this.model.adding;
-    const fieldClass = "font-input mt-1 h-9 w-full rounded-[6px] border border-field-border bg-sidebar-surface px-3 text-[16px] text-text-primary sm:text-body-sm";
-    const areaClass = "font-input mt-1 w-full rounded-[6px] border border-field-border bg-sidebar-surface px-3 py-2 text-[16px] text-text-primary sm:text-body-sm resize-y";
+    const fieldClass = "font-input mt-1 h-9 w-full rounded-[6px] border border-field-border bg-sidebar-surface px-3 text-[length:var(--type-input-size)] text-text-primary sm:text-body-sm";
+    const areaClass = "font-input mt-1 w-full rounded-[6px] border border-field-border bg-sidebar-surface px-3 py-2 text-[length:var(--type-input-size)] text-text-primary sm:text-body-sm resize-y";
     return `
         <form data-tm-task-add-form role="dialog" aria-modal="true" aria-label="Add task" class="dialog">
           ${dialogHead("Add task", { label: "Close", attr: "data-tm-task-add-cancel", disabled: busy })}
           ${DIALOG_BODY(`
             <label class="block">
-              <span class="font-label text-[13px] text-text-secondary">Title</span>
+              <span class="font-label text-(length:--type-label-size) text-text-secondary">Title</span>
               <input data-tm-task-title required maxlength="65536" ${busy ? "disabled" : ""}
                 autocomplete="off" data-hint="${hints.ENTER_TASK_TITLE}" class="${fieldClass}">
             </label>
             <label class="block">
-              <span class="font-label text-[13px] text-text-secondary">Description</span>
+              <span class="font-label text-(length:--type-label-size) text-text-secondary">Description</span>
               <textarea data-tm-task-description maxlength="65536" rows="3" ${busy ? "disabled" : ""}
                 data-hint="${hints.ENTER_TASK_DESCRIPTION}" class="${areaClass}"></textarea>
             </label>
             <label class="block">
-              <span class="font-label text-[13px] text-text-secondary">Details</span>
+              <span class="font-label text-(length:--type-label-size) text-text-secondary">Details</span>
               <textarea data-tm-task-details maxlength="65536" rows="4" ${busy ? "disabled" : ""}
                 data-hint="${hints.ENTER_TASK_DETAILS}" class="${areaClass}"></textarea>
             </label>
             <label class="block">
-              <span class="font-label text-[13px] text-text-secondary">Priority</span>
+              <span class="font-label text-(length:--type-label-size) text-text-secondary">Priority</span>
               ${selectShellHtml(`<select data-tm-task-priority ${busy ? "disabled" : ""} data-hint="${hints.CHOOSE_TASK_PRIORITY}" class="${SELECT_FIELD} ${fieldClass.replace("mt-1 ", "").replace("px-3", "pl-3")}">
                 <option value="high">High</option><option value="medium" selected>Medium</option><option value="low">Low</option>
               </select>`, "mt-1")}

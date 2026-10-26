@@ -195,7 +195,7 @@ export function githubRepositoryPickerHtml(state: GitHubRepositoryPickerState): 
       <span class="relative flex min-w-0 flex-1 items-center">
         <span aria-hidden="true" class="pointer-events-none absolute left-[14px] flex text-text-tertiary">${lucideIcon("search", 15)}</span>
         <input type="search" data-github-repo-search aria-label="Search repositories" placeholder="Search repositories" value="${escapeHtml(state.query)}" autocomplete="off" spellcheck="false"
-          class="font-input caret-accent h-9 w-full rounded-control border border-border-strong bg-surface-card pl-[37px] pr-(--field-px) text-[16px] text-text-primary sm:text-body-sm">
+          class="font-input caret-accent h-9 w-full rounded-control border border-border-strong bg-surface-card pl-[37px] pr-(--field-px) text-[length:var(--type-input-size)] text-text-primary sm:text-body-sm">
       </span>
     </div>`;
 

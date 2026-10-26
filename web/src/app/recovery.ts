@@ -226,7 +226,7 @@ export function recoveryBannerHtml(p: RecoveryPresentation): string {
   const attempt = p.attempt === null ? "" : `attempt ${p.attempt}`;
   return `
     <div data-recovery-banner
-      class="flex h-8 flex-none items-center gap-[9px] border-b border-(--t-rule) bg-(--t-input-bg) px-4 font-mono text-[min(var(--type-mono-size),calc(11px*var(--type-mono-xh-ratio)))]">
+      class="flex h-8 flex-none items-center gap-[9px] border-b border-(--t-rule) bg-(--t-input-bg) px-4 font-mono text-[min(var(--type-mono-size),calc(var(--type-micro-size)*var(--type-mono-xh-ratio)))]">
       <span aria-hidden="true" class="h-[10px] w-[10px] flex-none rounded-circle border-[1.5px] border-(--t-panel-border) border-t-(--t-accent) animate-spinner"></span>
       <span class="text-(--t-fg)">reconnecting</span>
       ${attempt === "" ? "" : `<span class="text-(--t-faint)">·</span><span class="text-(--t-faint)">${escapeHtml(attempt)}</span>`}

@@ -62,7 +62,7 @@ try {
   });
 
   const autoColor = () =>
-    page.locator("[data-more-popover]").getByRole("button", { name: "Auto-color projects" });
+    page.locator("[data-more-popover]").getByRole("switch", { name: "Auto-color projects" });
 
   const providerHue = await chipAndTile();
   assert.notEqual(providerHue.chip, "rgba(0, 0, 0, 0)",

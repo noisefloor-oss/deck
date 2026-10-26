@@ -85,14 +85,14 @@ export function githubConnectedHtml(login: string): string {
 export function gitIdentityFields(prefix: string, profile?: { name: string; email: string }): string {
     return `<div class="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(184px,1fr))]">
       <label class="flex min-w-0 flex-col gap-1.5">
-        <span class="font-label text-[13px] text-text-secondary">Author name</span>
+        <span class="font-label text-(length:--type-label-size) text-text-secondary">Author name</span>
         <input data-${prefix}-git-name required value="${escapeHtml(profile?.name ?? "")}" aria-label="Git author name" autocomplete="name" data-hint="${hints.ENTER_AUTHOR_NAME}"
-          class="font-input caret-accent h-9 w-full rounded-control border border-border-strong bg-surface-card px-(--field-px) text-[16px] text-text-primary sm:text-body-sm">
+          class="font-input caret-accent h-9 w-full rounded-control border border-border-strong bg-surface-card px-(--field-px) text-[length:var(--type-input-size)] text-text-primary sm:text-body-sm">
       </label>
       <label class="flex min-w-0 flex-col gap-1.5">
-        <span class="font-label text-[13px] text-text-secondary">Author email</span>
+        <span class="font-label text-(length:--type-label-size) text-text-secondary">Author email</span>
         <input data-${prefix}-git-email required type="email" value="${escapeHtml(profile?.email ?? "")}" aria-label="Git author email" autocomplete="email" data-hint="${hints.ENTER_AUTHOR_EMAIL}"
-          class="font-input caret-accent h-9 w-full rounded-control border border-border-strong bg-surface-card px-(--field-px) text-[16px] text-text-primary sm:text-body-sm">
+          class="font-input caret-accent h-9 w-full rounded-control border border-border-strong bg-surface-card px-(--field-px) text-[length:var(--type-input-size)] text-text-primary sm:text-body-sm">
       </label>
     </div>`;
 }
@@ -119,18 +119,18 @@ export function gitIdentitySettingsHtml(state: GitIdentitySettingsState): string
           ${DIALOG_BODY(`
             ${state.error ? `<div class="rounded-control bg-error-tint px-3 py-2 text-caption text-error-on-tint">${escapeHtml(state.error)}</div>` : ""}
             <label class="block">
-              <span class="font-label text-[13px] text-text-secondary">Name</span>
+              <span class="font-label text-(length:--type-label-size) text-text-secondary">Name</span>
               <input data-git-identity-name value="${escapeHtml(state.defaultProfile?.name ?? "")}" aria-label="Git author name"
                 autocapitalize="none" autocomplete="off" spellcheck="false" data-hint="${hints.SAVE_GIT_IDENTITY}"
                 class="input mt-1 h-10 w-full rounded-control border border-border-strong bg-surface-card px-3.5 text-body-sm text-text-primary">
             </label>
             <div>
-              <span class="font-label text-[13px] text-text-secondary">Emails</span>
+              <span class="font-label text-(length:--type-label-size) text-text-secondary">Emails</span>
               <ul class="mt-1 flex flex-col gap-2" aria-label="Saved git identities">
                 ${catalog.profiles.map((profile) => `<li class="flex h-[52px] items-center gap-3 rounded-control border border-field-border bg-sidebar-surface px-3.5">
                   <span class="min-w-0 flex items-center gap-2.5">
                     <span class="truncate font-mono text-body-sm text-text-primary">${escapeHtml(profile.email)}</span>
-                    ${catalog.default_profile_id === profile.id ? `<span class="flex-none rounded-pill bg-wash-selected px-2 py-0.5 font-label text-[11px] text-accent">Default</span>` : ""}
+                    ${catalog.default_profile_id === profile.id ? `<span class="flex-none rounded-pill bg-wash-selected px-2 py-0.5 font-label text-(length:--type-label-sm-size) text-accent">Default</span>` : ""}
                     ${profile.name === (state.defaultProfile?.name ?? profile.name) ? "" : `<span class="flex-none truncate text-caption text-text-tertiary">${escapeHtml(profile.name)}</span>`}
                   </span>
                   <span class="ml-auto flex flex-none items-center gap-1.5">

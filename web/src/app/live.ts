@@ -47,6 +47,8 @@ import {
 } from "../ui/empty-pane.ts";
 import { providerDisplayName } from "../ui/session-identity.ts";
 import { flashAssetsArrived, focusPanelTrigger, mountPanelsMenu, paintAssetsNew } from "../ui/panel-trigger.ts";
+import { menuRows } from "../ui/dialog-focus.ts";
+import { focusedModalControl, restoreModalFocus } from "../ui/modal-fields.ts";
 import { SECONDARY_SM_BUTTON } from "../ui/controls.ts";
 import { terminalIdentityHtml } from "../ui/terminal-identity.ts";
 import { AgentTerminal } from "../terminal/attach.ts";
@@ -2620,11 +2622,8 @@ export class LiveWorkspace {
     menu.style.left = `${Math.max(8, rect.right - menu.offsetWidth)}px`;
   }
 
-  // moreFocus is the control the More menu should focus once mounted, held
-  // as intent rather than applied at the call site: the menu remounts on
-  // its own schedule — a pending settings read calls openMore again when it
-  // resolves — and a focus applied by a click handler is undone by the next
-  // remount with nothing to reinstate it.
+  // moreFocus is a one-shot navigation intent. Later focus belongs to the
+  // user, including focus restored after an asynchronous menu replacement.
   private moreFocus: string | null = null;
 
   private focusInMore(selector: string): void {
@@ -2633,9 +2632,11 @@ export class LiveWorkspace {
   }
 
   private applyMoreFocus(): void {
-    if (this.moreFocus === null) return;
+    const selector = this.moreFocus;
+    if (selector === null) return;
+    this.moreFocus = null;
     this.root
-      .querySelector<HTMLElement>(`[data-region="popovers"] [data-more-popover] ${this.moreFocus}`)
+      .querySelector<HTMLElement>(`[data-region="popovers"] [data-more-popover] ${selector}`)
       ?.focus();
   }
 
@@ -2721,6 +2722,7 @@ export class LiveWorkspace {
     const html = this.moreMenuHtml();
     const popovers = region(this.root, "popovers");
     const current = popovers.querySelector<HTMLElement>("[data-more-popover]");
+    const focus = focusedModalControl(current);
     // Polling and unchanged settings must not detach a control mid-gesture.
     // Another menu can take over the shared popover region.
     const reuse = this.moreMenuRender?.html === html
@@ -2848,7 +2850,23 @@ export class LiveWorkspace {
     // navigation the user did not undo; the desktop flyout has no
     // pushed level to step back from.
     menu.addEventListener("keydown", (event) => {
-      if ((event as KeyboardEvent).key !== "Escape") return;
+      const key = (event as KeyboardEvent).key;
+      if (key === "ArrowDown" || key === "ArrowUp" || key === "Home" || key === "End") {
+        const navigationRoot = this.themeFlyoutOpen && this.menuIsNarrow()
+          ? menu.querySelector<HTMLElement>("[data-theme-list]") ?? menu
+          : menu;
+        const rows = menuRows(navigationRoot);
+        if (rows.length === 0) return;
+        const current = rows.indexOf(document.activeElement as HTMLElement);
+        const direction = key === "ArrowDown" ? 1 : key === "ArrowUp" ? -1 : 0;
+        const next = key === "Home" ? 0 : key === "End" ? rows.length - 1
+          : current < 0 ? (direction > 0 ? 0 : rows.length - 1)
+            : (current + direction + rows.length) % rows.length;
+        event.preventDefault();
+        rows[next]!.focus();
+        return;
+      }
+      if (key !== "Escape") return;
       event.preventDefault();
       if (this.themeFlyoutOpen && this.menuIsNarrow()) {
         this.themeFlyoutOpen = false;
@@ -2899,6 +2917,7 @@ export class LiveWorkspace {
     // Every mount ends here, including the one a resolving settings read
     // triggers, so a focus the user navigated to survives a remount
     // they did not ask for.
+    if (!reuse) restoreModalFocus(menu, focus);
     this.applyMoreFocus();
   }
 

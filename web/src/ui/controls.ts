@@ -16,7 +16,7 @@ export const DIALOG_ICON_BUTTON = `${ICON_BUTTON} pointer-coarse:h-10 pointer-co
 // own pill (the docked-panel triggers) can carry the same type without
 // duplicating the border, padding and fill that live on its inner span.
 export const SECONDARY_SM_TYPE =
-  "text-[13px] font-medium leading-[13px] tracking-[0.004em]";
+  "text-(length:--type-control-sm-size) font-medium leading-[13px] tracking-[0.004em]";
 
 // The secondary sm button: a 28px hairlined pill on the card surface.
 // It carries no text colour — a caller that tints the label (an active

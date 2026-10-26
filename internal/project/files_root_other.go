@@ -35,6 +35,10 @@ func statUploadTarget(*os.File, string) (*uploadTargetStat, error) {
 	return nil, errProjectFilesUnsupported
 }
 
+func statUploadTargetForConsent(*os.File, string) (*uploadTargetStat, error) {
+	return nil, errProjectFilesUnsupported
+}
+
 func unlinkFileAt(*os.File, string) error {
 	return errProjectFilesUnsupported
 }

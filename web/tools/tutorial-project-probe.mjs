@@ -389,6 +389,9 @@ try {
   seedPair();
   await open("lesson-1", "Ask {agent} to build it");
   assert.equal((await panel.locator(".tutorial-prompt").innerText()).trim(), promptText, "the prompt is shown in full");
+  await panel.locator(".tutorial-body").evaluate((el) => el.style.setProperty("--type-mono-size", "8px"));
+  assert.equal(await panel.locator(".tutorial-prompt").evaluate((el) => getComputedStyle(el).fontSize), "8px",
+    "tutorial machine text follows the mono x-height ceiling");
   assert.equal(inputs.length, 0, "showing the prompt types nothing");
   await select("rel-agent");
   await button("Put it in the terminal").click();

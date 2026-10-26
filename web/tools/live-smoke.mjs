@@ -222,6 +222,7 @@ try {
   // Gates are held until the probe releases them, so a state under test lasts
   // as long as the assertions need, however slow the runner.
   let providersSuccessGate = null;
+  let settingsReadGate = null;
   let sessionOneStatus = "running";
   let sessionOneRecoveryCapability = "none";
   let sessionOneRecoveryState = "unavailable";
@@ -334,6 +335,7 @@ try {
       // The ⋯ menu IS the settings surface and reads the console settings
       // when it opens (the backend is the authority), so the smoke must
       // answer it for the menu to settle.
+      if (settingsReadGate) await settingsReadGate.promise;
       return json(200, consoleSettings);
     }
     if (request.method() === "GET" && path === "/api/settings/last-session") {
@@ -1535,6 +1537,18 @@ try {
   // No composer/outbox UI exists: the terminal is the only input
   // surface. The ⋯ menu is presentation plus sign out; passive
   // session state and any authorized recovery gesture live in the titlebar.
+  settingsReadGate = createGate();
+  await page.locator("[data-live-more]").click();
+  await page.locator("[data-more-popover]").waitFor();
+  await page.locator("[data-live-logout]").focus();
+  settingsReadGate.release();
+  settingsReadGate = null;
+  await page.locator('[data-skip-permissions][aria-disabled="true"]').waitFor({ state: "detached" });
+  await waitForCondition(async () =>
+    (await page.locator("[data-live-logout]").evaluate((el) => document.activeElement === el)),
+  "unchanged settings resolving without moving focus");
+  await page.keyboard.press("Escape");
+  await page.locator("[data-more-popover]").waitFor({ state: "detached" });
   await page.locator("[data-live-more]").click();
   await page.locator("[data-more-popover]").waitFor();
   assert.equal(await page.locator("[data-more-popover] [data-harness-login]").count(), 0, "the menu offers a login nobody started");
@@ -1589,6 +1603,22 @@ try {
     moreMenuRefreshCycle = null;
     await retainedMoreMenu.dispose(); await retainedLogout.dispose(); await retainedFontIncrease.dispose();
   }
+  const autoColor = page.locator("[data-auto-color]");
+  assert.ok((await toggleChecked(autoColor)) === "false", "Auto-color projects starts off");
+  await autoColor.focus();
+  await page.keyboard.press("Space");
+  await waitForCondition(async () => (await toggleChecked(autoColor)) === "true", "auto-color keyboard toggle");
+  await autoColor.focus();
+  await page.keyboard.press("ArrowDown");
+  assert.match(await page.evaluate(() => document.activeElement?.outerHTML ?? ""), /data-show-side-panel/,
+    "ArrowDown reaches the switch after Auto-color projects");
+  await page.keyboard.press("End");
+  assert.match(await page.evaluate(() => document.activeElement?.outerHTML ?? ""), /data-live-logout/,
+    "End reaches the last menu row");
+  await page.keyboard.press("Home");
+  assert.equal(await page.evaluate(() => document.activeElement?.hasAttribute("data-theme-flyout")), true,
+    "Home reaches the first menu row");
+
   const confirmBeforeClosing = page.locator("[data-confirm-before-closing]");
   const showInfoBar = page.locator("[data-show-info-bar]");
   assert.ok((await toggleChecked(confirmBeforeClosing)) === "true",
@@ -1724,6 +1754,7 @@ try {
       await sheetScrim.dispatchEvent("click");
     }
   }
+  settingsReadGate = createGate();
   await page.locator("[data-live-more]").click();
   await page.locator("[data-more-popover]").waitFor();
   await waitForCondition(async () =>
@@ -1740,6 +1771,52 @@ try {
     "the live phone sheet hides the trimmed yolo copy");
   assert.equal(await page.locator("[data-skip-permissions] [data-copy-wide]").isVisible(), false,
     "the live phone sheet leaks the wide yolo copy");
+  await page.locator("[data-theme-flyout]").click();
+  await page.locator("[data-theme-list]").waitFor();
+  await page.keyboard.press("End");
+  assert.equal(await page.evaluate(() => document.activeElement?.hasAttribute("data-theme-custom-open")), true,
+    "End stays on the pushed theme screen");
+  await page.keyboard.press("ArrowDown");
+  assert.equal(await page.evaluate(() => document.activeElement?.hasAttribute("data-theme-back")), true,
+    "ArrowDown wraps to the theme screen's Back control");
+  await page.keyboard.press("ArrowUp");
+  assert.equal(await page.evaluate(() => document.activeElement?.hasAttribute("data-theme-custom-open")), true,
+    "ArrowUp wraps back to Custom");
+  await page.keyboard.press("Home");
+  assert.equal(await page.evaluate(() => document.activeElement?.hasAttribute("data-theme-back")), true,
+    "Home reaches the theme screen's Back control");
+  await page.keyboard.press("ArrowDown");
+  assert.equal(await page.evaluate(() => document.activeElement?.hasAttribute("data-theme-close")), true,
+    "ArrowDown reaches the theme screen's Close control");
+  await page.keyboard.press("ArrowDown");
+  assert.equal(await page.evaluate(() => document.activeElement?.hasAttribute("data-theme-pick")), true,
+    "ArrowDown reaches a visible theme choice");
+  await page.keyboard.press("End");
+  settingsReadGate.release();
+  settingsReadGate = null;
+  await page.locator('[data-skip-permissions][aria-disabled="true"]').waitFor({ state: "detached" });
+  assert.equal(await page.evaluate(() => document.activeElement?.hasAttribute("data-theme-custom-open")), true,
+    "the settings response does not replay the old Back navigation intent");
+  await page.keyboard.press("Escape");
+  await page.locator("[data-theme-list]").waitFor({ state: "detached" });
+  const phoneYolo = page.locator("[data-skip-permissions]");
+  assert.ok((await toggleChecked(phoneYolo)) === "false", "phone yolo starts off");
+  await phoneYolo.focus();
+  await page.keyboard.press("Space");
+  await page.locator("[data-yolo-confirm]").waitFor();
+  assert.ok((await toggleChecked(phoneYolo)) === "false", "confirmation does not announce an uncommitted yolo change");
+  assert.equal(await phoneYolo.getAttribute("aria-expanded"), "true");
+  await page.locator("[data-yolo-cancel]").focus();
+  await page.keyboard.press("Enter");
+  assert.equal(await phoneYolo.getAttribute("aria-expanded"), "false");
+  await confirmBeforeClosing.focus();
+  await page.keyboard.press("Space");
+  await waitForCondition(async () => (await toggleChecked(confirmBeforeClosing)) === "true",
+    "phone confirmation toggle keyboard write");
+  await confirmBeforeClosing.focus();
+  await page.keyboard.press("Space");
+  await waitForCondition(async () => (await toggleChecked(confirmBeforeClosing)) === "false",
+    "phone confirmation toggle restores the original setting");
   await page.locator("[data-settings-sheet-close]").click();
   await page.locator("[data-more-popover]").waitFor({ state: "detached" });
   assert.equal(

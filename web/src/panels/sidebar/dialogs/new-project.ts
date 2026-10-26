@@ -22,18 +22,18 @@ export function newProjectModalHtml(state: NewProjectModalState): string {
           <p data-project-caption class="hidden truncate border-b border-border px-5 pb-2.5 pt-0.5 text-caption text-text-tertiary">Open project adds this folder to your sidebar</p>
           ${DIALOG_BODY(`
             <label class="block">
-              <span class="font-label text-[13px] text-text-secondary">Workspace path</span>
+              <span class="font-label text-(length:--type-label-size) text-text-secondary">Workspace path</span>
               <div class="relative mt-1">
                 <input data-project-path required readonly value="${escapeHtml(state.path)}"
                   placeholder="/workspace/my-project" aria-label="Workspace path" data-hint="${hints.SHOW_WORKSPACE_PATH}"
-                  class="font-input h-9 w-full rounded-control border border-border-strong bg-surface-card pl-3 pr-10 text-[16px] text-text-primary placeholder:text-text-tertiary sm:text-body-sm">
+                  class="font-input h-9 w-full rounded-control border border-border-strong bg-surface-card pl-3 pr-10 text-[length:var(--type-input-size)] text-text-primary placeholder:text-text-tertiary sm:text-body-sm">
                 <button type="button" data-project-browse aria-label="Choose folder" data-hint="${hints.CHOOSE_WORKSPACE_FOLDER}"
                   class="absolute right-[5px] top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-control-sm text-text-secondary transition-colors hover:bg-wash-hover hover:text-text-primary">${lucideIcon("folder", 16)}</button>
               </div>
               <p data-project-path-hint class="mt-1.5 text-caption text-text-tertiary">Created if it doesn't exist yet.</p>
             </label>
             <label class="block">
-              <span class="font-label text-[13px] text-text-secondary"><span data-copy-wide>Git email</span><span data-copy-phone class="hidden">Git identity</span></span>
+              <span class="font-label text-(length:--type-label-size) text-text-secondary"><span data-copy-wide>Git email</span><span data-copy-phone class="hidden">Git identity</span></span>
               ${selectShellHtml(`<select data-project-git-profile aria-label="Git identity" data-hint="${hints.CHOOSE_GIT_IDENTITY_FOR_PROJECT}"
                 class="${SELECT_FIELD} font-input h-9 w-full rounded-control border border-border-strong bg-surface-card pl-2 text-body-sm text-text-primary">
                 ${profiles.map((profile) => `<option value="${escapeHtml(profile.id)}" ${profile.id === selected?.id ? "selected" : ""}>${escapeHtml(profile.name)} — ${escapeHtml(profile.email)}</option>`).join("")}

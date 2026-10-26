@@ -164,10 +164,10 @@ export function sessionMenuHtml(state: SessionMenuState): string {
           <span data-font-label class="text-[length:var(--type-body-sm-size)] font-medium text-text-secondary">Terminal font</span>
           <span class="ml-auto flex items-center gap-1.5">
             <button data-font-dec aria-label="Decrease terminal font size" data-hint="${hints.DECREASE_TERMINAL_FONT_SIZE}"
-              class="grid h-[22px] w-[22px] place-items-center rounded-control-sm border border-field-border font-ui text-[12px] text-text-secondary transition-colors hover:bg-wash-hover hover:text-text-primary"><span data-copy-wide>−</span><span data-copy-phone class="hidden">${lucideIcon("chevron-down", 18)}</span></button>
+              class="grid h-[22px] w-[22px] place-items-center rounded-control-sm border border-field-border font-ui text-caption text-text-secondary transition-colors hover:bg-wash-hover hover:text-text-primary"><span data-copy-wide>−</span><span data-copy-phone class="hidden">${lucideIcon("chevron-down", 18)}</span></button>
             <span data-font-size class="min-w-[18px] text-center text-[length:var(--type-body-sm-size)] text-text-primary">${state.fontSize}</span>
             <button data-font-inc aria-label="Increase terminal font size" data-hint="${hints.INCREASE_TERMINAL_FONT_SIZE}"
-              class="grid h-[22px] w-[22px] place-items-center rounded-control-sm border border-field-border font-ui text-[12px] text-text-secondary transition-colors hover:bg-wash-hover hover:text-text-primary"><span data-copy-wide>+</span><span data-copy-phone class="hidden">${lucideIcon("chevron-up", 18)}</span></button>
+              class="grid h-[22px] w-[22px] place-items-center rounded-control-sm border border-field-border font-ui text-caption text-text-secondary transition-colors hover:bg-wash-hover hover:text-text-primary"><span data-copy-wide>+</span><span data-copy-phone class="hidden">${lucideIcon("chevron-up", 18)}</span></button>
           </span>
         </div>
         <div class="relative">
@@ -180,7 +180,7 @@ export function sessionMenuHtml(state: SessionMenuState): string {
           </button>
           ${themeFlyoutHtml(state)}
         </div>
-        <button data-auto-color data-hint="${hints.GIVE_PROJECT_DISTINCT_COLOR}"
+        <button type="button" data-auto-color role="switch" aria-checked="${state.autoColorProjects}" data-hint="${hints.GIVE_PROJECT_DISTINCT_COLOR}"
           class="menuitem justify-between">
           <span class="flex-1">Auto-color projects</span>
           ${rainbowStripHtml(state.autoColorProjects)}
@@ -234,15 +234,16 @@ function toggleRowHtml(
 function yoloRowHtml(value: boolean | null, confirming: boolean): string {
   const on = value === true;
   return `
-        <button type="button" data-skip-permissions role="switch" aria-checked="${on}" data-hint="${hints.LET_NEW_SESSIONS_SKIP_PERMISSIONS}"
-          class="menuitem menuitem-toggle flex-col items-stretch gap-0.5">
+        <button type="button" data-skip-permissions role="switch" aria-checked="${on}" aria-expanded="${confirming}"
+          ${value === null ? 'aria-disabled="true"' : ""} ${confirming ? 'aria-controls="yolo-confirmation"' : ""}
+          data-hint="${hints.LET_NEW_SESSIONS_SKIP_PERMISSIONS}" class="menuitem menuitem-toggle flex-col items-stretch gap-0.5">
           <span class="flex w-full items-center gap-3">
             <span class="flex-1">${phoneCopy("Enable yolo mode", "Yolo mode")}</span>
             ${menuShortcutHtml("toggleYolo")}
             ${rowSwitchHtml(on)}
           </span>
         </button>${confirming
-          ? `<div class="mt-1 flex flex-col gap-1.5 rounded-control bg-warning-tint px-2 py-1.5 [contain:inline-size]">
+          ? `<div id="yolo-confirmation" class="mt-1 flex flex-col gap-1.5 rounded-control bg-warning-tint px-2 py-1.5 [contain:inline-size]">
               <span class="text-caption leading-[1.35] text-warning-on-tint">Agents will edit files and run commands without asking, in every new session until you turn this off.</span>
               <span class="flex justify-end gap-1.5">
                 <button type="button" data-yolo-cancel data-hint="${hints.CANCEL_ENABLING_YOLO}" class="h-6 rounded-control-sm px-2 text-caption text-text-secondary transition-colors hover:bg-wash-hover">Cancel</button>
@@ -256,7 +257,7 @@ function yoloRowHtml(value: boolean | null, confirming: boolean): string {
 // projects row: full opacity when the preference is on, 0.3 when off (the
 // DC's resting state for an unset toggle).
 function rainbowStripHtml(on: boolean): string {
-  return `<span class="flex flex-none gap-[2px]">${RAINBOW
+  return `<span aria-hidden="true" class="flex flex-none gap-[2px]">${RAINBOW
     .map((hex) => `<span class="h-[12px] w-[6px] rounded-[1.5px]" style="background:${hex};opacity:${on ? "1" : "0.3"}"></span>`)
     .join("")}</span>`;
 }

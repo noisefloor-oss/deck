@@ -54,7 +54,7 @@ export function projectChevronHtml(
   const tint = color === null || color === undefined || color === ""
     ? ""
     : ` style="color:${escapeHtml(color)}"`;
-  return `<span aria-hidden="true"${tint} class="w-[13px] flex-none font-mono text-[length:min(var(--type-mono-size),calc(13.5px*var(--type-mono-xh-ratio)))] leading-none text-text-secondary">${expanded ? "▾" : "▸"}</span>`;
+  return `<span aria-hidden="true"${tint} class="w-[13px] flex-none font-mono text-[length:min(var(--type-mono-size),calc(var(--type-chevron-size)*var(--type-mono-xh-ratio)))] leading-none text-text-secondary">${expanded ? "▾" : "▸"}</span>`;
 }
 
 // The sessions-list rail: a 2px border-left indenting
@@ -92,9 +92,8 @@ export function sessionStatusCellHtml(streaming: boolean, attention = false): st
 // indents every session under an open project. The 11px left margin and
 // 8px left padding are hand-tuned; rounding them to the 4px
 // ramp shifts every row 2px right and narrows it by the same amount.
-// `bare` sheds the 2px rule for a rail with nothing selected:
-// the rule marks an open session's rail, and painted over
-// rows nobody chose it reads as a selection the pane does not show.
+// The grouping rail remains visible without a selection; the selected
+// session row's own wash and aria-selected state carry selection instead.
 // The rail carries no in-group + New session chrome of its own: the
 // empty-rail row (emptyRailNewSessionHtml, rendered by the caller inside
 // childrenHtml) is the single creation affordance a group without
@@ -106,9 +105,8 @@ export function sessionRailContainerHtml(
   color: string | null | undefined,
   expanded: boolean,
   childrenHtml: string,
-  bare = false,
 ): string {
-  return `<ul id="sessions-${escapeHtml(projectID)}" draggable="false" class="session-rail${bare ? " session-rail-bare" : ""} mb-1.5 ml-[11px] mt-0.5 flex flex-col gap-px pl-2"${sessionRailStyle(color)} ${expanded ? "" : "hidden"}>${childrenHtml}</ul>`;
+  return `<ul id="sessions-${escapeHtml(projectID)}" draggable="false" class="session-rail mb-1.5 ml-[11px] mt-0.5 flex flex-col gap-px pl-2"${sessionRailStyle(color)} ${expanded ? "" : "hidden"}>${childrenHtml}</ul>`;
 }
 
 // PendingSession is a launch you have asked for that the server

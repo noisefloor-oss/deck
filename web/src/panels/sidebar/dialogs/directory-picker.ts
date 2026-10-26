@@ -58,7 +58,7 @@ export function directoryPickerHtml(state: DirectoryPickerState): string {
           <span aria-hidden="true" class="flex-none text-accent">${lucideIcon("folder", 14)}</span>
           <input data-directory-new-name value="${escapeHtml(state.newFolderName)}" placeholder="new-directory" aria-label="New directory name" data-hint="${hints.NAME_NEW_FOLDER}"
             autocapitalize="none" autocomplete="off" spellcheck="false"
-            class="font-input caret-accent min-w-0 flex-1 border-0 bg-transparent p-0 text-[16px] text-text-primary outline-none placeholder:text-text-tertiary sm:text-body-sm">
+            class="font-input caret-accent min-w-0 flex-1 border-0 bg-transparent p-0 text-[length:var(--type-input-size)] text-text-primary outline-none placeholder:text-text-tertiary sm:text-body-sm">
           <span class="flex-none text-caption text-text-tertiary">Enter to create</span>
         </div>`;
     // The path line is the only statement of which directory the primary

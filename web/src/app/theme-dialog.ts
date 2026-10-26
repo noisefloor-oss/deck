@@ -135,7 +135,7 @@ export function themeDialogHtml(state: ThemeDialogState): string {
   const hex = state.slots[def.key];
   const hsv = liveHsv(state);
   const chrome = customThemeChromeSlots(state.slots);
-  const monoMicro = "font-mono text-[min(var(--type-mono-size),calc(11px*var(--type-mono-xh-ratio)))]";
+  const monoMicro = "font-mono text-[min(var(--type-mono-size),calc(var(--type-micro-size)*var(--type-mono-xh-ratio)))]";
   const swatches = SLOT_DEFS.map((d) => {
     const selected = d.key === state.selected;
     return `
@@ -158,7 +158,7 @@ export function themeDialogHtml(state: ThemeDialogState): string {
           ${dialogHead("Custom terminal theme", { label: "Close", attr: "data-theme-dialog-cancel" })}
           <div class="mx-6 overflow-hidden rounded-card border border-border">
             <div data-theme-preview
-              class="theme-dialog-preview font-mono text-[min(var(--type-mono-size),calc(12px*var(--type-mono-xh-ratio)))] leading-[1.62]"
+              class="theme-dialog-preview font-mono text-[min(var(--type-mono-size),calc(var(--type-caption-size)*var(--type-mono-xh-ratio)))] leading-[1.62]"
               style="background:${chrome.bg}">
               <div data-preview="faint" style="color:${chrome.faint}">· · · scrollback continues above · · ·</div>
               <div><span data-preview="accent" style="color:${chrome.accent}">●</span><span data-preview="fg" style="color:${chrome.fg}"> Running: go test ./internal/provider/…</span></div>

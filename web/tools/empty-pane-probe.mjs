@@ -7,8 +7,8 @@
 // above the geometric centre, and that both states are reachable and
 // actionable end to end: the pane's New session opens the same provider
 // picker the sidebar's + opens, and New project the same project form
-// the Projects menu opens. The no-session sidebar must also shed its
-// rail rule: nothing is selected, so nothing may look selected.
+// the Projects menu opens. Project rails retain their grouping tint with
+// and without a selection; only the session row carries selection state.
 import assert from "node:assert/strict";
 import { assertFontVoice } from "./font-assertions.mjs";
 import { createServer } from "node:http";
@@ -42,6 +42,7 @@ try {
   ({ browser } = await getBrowser());
   const context = await browser.newContext({ viewport: { width: 1400, height: 900 } });
   const page = await context.newPage();
+  await page.addInitScript(() => localStorage.setItem("noisedeck-auto-color-projects", "on"));
   const pageErrors = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
 
@@ -154,16 +155,32 @@ try {
     "nothing is selected, so no session row renders selected");
   assert.equal(await page.locator("[data-session].bg-wash-pressed").count(), 0,
     "no session row keeps the selected wash");
-  const railRule = await page.locator(".session-rail").first()
-    .evaluate((el) => getComputedStyle(el).borderLeftWidth);
-  assert.equal(railRule, "0px",
-    "the rail sheds its left rule — nothing is selected, so nothing looks selected");
+  const emptyRail = await page.locator('.session-rail[style*="border-left-color"]').first().evaluate((el) => ({
+    width: getComputedStyle(el).borderLeftWidth,
+    color: getComputedStyle(el).borderLeftColor,
+    declaration: el.getAttribute("style"),
+    projectColor: getComputedStyle(el.closest("[data-project-row]").querySelector("[data-project-toggle] span")).color,
+  }));
+  assert.equal(emptyRail.width, "2px", "the grouping rail remains visible without a selection");
+  assert.match(emptyRail.declaration ?? "", /border-left-color:/,
+    "the empty-state rail retains its project tint declaration");
+  assert.equal(emptyRail.color, emptyRail.projectColor,
+    "the computed rail color is the project tint, not a fallback or transparent override");
 
   await page.locator("[data-empty-action]").click();
   await page.locator("[data-new-session-modal]").waitFor();
   assert.equal(await page.locator('[data-new-session-provider]:visible').count() > 0, true,
     "the pane's New session opens the same provider picker the sidebar's + opens");
   await page.locator("[data-new-session-cancel]").click();
+
+  await openState("");
+  await page.locator('[data-session][aria-selected="true"]').first().waitFor();
+  const selectedRail = await page.locator('.session-rail[style*="border-left-color"]').first().evaluate((el) => ({
+    width: getComputedStyle(el).borderLeftWidth,
+    color: getComputedStyle(el).borderLeftColor,
+  }));
+  assert.deepEqual(selectedRail, { width: emptyRail.width, color: emptyRail.color },
+    "selection does not change the project grouping rail");
 
   // ---- no-project ---------------------------------------------------------
   await openState("empty=no-project");

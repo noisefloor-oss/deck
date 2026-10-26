@@ -73,12 +73,24 @@ export function activateDialog(
 // Focus nets put focus back on the row that held it if it escapes the
 // menu by any other route. The caller runs the returned teardown on every
 // close path, before moving focus to whatever comes next.
+export function menuRows(menu: HTMLElement): HTMLElement[] {
+  const rows = [
+    ...menu.querySelectorAll<HTMLElement>(".menuitem"),
+    ...menu.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+    ...menu.querySelectorAll<HTMLElement>('[role="switch"]'),
+    ...menu.querySelectorAll<HTMLElement>("[data-theme-back]"),
+    ...menu.querySelectorAll<HTMLElement>("[data-theme-close]"),
+  ];
+  return [...new Set(rows)]
+    .sort((a, b) => typeof a.compareDocumentPosition !== "function" ? 0 : (a.compareDocumentPosition(b) & 4) === 4 ? -1 : 1)
+    .filter((el) => !el.hidden && (typeof el.getClientRects !== "function" || el.getClientRects().length > 0));
+}
+
 export function activateMenu(
   menu: HTMLElement,
   dismiss: (restoreFocus: boolean) => void,
 ): () => void {
-  const rows = (): HTMLElement[] =>
-    Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+  const rows = (): HTMLElement[] => menuRows(menu);
   let index = 0;
   const focusRow = (next: number): void => {
     const list = rows();

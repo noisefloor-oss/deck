@@ -101,6 +101,7 @@ test("the rainbow strip dims when auto-color is off", () => {
 
 test("toggle rows are switch rows with data keys", () => {
   const html = menu();
+  assert.ok(html.includes('data-auto-color role="switch"'));
   assert.ok(html.includes('data-show-info-bar role="switch"'));
   assert.ok(html.includes('data-confirm-before-closing role="switch"'));
   assert.ok(html.includes('data-skip-permissions role="switch"'));
@@ -117,8 +118,24 @@ test("no settings row sets its own label color", () => {
 // user has not already picked, so it is a plain toggle — unlike yolo
 // mode, which expands into an inline confirmation before it can be granted.
 test("only yolo mode asks before it is granted", () => {
-  assert.ok(menu({ confirmingYolo: true }).includes("Turn it on"));
+  const confirmation = menu({ confirmingYolo: true });
+  assert.ok(confirmation.includes("Turn it on"));
+  assert.ok(confirmation.includes('data-skip-permissions role="switch" aria-checked="false" aria-expanded="true"'));
+  assert.ok(confirmation.includes('aria-controls="yolo-confirmation"'));
+  assert.ok(confirmation.includes('id="yolo-confirmation"'));
   assert.ok(!menu({ skipCloseConfirm: false }).includes("Turn it on"));
+});
+
+test("an unread yolo setting is unavailable, not falsely enabled", () => {
+  const html = menu({ skipPermissions: null });
+  assert.ok(html.includes('data-skip-permissions role="switch" aria-checked="false" aria-expanded="false"'));
+  assert.ok(html.includes('aria-disabled="true"'));
+});
+
+test("auto-color exposes its checked state and hides the decorative rainbow", () => {
+  assert.ok(menu({ autoColorProjects: true }).includes('data-auto-color role="switch" aria-checked="true"'));
+  assert.ok(menu({ autoColorProjects: false }).includes('data-auto-color role="switch" aria-checked="false"'));
+  assert.ok(menu().includes('<span aria-hidden="true" class="flex flex-none gap-[2px]">'));
 });
 
 

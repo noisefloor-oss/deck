@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"runtime"
 	"syscall"
@@ -135,7 +136,7 @@ func placeUpload(parent *os.File, staged, leaf string, consent *UploadConsent, h
 	if consent == nil {
 		return placeUploadIfAbsent(parent, staged, leaf, false)
 	}
-	target, err := statUploadTarget(parent, leaf)
+	target, err := statUploadTargetForConsent(parent, leaf)
 	if err != nil {
 		return err
 	}
@@ -175,10 +176,10 @@ func placeUploadIfAbsent(parent *os.File, staged, leaf string, changed bool) err
 }
 
 // uploadConflictAt turns a standing refusal into the ask: what holds the
-// name now, as the listing would disclose it. changed marks a refusal of
-// presented consent rather than a plain collision.
+// name now, with content checked when it is readable. changed marks a refusal
+// of presented consent rather than a plain collision.
 func uploadConflictAt(parent *os.File, leaf string, changed bool) error {
-	target, err := statUploadTarget(parent, leaf)
+	target, err := statUploadTargetForConsent(parent, leaf)
 	if err != nil {
 		return err
 	}
@@ -198,10 +199,10 @@ func uploadConflictAt(parent *os.File, leaf string, changed bool) error {
 	}
 }
 
-func statUploadTarget(parent *os.File, leaf string) (*uploadTargetStat, error) {
-	var st unix.Stat_t
+func lstatUploadTarget(parent *os.File, leaf string) (*unix.Stat_t, error) {
+	st := new(unix.Stat_t)
 	for {
-		err := unix.Fstatat(int(parent.Fd()), leaf, &st, unix.AT_SYMLINK_NOFOLLOW)
+		err := unix.Fstatat(int(parent.Fd()), leaf, st, unix.AT_SYMLINK_NOFOLLOW)
 		if errors.Is(err, syscall.EINTR) {
 			continue
 		}
@@ -211,31 +212,90 @@ func statUploadTarget(parent *os.File, leaf string) (*uploadTargetStat, error) {
 		if err != nil {
 			return nil, err
 		}
-		break
+		return st, nil
+	}
+}
+
+func versionedUploadTarget(st *unix.Stat_t, digest string) *uploadTargetStat {
+	if st == nil {
+		return nil
 	}
 	return &uploadTargetStat{
 		Dir:     st.Mode&unix.S_IFMT == unix.S_IFDIR,
 		Regular: st.Mode&unix.S_IFMT == unix.S_IFREG,
 		Size:    st.Size,
 		MTime:   time.Unix(st.Mtim.Sec, st.Mtim.Nsec),
-		Version: uploadVersion(&st),
-	}, nil
+		Version: uploadVersion(st, digest),
+	}
 }
 
-// uploadVersion folds the kernel's identity for a name into the opaque
-// string consent carries: device and inode (which file), the type bits
-// (what kind), the size, and modification and change times at nanosecond
-// resolution (what last happened to it). A replacement under the same name
-// gets a new inode; an in-place rewrite keeps the inode but moves ctime —
-// including a rewrite that restores size and mtime exactly, which cannot
-// restore ctime. atime is deliberately excluded: reading a file must not
+func statUploadTarget(parent *os.File, leaf string) (*uploadTargetStat, error) {
+	st, err := lstatUploadTarget(parent, leaf)
+	if err != nil {
+		return nil, err
+	}
+	return versionedUploadTarget(st, ""), nil
+}
+
+func statUploadTargetForConsent(parent *os.File, leaf string) (*uploadTargetStat, error) {
+	st, err := lstatUploadTarget(parent, leaf)
+	if err != nil || st == nil {
+		return nil, err
+	}
+	digest, opened, err := uploadContentDigest(parent, leaf, st)
+	if errors.Is(err, syscall.EACCES) || errors.Is(err, syscall.EPERM) {
+		current, statErr := lstatUploadTarget(parent, leaf)
+		if statErr != nil {
+			return nil, statErr
+		}
+		return versionedUploadTarget(current, ""), nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return versionedUploadTarget(opened, digest), nil
+}
+
+func uploadContentDigest(parent *os.File, leaf string, st *unix.Stat_t) (string, *unix.Stat_t, error) {
+	if st.Mode&unix.S_IFMT != unix.S_IFREG {
+		return "", st, nil
+	}
+	fd, err := unix.Openat(int(parent.Fd()), leaf, unix.O_RDONLY|unix.O_NONBLOCK|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+	if err != nil {
+		return "", nil, err
+	}
+	f := os.NewFile(uintptr(fd), leaf)
+	if f == nil {
+		_ = unix.Close(fd)
+		return "", nil, errors.New("read upload target: invalid file descriptor")
+	}
+	defer func() { _ = f.Close() }()
+	opened := new(unix.Stat_t)
+	if err := unix.Fstat(fd, opened); err != nil {
+		return "", nil, err
+	}
+	if opened.Mode&unix.S_IFMT != unix.S_IFREG {
+		return "", opened, nil
+	}
+	hash := sha256.New()
+	if _, err := io.Copy(hash, f); err != nil {
+		return "", nil, err
+	}
+	return hex.EncodeToString(hash.Sum(nil)), opened, nil
+}
+
+// uploadVersion folds the kernel's identity and the content digest for a
+// name into the opaque string consent carries. A replacement gets a new
+// inode; an in-place rewrite gets a new content digest, even on filesystems
+// whose timestamp resolution cannot distinguish a same-size, same-mtime
+// rewrite. atime is deliberately excluded: reading a file must not
 // invalidate an approval taken for it. The string is server-private;
 // clients return it verbatim and compare nothing.
-func uploadVersion(st *unix.Stat_t) string {
+func uploadVersion(st *unix.Stat_t, contentDigest string) string {
 	sum := sha256.Sum256([]byte(fmt.Sprintf(
-		"deck-upload-version-1|%d|%d|%d|%d|%d|%d|%d|%d",
+		"deck-upload-version-1|%d|%d|%d|%d|%d|%d|%d|%d|%s",
 		st.Dev, st.Ino, st.Mode&unix.S_IFMT, st.Size,
-		st.Mtim.Sec, st.Mtim.Nsec, st.Ctim.Sec, st.Ctim.Nsec)))
+		st.Mtim.Sec, st.Mtim.Nsec, st.Ctim.Sec, st.Ctim.Nsec, contentDigest)))
 	return "1-" + hex.EncodeToString(sum[:])
 }
 

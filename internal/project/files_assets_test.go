@@ -427,6 +427,40 @@ func TestDeleteAssetsOutcomes(t *testing.T) {
 	}
 }
 
+func TestScanAssetsListsWriteOnlyAndLargeFilesWithoutReading(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores file read permissions")
+	}
+	root := t.TempDir()
+	writeAsset(t, root, ".deck/assets/write-only.txt", "w", time.Unix(1, 0))
+	if err := os.Chmod(filepath.Join(root, ".deck/assets/write-only.txt"), 0o200); err != nil {
+		t.Fatal(err)
+	}
+	writeAsset(t, root, ".deck/build/large.bin", "", time.Unix(1, 0))
+	large, err := os.OpenFile(filepath.Join(root, ".deck/build/large.bin"), os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := large.Truncate(1 << 40); err != nil {
+		t.Fatal(err)
+	}
+	if err := large.Close(); err != nil {
+		t.Fatal(err)
+	}
+	listing := scanOrFail(t, root)
+	version := versionOf(t, listing, ".deck/assets/write-only.txt")
+	if got := versionOf(t, listing, ".deck/build/large.bin"); got == "" {
+		t.Fatal("the sparse large file disappeared from the metadata listing")
+	}
+	results, err := DeleteAssets(root, []AssetDeleteRequest{{Path: ".deck/assets/write-only.txt", Version: version}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].Outcome != AssetDeleted {
+		t.Fatalf("write-only delete = %+v", results)
+	}
+}
+
 func TestDeleteAssetsReportsAPermissionRefusal(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root ignores directory permissions")

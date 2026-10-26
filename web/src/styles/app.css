@@ -331,6 +331,13 @@
   --type-title-2-size: 22px; --type-title-2-lh: 1.28; --type-title-2-ls: 0.038em;
   --type-title-3-size: 17px; --type-title-3-lh: 1.34; --type-title-3-ls: 0.045em;
 
+  /* Interface roles use the scale. Inputs stay at 16px so iOS does not
+     zoom a focused control; compact badges use 10px. Mono is machine voice. */
+  --type-input-size: 16px;
+  --type-badge-size: 10px;
+  --type-copy-size: 14px;
+  --type-chevron-size: 13.5px;
+  --type-settings-title-size: 17px;
   --type-body-size: 15px; --type-body-lh: 1.55;
   --type-body-sm-size: 13px; --type-body-sm-lh: 1.5; --type-body-sm-ls: 0em;
   --type-caption-size: 12px; --type-caption-lh: 1.4; --type-caption-ls: 0.002em;
@@ -1086,7 +1093,7 @@
    Unlayered and after the size variants, so it outranks them. */
 @media (width < 48rem) {
   .input {
-    font-size: 16px;
+    font-size: var(--type-input-size);
   }
   /* The dialogs' selects and editable fields ride the same floor: iOS
      zooms on focusing any smaller control, and the Open project route's
@@ -1095,7 +1102,7 @@
   .dialog select,
   .dialog textarea,
   .dialog input:not([readonly]):not([type="checkbox"]):not([type="radio"]) {
-    font-size: 16px;
+    font-size: var(--type-input-size);
   }
 }
 
@@ -1579,7 +1586,7 @@
      right-aligned at half strength with its own insets. */
   [data-region="files"] [data-files-text] {
     padding: 14px 16px 20px 0;
-    font-size: min(var(--type-mono-size), calc(12px * var(--type-mono-xh-ratio)));
+    font-size: min(var(--type-mono-size), calc(var(--type-caption-size) * var(--type-mono-xh-ratio)));
     line-height: 1.7;
   }
   /* The gutter is numbers alone: right-aligned to their own width,
@@ -1796,7 +1803,7 @@
      right-aligned at half strength with its own insets. */
 [data-viewport="narrow"] [data-region="files"] [data-files-text] {
     padding: 14px 16px 20px 0;
-    font-size: min(var(--type-mono-size), calc(12px * var(--type-mono-xh-ratio)));
+    font-size: min(var(--type-mono-size), calc(var(--type-caption-size) * var(--type-mono-xh-ratio)));
     line-height: 1.7;
   }
 [data-viewport="narrow"] [data-region="files"] [data-files-line-number] {
@@ -1967,14 +1974,6 @@
   border-left-width: 2px;
   border-left-style: solid;
   border-left-color: var(--color-border);
-}
-
-/* The no-selection rail: the 2px rule is the mark of
-   an open session's rail, so it leaves with the selection. Painted over
-   rows nobody chose, the sidebar claims a selection the pane does not
-   show, and the unselected rail reads as selected. */
-.session-rail-bare {
-  border-left-width: 0;
 }
 
 /* The session-row drag state: the dragged row reads at
@@ -2323,7 +2322,7 @@
    15px size; desktop rows keep the normal tracking of every other menu. */
 .menu[data-more-popover] {
   width: max-content;
-  font-size: 15px;
+  font-size: var(--type-body-size);
   letter-spacing: var(--type-body-ls, -0.002em);
   word-spacing: var(--face-ui-word-spacing, normal);
 }
@@ -2344,7 +2343,7 @@
 
 .menu[data-more-popover] > [data-font-row] button {
   font-family: var(--font-ui);
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   font-weight: 400;
 }
 
@@ -2855,7 +2854,7 @@
     border-radius: var(--radius-control);
     background: transparent;
     color: var(--color-text-secondary);
-    font-size: 20px;
+    font-size: var(--type-title-2-size);
     line-height: 1;
     cursor: pointer;
   }
@@ -2903,7 +2902,7 @@
   .menu[data-more-popover] [data-theme-list] .theme-chevron {
     display: inline;
     color: var(--color-text-tertiary);
-    font-size: 20px;
+    font-size: var(--type-title-2-size);
     line-height: 1;
   }
 }
@@ -3335,7 +3334,7 @@
   border-radius: var(--radius-control);
   background: transparent;
   color: var(--color-text-secondary);
-  font-size: 20px;
+  font-size: var(--type-title-2-size);
   line-height: 1;
   cursor: pointer;
 }
@@ -3376,7 +3375,7 @@
 [data-viewport="narrow"] .menu[data-more-popover] [data-theme-list] .theme-chevron {
   display: inline;
   color: var(--color-text-tertiary);
-  font-size: 20px;
+  font-size: var(--type-title-2-size);
   line-height: 1;
 }
 
@@ -3531,7 +3530,7 @@
 
 @media (max-width: 600px) {
   .menu[data-more-popover] > [data-settings-sheet-chrome] > span {
-    font-size: 17px;
+    font-size: var(--type-settings-title-size);
     font-weight: 500;
     letter-spacing: inherit;
     word-spacing: inherit;
@@ -3540,7 +3539,7 @@
 }
 
 [data-viewport="narrow"] .menu[data-more-popover] > [data-settings-sheet-chrome] > span {
-  font-size: 17px;
+  font-size: var(--type-settings-title-size);
   font-weight: 500;
   letter-spacing: inherit;
   word-spacing: inherit;
@@ -4083,7 +4082,7 @@
     font-family: var(--font-mono);
     letter-spacing: var(--type-mono-tracking);
     word-spacing: normal;
-    font-size: min(var(--type-mono-size), calc(12px * var(--type-mono-xh-ratio)));
+    font-size: min(var(--type-mono-size), calc(var(--type-caption-size) * var(--type-mono-xh-ratio)));
     line-height: 1;
     touch-action: none;
     user-select: none;
@@ -4115,7 +4114,7 @@
     gap: 0;
     align-items: center;
     justify-items: center;
-    font-size: min(var(--type-mono-size), calc(10px * var(--type-mono-xh-ratio)));
+    font-size: min(var(--type-mono-size), calc(var(--type-badge-size) * var(--type-mono-xh-ratio)));
     line-height: 11px;
   }
   [data-region="terminal-compose"] {
@@ -4144,7 +4143,7 @@
     font-family: var(--font-mono);
     letter-spacing: var(--type-mono-tracking);
     word-spacing: normal;
-    font-size: min(var(--type-mono-size), calc(13px * var(--type-mono-xh-ratio)));
+    font-size: min(var(--type-mono-size), calc(var(--type-body-sm-size) * var(--type-mono-xh-ratio)));
     line-height: 1;
   }
   [data-region="terminal-compose"] label textarea {
@@ -4162,7 +4161,7 @@
     /* 16px, not the label's mono scale: iOS zooms the page when a focused
        control's font is smaller, and this control focuses on every message.
        The prompt glyph keeps its scale on the label. */
-    font-size: 16px;
+    font-size: var(--type-input-size);
     line-height: normal;
     resize: none;
     outline: none;
@@ -4406,7 +4405,7 @@
 .project-preview-label { flex: none; width: 82px; color: var(--color-text-tertiary); font-size: var(--type-caption-size); }
 .project-preview-url, .project-preview-port, .project-preview-address { font-family: var(--font-mono); font-size: min(var(--type-mono-size), calc(var(--type-body-sm-size) * var(--type-mono-xh-ratio))); overflow-wrap: anywhere; }
 .project-preview-url { flex: 1; min-width: 0; color: var(--color-text-primary); }
-.project-preview-small-button { flex: none; min-height: 28px; padding: 0 10px; border: 1px solid transparent; border-radius: var(--radius-control-sm); font-size: 13px; font-weight: 500; line-height: 1; letter-spacing: .004em; color: var(--color-text-secondary); }
+.project-preview-small-button { flex: none; min-height: 28px; padding: 0 10px; border: 1px solid transparent; border-radius: var(--radius-control-sm); font-size: var(--type-control-sm-size); font-weight: 500; line-height: 1; letter-spacing: .004em; color: var(--color-text-secondary); }
 .project-preview-small-button:hover { background: var(--color-wash-hover); color: var(--color-text-primary); }
 .project-preview-small-button:disabled { opacity: .45; }
 .project-preview-status { display: flex; flex: 1; min-width: 0; gap: 8px; align-items: center; color: var(--color-text-primary); font-size: var(--type-body-sm-size); }
@@ -4525,7 +4524,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 14px;
+  font-size: var(--type-button-size);
   font-weight: 600;
 }
 .tutorial-body {
@@ -4538,7 +4537,7 @@
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   color: var(--color-text-secondary);
 }
 .tutorial-progress {
@@ -4557,18 +4556,18 @@
 }
 .tutorial-body h3 {
   margin-bottom: 12px;
-  font-size: 20px;
+  font-size: var(--type-title-2-size);
   line-height: 1.3;
   font-weight: 600;
 }
 .tutorial-body p {
   margin-bottom: 16px;
-  font-size: 14px;
+  font-size: var(--type-copy-size);
   line-height: 1.6;
   color: var(--color-text-secondary);
 }
 .tutorial-body .tutorial-scope {
-  font-size: 12px;
+  font-size: var(--type-caption-size);
 }
 .tutorial-body nav {
   display: flex;
@@ -4621,7 +4620,7 @@
 }
 .tutorial-body .tutorial-lesson-group {
   margin: 4px 0 0;
-  font-size: 11px;
+  font-size: var(--type-micro-size);
   font-weight: 600;
   letter-spacing: .04em;
   text-transform: uppercase;
@@ -4660,19 +4659,19 @@
   border-radius: 4px;
   background: var(--color-surface-sunken);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: min(var(--type-mono-size), calc(var(--type-caption-size) * var(--type-mono-xh-ratio)));
   line-height: 1.5;
   color: var(--color-text-primary);
 }
 .tutorial-body .tutorial-reason {
   align-self: center;
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   color: var(--color-text-secondary);
 }
 .tutorial-body .tutorial-prompt-more {
   display: none;
   margin: -4px 0 12px;
-  font-size: 12px;
+  font-size: var(--type-caption-size);
 }
 [data-tutorial-mobile="true"] .tutorial-body .tutorial-prompt-more {
   display: block;
@@ -4694,13 +4693,13 @@
 }
 .tutorial-body .tutorial-note,
 .tutorial-body .tutorial-footer-note p {
-  font-size: 12px;
+  font-size: var(--type-caption-size);
 }
 .tutorial-body .tutorial-fallback {
   margin-top: 8px;
 }
 .tutorial-body .tutorial-status {
-  font-size: 13px;
+  font-size: var(--type-body-sm-size);
   color: var(--color-text-primary);
 }
 .tutorial-footer {
@@ -4724,7 +4723,7 @@
   border-bottom: 1px solid var(--color-border);
   background: var(--color-surface);
   color: var(--color-text-primary);
-  font-size: 12px;
+  font-size: var(--type-caption-size);
 }
 [data-region="tutorial-mobile-bar"][hidden] {
   display: none;
@@ -4756,7 +4755,7 @@
   border-left: 1px solid var(--color-border-strong);
   background: var(--color-surface);
   color: var(--color-text-primary);
-  font-size: 12px;
+  font-size: var(--type-caption-size);
 }
 [data-region="tutorial-bar"][hidden] {
   display: none;
@@ -4870,7 +4869,7 @@
   border-radius: 9px;
   background: var(--color-accent);
   color: var(--color-text-on-accent);
-  font-size: 11px;
+  font-size: var(--type-micro-size);
   padding: 0 4px;
   cursor: pointer;
 }

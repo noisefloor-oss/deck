@@ -1720,7 +1720,8 @@ test("the docked panel draws its fixed geometry", async () => {
   assert.match(html, /data-files-viewer-header class="[^"]*h-\[38px\]/,
     "the viewer file header is the same 38px strip");
   assert.ok(html.includes("leading-[1.62]"), "the viewer's line height is 1.62");
-  assert.ok(html.includes("text-[12px]"), "the viewer text is 12px mono");
+  assert.ok(html.includes("text-[min(var(--type-mono-size),calc(var(--type-caption-size)*var(--type-mono-xh-ratio)))]"),
+    "the viewer's mono x-height is capped by the caption token");
   assert.ok(html.includes("bg-surface-sunken"), "the viewer body is sunken");
   assert.ok(html.includes("font-mono"), "metadata keeps the mono voice");
   assert.ok(html.includes("data-files-viewer-status"), "the footer status line is drawn");

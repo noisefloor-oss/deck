@@ -3978,14 +3978,10 @@ export class Sidebar {
             class="font-input h-5 min-w-0 flex-1 text-body font-medium text-text-primary focus:outline-none">
         </div>`
       : projectRowHtml({ id: g.project.id, name: g.project.name, expanded, hint, chev, actions, selected: this.selectedProjectID === g.project.id });
-    // The rail sheds its rule while nothing is selected:
-    // the pane shows no session, so a rule under any rail
-    // would read as a selection the pane does not have.
-    const bareRail = this.model.selectedSessionID === null;
     return `
       <li data-project="${escapeHtml(g.project.id)}" data-project-row class="rounded-control">
         ${header}
-        ${sessionRailContainerHtml(g.project.id, projectColor, expanded, `${pendingSessionRowHtml(this.pendingSession, g.project.id)}${sessions}${emptyRailNewSessionHtml(g, expanded, this.pendingSession)}`, bareRail)}
+        ${sessionRailContainerHtml(g.project.id, projectColor, expanded, `${pendingSessionRowHtml(this.pendingSession, g.project.id)}${sessions}${emptyRailNewSessionHtml(g, expanded, this.pendingSession)}`)}
         ${error}
       </li>
     `;
