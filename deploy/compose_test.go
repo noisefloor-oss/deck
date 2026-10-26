@@ -853,13 +853,18 @@ func TestBrowserOverlayTagMatchesPlaywrightClient(t *testing.T) {
 			t.Errorf("missing checksum-pinned fixed Chromium for %s", archive.arch)
 		}
 	}
-	for _, contract := range []string{"FROM chrome-${TARGETARCH} AS chrome-archive", "/ms-playwright/chromium*", "apt-get install -y --no-install-recommends unzip", "COPY deploy/browser-versions.json /opt/noise-browser/browser-versions.json"} {
+	for _, contract := range []string{"FROM chrome-${TARGETARCH} AS chrome-archive", "/ms-playwright", "apt-get install -y --no-install-recommends unzip", "COPY deploy/browser-versions.json /opt/noise-browser/browser-versions.json", "apt-get purge -y gstreamer1.0-plugins-bad libgstreamer-plugins-bad1.0-0", "/usr/lib/node_modules/npm /usr/bin/npm /usr/bin/npx", "ldd /opt/noise-browser/chrome/chrome"} {
 		if !strings.Contains(string(dockerfile), contract) {
 			t.Errorf("browser security build is missing %q", contract)
 		}
 	}
-	if !strings.Contains(string(dockerfile), "COPY --from=web-build /src/web/node_modules /opt/noise-browser/node_modules") {
-		t.Error("browser target does not reuse the frozen-lockfile Playwright installation")
+	_, browserStage, found := strings.Cut(string(dockerfile), " AS browser\n")
+	if !found {
+		t.Fatal("Dockerfile has no browser stage")
+	}
+	browserStage, _, _ = strings.Cut(browserStage, "FROM golang:")
+	if strings.Contains(browserStage, "COPY --from=web-build /src/web/node_modules") || !strings.Contains(browserStage, `cp -RL "${client}" "${client}/../playwright-core"`) {
+		t.Error("browser must copy only the frozen-lockfile Playwright runtime closure")
 	}
 	// The command runs the repo-owned public-API server copied into the image. A
 	// command that fetched one instead — npx, npm exec, a bare `playwright`

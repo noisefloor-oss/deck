@@ -18,6 +18,22 @@ docker run --rm --init \
   --tmpfs /tmp:rw,exec,nosuid,nodev,size=512m \
   "${image}" /bin/sh -c '
     set -eu
+    test "$(find /opt/noise-browser/node_modules -mindepth 1 -maxdepth 1 -printf "%f\n" | sort | tr "\n" " ")" = "playwright playwright-core "
+    test ! -e /ms-playwright
+    for command in npm npx; do
+      if command -v "$command" >/dev/null 2>&1; then
+        echo "Unexpected package manager in browser runtime: $command" >&2
+        exit 1
+      fi
+    done
+    for package in gstreamer1.0-plugins-bad libgstreamer-plugins-bad1.0-0; do
+      test "$(dpkg-query -W -f="\${db:Status-Status}" "$package" 2>/dev/null || true)" != installed
+    done
+    ldd /opt/noise-browser/chrome/chrome >/tmp/chrome-libraries
+    if grep -q "not found" /tmp/chrome-libraries; then
+      echo "Chrome has unresolved shared libraries" >&2
+      exit 1
+    fi
     tls_pki=$(mktemp -d /tmp/deck-tls.XXXXXX)
     openssl req -x509 -newkey rsa:2048 -nodes \
       -keyout "${tls_pki}/ca.key" -out "${tls_pki}/ca.crt" \

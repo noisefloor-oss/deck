@@ -47,22 +47,28 @@ ADD --checksum=sha256:9e37000e3ee2731e45e475a6a2eac587d3c0ee5f8aef7cab5211ecd52c
 
 FROM chrome-${TARGETARCH} AS chrome-archive
 
-# The upstream image contains browser binaries and system libraries, but
-# intentionally excludes the Playwright Node package. Reuse the exact package
-# installation resolved by web/pnpm-lock.yaml so a restart never fetches code
-# and the server cannot drift from the client.
+# Keep the upstream Chromium libraries, but exclude its unused Firefox/WebKit
+# engines, WebKit media plugins and npm tooling. The server needs only the
+# lockfile-resolved Playwright package and its playwright-core dependency.
 FROM mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea AS browser
 
 # Remove the older bundled Chromium so it cannot be selected accidentally.
 COPY --from=chrome-archive /chrome.zip /tmp/chrome.zip
 RUN apt-get update \
     && apt-get install -y --no-install-recommends unzip \
-    && rm -rf /var/lib/apt/lists/* /ms-playwright/chromium* \
+    && apt-get purge -y gstreamer1.0-plugins-bad libgstreamer-plugins-bad1.0-0 \
+    && rm -rf /var/lib/apt/lists/* /ms-playwright \
+      /usr/lib/node_modules/npm /usr/bin/npm /usr/bin/npx \
     && unzip -q /tmp/chrome.zip -d /tmp/chrome \
     && mkdir -p /opt/noise-browser \
     && mv /tmp/chrome/chrome-* /opt/noise-browser/chrome \
     && rm -rf /tmp/chrome /tmp/chrome.zip \
-    && test "$(/opt/noise-browser/chrome/chrome --version | awk '{print $NF}')" = "156.0.8078.47"
+    && test "$(/opt/noise-browser/chrome/chrome --version | awk '{print $NF}')" = "156.0.8078.47" \
+    && ldd /opt/noise-browser/chrome/chrome > /tmp/chrome-libraries \
+    && ! grep -q "not found" /tmp/chrome-libraries \
+    && rm /tmp/chrome-libraries \
+    && ! command -v npm \
+    && ! command -v npx
 
 # The G3 root signed the compromised eMudhra intermediates.
 RUN sed -i '\|^mozilla/emSign_ECC_Root_CA_-_G3.crt$|s|^|!|' /etc/ca-certificates.conf \
@@ -84,7 +90,11 @@ RUN apt-get update \
 COPY deploy/assert-tls-roots.mjs /tmp/assert-tls-roots.mjs
 RUN node /tmp/assert-tls-roots.mjs && rm /tmp/assert-tls-roots.mjs
 
-COPY --from=web-build /src/web/node_modules /opt/noise-browser/node_modules
+RUN --mount=type=bind,from=web-build,source=/src/web/node_modules,target=/run/web-node-modules \
+    client="$(readlink -f /run/web-node-modules/playwright)" \
+    && install -d -m 0755 /opt/noise-browser/node_modules \
+    && cp -RL "${client}" "${client}/../playwright-core" /opt/noise-browser/node_modules/ \
+    && node -e "require('/opt/noise-browser/node_modules/playwright')"
 COPY --chmod=0555 deploy/browser-entrypoint.sh /opt/noise-browser/entrypoint.sh
 ENTRYPOINT ["/opt/noise-browser/entrypoint.sh"]
 COPY deploy/browser-server.mjs /opt/noise-browser/server.mjs
