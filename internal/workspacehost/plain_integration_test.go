@@ -20,17 +20,22 @@ import (
 )
 
 type assemblyPlain struct {
-	mu        sync.Mutex
-	state     workspaceplain.State
-	ops       map[string]workspaceplain.Operation
-	calls     int
-	uncertain bool
+	mu            sync.Mutex
+	state         workspaceplain.State
+	ops           map[string]workspaceplain.Operation
+	calls         int
+	uncertain     bool
+	observedEpoch string
 }
 
 func (p *assemblyPlain) Observe(context.Context) (workspaceplain.State, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.state, nil
+	state := p.state
+	if p.observedEpoch != "" {
+		state.Epoch = p.observedEpoch
+	}
+	return state, nil
 }
 func (p *assemblyPlain) Start(_ context.Context, id string) (workspaceplain.Operation, error) {
 	p.mu.Lock()
@@ -58,7 +63,7 @@ func (p *assemblyPlain) Operation(_ context.Context, id string) (workspaceplain.
 		return op, workspaceplain.ErrNotFound
 	}
 	op.State = p.state
-	if p.state.Runtime == "running" {
+	if p.state.Runtime == "running" && (op.Status == "running" || op.Status == "uncertain") {
 		op.Status = "succeeded"
 	}
 	return op, nil
@@ -161,6 +166,57 @@ func TestPlainAssemblyUncertainStartResumesByObservation(t *testing.T) {
 	other.call("GET", "/api/sessions", nil, 200, nil)
 	if p.calls != 1 {
 		t.Fatal("observing a native receipt repeated the start")
+	}
+}
+
+func TestPlainAssemblyFailedStartCompletesAfterRuntimeRecovery(t *testing.T) {
+	for _, recoverBy := range []string{"status", "start"} {
+		t.Run(recoverBy, func(t *testing.T) {
+			f, p := plainAssembly(t, workspacekeys.EncryptionOptional)
+			p.uncertain = true
+			b := f.browser("a")
+			f.setupLink(b)
+			b.call("POST", "/api/security/v1/onboarding/protection", map[string]string{"protection": "none"}, 200, nil)
+			var receipt struct{ ID string }
+			b.call("POST", "/api/security/v1/onboarding/start", map[string]string{}, 202, &receipt)
+			p.mu.Lock()
+			op := p.ops[receipt.ID]
+			op.Status = "failed"
+			p.ops[receipt.ID] = op
+			p.state.Runtime, p.state.Epoch = "stopped", "stopped-epoch"
+			p.mu.Unlock()
+			b.call("GET", "/api/security/v1/onboarding/operations/"+receipt.ID, nil, 200, nil)
+			b.call("GET", "/api/sessions", nil, 403, nil)
+			p.mu.Lock()
+			p.state.Runtime, p.state.Epoch = "running", "recovered-epoch"
+			p.mu.Unlock()
+			wrongOwner := f.browser("wrong")
+			wrongOwner.login.Subject = "another-owner"
+			wrongOwner.call("GET", "/api/security/v1/onboarding/operations/"+receipt.ID, nil, 401, nil)
+			p.mu.Lock()
+			p.observedEpoch = "changed-during-completion"
+			p.mu.Unlock()
+			if recoverBy == "status" {
+				b.call("GET", "/api/security/v1/onboarding/operations/"+receipt.ID, nil, 503, nil)
+			} else {
+				b.call("POST", "/api/security/v1/onboarding/start", map[string]string{}, 202, nil)
+			}
+			b.call("GET", "/api/sessions", nil, 403, nil)
+			p.mu.Lock()
+			p.observedEpoch = ""
+			p.mu.Unlock()
+			if recoverBy == "status" {
+				b.call("GET", "/api/security/v1/onboarding/operations/"+receipt.ID, nil, 200, nil)
+			} else {
+				b.call("POST", "/api/security/v1/onboarding/start", map[string]string{}, 200, nil)
+			}
+			b.call("GET", "/api/sessions", nil, 200, nil)
+			p.mu.Lock()
+			defer p.mu.Unlock()
+			if p.calls != 1 || p.ops[receipt.ID].Status != "failed" {
+				t.Fatal("recovery replayed start or changed terminal history")
+			}
+		})
 	}
 }
 

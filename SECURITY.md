@@ -22,7 +22,7 @@ authentication, one Unix identity, one PID/network environment and one
 tmux namespace. An agent can read sibling projects, dotfiles and private
 environments beneath the mount, and may use ambient remote credentials
 beyond its selected working directory. See the
-[deployment and access description](README.md#what-deck-is-and-is-not)
+[deployment and access description](README.md#your-accounts-and-files)
 before supplying private data or credentials.
 
 Report failures of the documented browser authentication and

@@ -68,6 +68,7 @@ var frozenMigrationChecksums = map[int]string{
 	37: "0e9fb32018c019bb45f9f9d10c709c8c0e84f73a238b54b1687acb8dd8dc7040",
 	38: "101f8fb058f3fc35b32c58aea9da783413b3bd6672f5d4df37ccdaaceec1f306",
 	39: "a388ca90925cae27806490684abf1e9861247e64bc514271c90bf57d38e501ea",
+	40: "484044bfd1374489b32b728ac4d892d959356a6a7022cb3f446977418dbf267d",
 }
 
 func TestReleasedMigrationBytesAreFrozen(t *testing.T) {

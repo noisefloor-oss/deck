@@ -6,6 +6,7 @@
 package deploy
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -780,10 +781,8 @@ func TestRenderedComposeLoopbackOriginTracksHostPort(t *testing.T) {
 
 // The agent-browser overlay builds a Playwright server image. Playwright
 // refuses to connect across a client/server version mismatch, so the image
-// tag and the client the harnesses import have to agree exactly. They live
-// in different files that different people edit, and package.json's caret
-// range means a routine dependency update moves the client without touching
-// the tag — so the coupling is enforced here rather than left to a comment.
+// tag and the client the harnesses import have to agree exactly. The
+// Chromium security patch is pinned separately from the protocol client.
 func TestBrowserOverlayTagMatchesPlaywrightClient(t *testing.T) {
 	overlay, err := os.ReadFile(filepath.Join("..", "compose.browser.yaml"))
 	if err != nil {
@@ -815,8 +814,22 @@ func TestBrowserOverlayTagMatchesPlaywrightClient(t *testing.T) {
 		t.Fatal("no resolved playwright version in web/pnpm-lock.yaml")
 	}
 	want := string(m[1])
+	versionsRaw, err := os.ReadFile("browser-versions.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var versions struct {
+		Playwright string `json:"playwright"`
+		Chromium   string `json:"chromium"`
+	}
+	if err := json.Unmarshal(versionsRaw, &versions); err != nil {
+		t.Fatal(err)
+	}
+	if versions.Playwright != want || versions.Chromium != "156.0.8078.47" {
+		t.Fatalf("browser qualification pin disagrees with lockfile or security baseline: %+v", versions)
+	}
 
-	if got := doc.Services.Chromium.Image; got != "noise-browser:"+want {
+	if got := doc.Services.Chromium.Image; got != "noise-browser:"+want+"-chromium-"+versions.Chromium {
 		t.Errorf("chromium image %q does not identify the resolved playwright %s build", got, want)
 	}
 	if got := doc.Services.Chromium.Build.Target; got != "browser" {
@@ -830,6 +843,20 @@ func TestBrowserOverlayTagMatchesPlaywrightClient(t *testing.T) {
 	base := "FROM mcr.microsoft.com/playwright:v" + want + "-noble@sha256:"
 	if !strings.Contains(string(dockerfile), base) {
 		t.Errorf("browser target does not pin the upstream playwright %s image by digest", want)
+	}
+	for _, archive := range []struct{ arch, platform, digest string }{
+		{"amd64", "linux64", "e6c94490f0b6b337225aeb2d2a5034858516b7017356980ba94f5176d8774a50"},
+		{"arm64", "linux-arm64", "9e37000e3ee2731e45e475a6a2eac587d3c0ee5f8aef7cab5211ecd52cf3fb7b"},
+	} {
+		pin := "ADD --checksum=sha256:" + archive.digest + " https://storage.googleapis.com/chrome-for-testing-public/" + versions.Chromium + "/" + archive.platform + "/chrome-" + archive.platform + ".zip /chrome.zip"
+		if !strings.Contains(string(dockerfile), "FROM scratch AS chrome-"+archive.arch) || !strings.Contains(string(dockerfile), pin) {
+			t.Errorf("missing checksum-pinned fixed Chromium for %s", archive.arch)
+		}
+	}
+	for _, contract := range []string{"FROM chrome-${TARGETARCH} AS chrome-archive", "/ms-playwright/chromium*", "apt-get install -y --no-install-recommends unzip", "COPY deploy/browser-versions.json /opt/noise-browser/browser-versions.json"} {
+		if !strings.Contains(string(dockerfile), contract) {
+			t.Errorf("browser security build is missing %q", contract)
+		}
 	}
 	if !strings.Contains(string(dockerfile), "COPY --from=web-build /src/web/node_modules /opt/noise-browser/node_modules") {
 		t.Error("browser target does not reuse the frozen-lockfile Playwright installation")
@@ -857,6 +884,7 @@ func TestBrowserOverlayTagMatchesPlaywrightClient(t *testing.T) {
 	server := string(entrypoint)
 	for _, contract := range []string{
 		`chromium.launchServer({`,
+		`executablePath: "/opt/noise-browser/chrome/chrome"`,
 		`host: "127.0.0.1"`,
 		`port: 3000`,
 		`wsPath: "/"`,
@@ -879,10 +907,16 @@ func TestBrowserOverlayTagMatchesPlaywrightClient(t *testing.T) {
 	if !strings.Contains(string(acceptance), "node "+serverEntrypoint) {
 		t.Error("browser acceptance does not launch the packaged server entrypoint")
 	}
-	for _, contract := range []string{"NOISE_BROWSER_SKIP_BUILD", "docker image inspect", "linux/amd64"} {
+	for _, contract := range []string{"NOISE_BROWSER_SKIP_BUILD", "docker image inspect", "linux/amd64", "https.createServer", "certutil -A", "subjectAltName=DNS:localhost,IP:127.0.0.1", "https://localhost:8443", "response?.status()"} {
 		if !strings.Contains(string(acceptance), contract) {
 			t.Errorf("browser acceptance is missing prebuilt-image contract %q", contract)
 		}
+	}
+	if !strings.Contains(string(acceptance), "browser.version() !== versions.chromium") {
+		t.Error("browser acceptance must verify the running Chromium version")
+	}
+	if strings.Contains(string(acceptance), "https://example.com") {
+		t.Error("browser acceptance must not depend on external content for its positive TLS control")
 	}
 }
 

@@ -109,6 +109,9 @@ func (c *Client) run(ctx context.Context, args ...string) (string, error) {
 
 	full := append([]string{"-S", c.socketPath, "-f", c.configPath}, args...)
 	cmd := exec.CommandContext(ctx, "tmux", full...)
+	// A wedged server can hold the killed client's output pipes open. Without
+	// WaitDelay, the tmux invocation remains stuck in Wait after its deadline.
+	cmd.WaitDelay = time.Second
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

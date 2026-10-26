@@ -22,13 +22,14 @@ import (
 // identity files because it is review configuration, not runtime state.
 const TruthPath = ".noise/reviewer-models.json"
 
-// Roles are the reviewer seats whose models the lane watches. The primary
-// and secondary are the SDLC's interactive cross-model reviewers; the
-// settle fallback is what the harness-bump settlement reviewer runs when
+// Roles are the reviewer seats whose models the lane watches. The primary,
+// secondary, and tertiary are the SDLC's interactive cross-model reviewers;
+// the settle fallback is what the harness-bump settlement reviewer runs when
 // the NOISE_REVIEW_MODEL repository variable is unset.
 const (
 	RolePrimary        = "primary"
 	RoleSecondary      = "secondary"
+	RoleTertiary       = "tertiary"
 	RoleSettleFallback = "settle-fallback"
 )
 
@@ -46,7 +47,7 @@ type Truth struct {
 
 // Roles lists the watched seats in a stable order.
 func Roles() []string {
-	return []string{RolePrimary, RoleSecondary, RoleSettleFallback}
+	return []string{RolePrimary, RoleSecondary, RoleTertiary, RoleSettleFallback}
 }
 
 // ReadTruth loads the pin store from the repository root.
@@ -113,14 +114,14 @@ type modelSlug struct {
 var slugToken = regexp.MustCompile(`^[0-9A-Za-z][0-9A-Za-z._-]*$`)
 
 // parseSlug splits a model slug into vendor, tier family, and numeric
-// version. The version is the first run of numeric tokens after the
-// vendor (a token is numeric when it starts with a digit and holds only
-// digits and dots); tokens before it and after it name the tier, so both
-// vendors' shapes parse: gpt-6.1-sol is vendor gpt, tier sol, version
-// 6.1; claude-sonnet-5-5 is vendor claude, tier sonnet, version 5.5;
-// gpt-5.5 carries no tier. A slug with no numeric token is not a
-// versioned family member and does not parse.
+// version. Kimi managed aliases put the version before the tier. Other
+// supported slugs put the vendor first, followed by the first run of numeric
+// tokens; tokens around that run name the tier. A slug with no numeric token
+// is not a versioned family member and does not parse.
 func parseSlug(slug string) (modelSlug, bool) {
+	if strings.HasPrefix(slug, "kimi-code/") {
+		return parseKimiSlug(strings.TrimPrefix(slug, "kimi-code/"))
+	}
 	if !slugToken.MatchString(slug) {
 		return modelSlug{}, false
 	}
@@ -153,6 +154,27 @@ func parseSlug(slug string) (modelSlug, bool) {
 	}
 	tier := strings.Join(append(append([]string{}, rest[:start]...), rest[end:]...), "-")
 	return modelSlug{vendor: vendor, tier: tier, version: version}, true
+}
+
+func parseKimiSlug(slug string) (modelSlug, bool) {
+	parts := strings.Split(slug, "-")
+	if len(parts) < 2 || !strings.HasPrefix(parts[0], "k") {
+		return modelSlug{}, false
+	}
+	rawVersion := strings.TrimPrefix(parts[0], "k")
+	tier := strings.Join(parts[1:], "-")
+	if !numericToken(rawVersion) || tier == "" {
+		return modelSlug{}, false
+	}
+	var version []int
+	for _, piece := range strings.Split(rawVersion, ".") {
+		n, err := strconv.Atoi(piece)
+		if err != nil {
+			return modelSlug{}, false
+		}
+		version = append(version, n)
+	}
+	return modelSlug{vendor: "kimi", tier: tier, version: version}, true
 }
 
 // numericToken reports whether a slug token is a version component.

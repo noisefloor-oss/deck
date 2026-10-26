@@ -16,12 +16,16 @@
     "test:files": "node tools/files-panel-probe.mjs",
     "test:image-viewer": "node tools/image-viewer-probe.mjs",
     "test:tasks": "node tools/tasks-panel-probe.mjs",
+    "test:attention": "NOISEDECK_ATTENTION_PROBE=1 node tools/tasks-panel-probe.mjs",
     "test:activity": "NOISEDECK_ACTIVITY_PROBE=1 node tools/tasks-panel-probe.mjs",
+    "test:composer": "NOISEDECK_COMPOSER_PROBE=1 node tools/tasks-panel-probe.mjs",
+    "test:sidebar-size": "NOISEDECK_SIDEBAR_SIZE_PROBE=1 node tools/tasks-panel-probe.mjs",
     "test:dialogs": "node tools/mobile-dialogs-probe.mjs",
     "test:row-menu": "node tools/row-menu-placement-probe.mjs",
     "test:git-identity": "node tools/git-identity-probe.mjs",
     "test:version-notice": "node tools/version-notice-probe.mjs",
     "test:terminal-touch": "node tools/mobile-terminal-scroll-probe.mjs",
+    "test:release-mobile": "NOISEDECK_RELEASE_MOBILE_PROBE=1 node tools/mobile-terminal-scroll-probe.mjs",
     "test:dev-preview": "node tools/dev-preview-probe.mjs",
     "test:project-preview": "node tools/project-app-preview-probe.mjs",
     "test:project-preview:managed": "node tools/project-app-preview-probe.mjs --managed",
@@ -45,10 +49,10 @@
     "@types/node": "^26.1.2",
     "@types/pngjs": "^6.0.5",
     "lucide-static": "^1.33.0",
-    "playwright": "^1.62.1",
+    "playwright": "1.64.1",
     "pngjs": "^7.0.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
-    "vite": "^8.1.5"
+    "vite": "^8.1.6"
   }
 }

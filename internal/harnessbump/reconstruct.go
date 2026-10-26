@@ -62,7 +62,15 @@ func Reconstruct(root string, resolver *Resolver) Deterministic {
 		if err != nil {
 			return false, err
 		}
-		if _, err := Apply(scratch, Bump{Harness: h, From: from, To: version, Digests: digests}); err != nil {
+		readme, err := readmeAtHead(ctx, root, head)
+		if err != nil {
+			return false, err
+		}
+		date, err := candidatePinDate(readme, h, version)
+		if err != nil {
+			return false, nil
+		}
+		if _, err := Apply(scratch, Bump{Harness: h, From: from, To: version, Digests: digests, PinnedOn: date}); err != nil {
 			return false, err
 		}
 		cmd := exec.CommandContext(ctx, "git", "-C", scratch, "diff", "--quiet", head, "--", ".")

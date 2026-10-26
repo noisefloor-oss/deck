@@ -5,8 +5,9 @@
 # ship successors. This job runs in the deployed workspace (the image
 # bootstrap schedules it), where the pinned CLIs and their credentials
 # live: it asks codex for its bundled model catalog, probes claude's local
-# catalog with bounded candidates, and when a pinned model is no longer the
-# newest in its own vendor-and-tier family it opens ONE pull request that
+# catalog with bounded candidates, reads kimi's configured model catalog, and
+# when a pinned model is no longer the newest in its own vendor-and-tier family
+# it opens ONE pull request that
 # moves the pin store and every literal that repeats it. It never merges
 # anything, it never writes to the local checkout (the offer branch and
 # files are created through the GitHub API), and an ambiguous probe offers
@@ -49,6 +50,7 @@ fi
 
 command -v codex >/dev/null || { echo "model-offer: codex CLI not found on PATH" >&2; exit 1; }
 command -v claude >/dev/null || { echo "model-offer: claude CLI not found on PATH" >&2; exit 1; }
+command -v kimi >/dev/null || { echo "model-offer: kimi CLI not found on PATH" >&2; exit 1; }
 
 plan="${NOISEDECK_MODEL_OFFER_PLAN:-}"
 owned_plan=""

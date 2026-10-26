@@ -167,11 +167,12 @@ func TestAcceptRunnerRequestRejectsNonPTYDescriptors(t *testing.T) {
 
 func TestAcceptRunnerRequestRejectsPTYMasterRole(t *testing.T) {
 	_, slave := requireMeasurableHost(t)
-	otherMaster, _, err := pty.Open()
+	otherMaster, otherSlave, err := pty.Open()
 	if err != nil {
 		t.Fatalf("pty.Open: %v", err)
 	}
 	defer otherMaster.Close()
+	defer otherSlave.Close()
 	rev, err := CanonicalizeLaunchRequest(validLaunchRequest())
 	if err != nil {
 		t.Fatalf("canonicalize: %v", err)

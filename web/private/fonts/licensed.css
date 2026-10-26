@@ -11,21 +11,26 @@
    Baskerville 10 Pro is the reading face - long-form prose, quotes, source excerpts.
    Operator Mono SSm (Lig) is the code + data face; its italic is a true cursive, used for comments. */
 
+/* Every face loads with font-display:block: text waits for Deck's own face
+   instead of painting in whatever the fallback stack resolves to on the
+   reader's machine. The fallback is reached only if a face fails to arrive
+   within the browser's block period. */
+
 /* --- Euclid Flex, WebS cut (UI + text) --- */
-@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-Ultralight-WebS.woff2") format("woff2");font-weight:100;font-style:normal;font-display:swap}
-@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-UltralightItalic-WebS.woff2") format("woff2");font-weight:100;font-style:italic;font-display:swap}
-@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-Thin-WebS.woff2") format("woff2");font-weight:200;font-style:normal;font-display:swap}
-@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-ThinItalic-WebS.woff2") format("woff2");font-weight:200;font-style:italic;font-display:swap}
-@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-Light-WebS.woff2") format("woff2");font-weight:300;font-style:normal;font-display:swap}
-@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-LightItalic-WebS.woff2") format("woff2");font-weight:300;font-style:italic;font-display:swap}
-@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-Regular-WebS.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap}
-@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-RegularItalic-WebS.woff2") format("woff2");font-weight:400;font-style:italic;font-display:swap}
-@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-Medium-WebS.woff2") format("woff2");font-weight:500;font-style:normal;font-display:swap}
-@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-MediumItalic-WebS.woff2") format("woff2");font-weight:500;font-style:italic;font-display:swap}
-@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-Semibold-WebS.woff2") format("woff2");font-weight:600;font-style:normal;font-display:swap}
-@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-SemiboldItalic-WebS.woff2") format("woff2");font-weight:600;font-style:italic;font-display:swap}
-@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-Bold-WebS.woff2") format("woff2");font-weight:700;font-style:normal;font-display:swap}
-@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-BoldItalic-WebS.woff2") format("woff2");font-weight:700;font-style:italic;font-display:swap}
+@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-Ultralight-WebS.woff2") format("woff2");font-weight:100;font-style:normal;font-display:block}
+@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-UltralightItalic-WebS.woff2") format("woff2");font-weight:100;font-style:italic;font-display:block}
+@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-Thin-WebS.woff2") format("woff2");font-weight:200;font-style:normal;font-display:block}
+@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-ThinItalic-WebS.woff2") format("woff2");font-weight:200;font-style:italic;font-display:block}
+@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-Light-WebS.woff2") format("woff2");font-weight:300;font-style:normal;font-display:block}
+@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-LightItalic-WebS.woff2") format("woff2");font-weight:300;font-style:italic;font-display:block}
+@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-Regular-WebS.woff2") format("woff2");font-weight:400;font-style:normal;font-display:block}
+@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-RegularItalic-WebS.woff2") format("woff2");font-weight:400;font-style:italic;font-display:block}
+@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-Medium-WebS.woff2") format("woff2");font-weight:500;font-style:normal;font-display:block}
+@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-MediumItalic-WebS.woff2") format("woff2");font-weight:500;font-style:italic;font-display:block}
+@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-Semibold-WebS.woff2") format("woff2");font-weight:600;font-style:normal;font-display:block}
+@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-SemiboldItalic-WebS.woff2") format("woff2");font-weight:600;font-style:italic;font-display:block}
+@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-Bold-WebS.woff2") format("woff2");font-weight:700;font-style:normal;font-display:block}
+@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-BoldItalic-WebS.woff2") format("woff2");font-weight:700;font-style:italic;font-display:block}
 
 /* --- ss12 GLYPHS, composited into both families -----------------------------------
    Three glyphs in Euclid Flex's default set are wrong for Blueprint:
@@ -48,69 +53,69 @@
    about 6%), 0 164.8 -> 122.4 (narrower), 1 54.4 -> 64 (wider). Check tight lockups.
    U+2030 is excluded on purpose: per mille is out of the system, and leaving it stacked
    keeps a mark we do not set conspicuous rather than quietly legitimising it. */
-@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-Ultralight-WebXL.woff2") format("woff2");font-weight:100;font-style:normal;font-display:swap;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
-@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-UltralightItalic-WebXL.woff2") format("woff2");font-weight:100;font-style:italic;font-display:swap;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
-@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-Thin-WebXL.woff2") format("woff2");font-weight:200;font-style:normal;font-display:swap;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
-@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-ThinItalic-WebXL.woff2") format("woff2");font-weight:200;font-style:italic;font-display:swap;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
-@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-Light-WebXL.woff2") format("woff2");font-weight:300;font-style:normal;font-display:swap;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
-@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-LightItalic-WebXL.woff2") format("woff2");font-weight:300;font-style:italic;font-display:swap;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
-@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-Regular-WebXL.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
-@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-RegularItalic-WebXL.woff2") format("woff2");font-weight:400;font-style:italic;font-display:swap;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
-@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-Medium-WebXL.woff2") format("woff2");font-weight:500;font-style:normal;font-display:swap;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
-@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-MediumItalic-WebXL.woff2") format("woff2");font-weight:500;font-style:italic;font-display:swap;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
-@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-Semibold-WebXL.woff2") format("woff2");font-weight:600;font-style:normal;font-display:swap;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
-@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-SemiboldItalic-WebXL.woff2") format("woff2");font-weight:600;font-style:italic;font-display:swap;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
-@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-Bold-WebXL.woff2") format("woff2");font-weight:700;font-style:normal;font-display:swap;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
-@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-BoldItalic-WebXL.woff2") format("woff2");font-weight:700;font-style:italic;font-display:swap;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
+@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-Ultralight-WebXL.woff2") format("woff2");font-weight:100;font-style:normal;font-display:block;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
+@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-UltralightItalic-WebXL.woff2") format("woff2");font-weight:100;font-style:italic;font-display:block;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
+@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-Thin-WebXL.woff2") format("woff2");font-weight:200;font-style:normal;font-display:block;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
+@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-ThinItalic-WebXL.woff2") format("woff2");font-weight:200;font-style:italic;font-display:block;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
+@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-Light-WebXL.woff2") format("woff2");font-weight:300;font-style:normal;font-display:block;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
+@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-LightItalic-WebXL.woff2") format("woff2");font-weight:300;font-style:italic;font-display:block;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
+@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-Regular-WebXL.woff2") format("woff2");font-weight:400;font-style:normal;font-display:block;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
+@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-RegularItalic-WebXL.woff2") format("woff2");font-weight:400;font-style:italic;font-display:block;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
+@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-Medium-WebXL.woff2") format("woff2");font-weight:500;font-style:normal;font-display:block;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
+@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-MediumItalic-WebXL.woff2") format("woff2");font-weight:500;font-style:italic;font-display:block;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
+@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-Semibold-WebXL.woff2") format("woff2");font-weight:600;font-style:normal;font-display:block;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
+@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-SemiboldItalic-WebXL.woff2") format("woff2");font-weight:600;font-style:italic;font-display:block;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
+@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-Bold-WebXL.woff2") format("woff2");font-weight:700;font-style:normal;font-display:block;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
+@font-face{font-family:"Euclid Flex";src:url("/fonts/EuclidFlex-BoldItalic-WebXL.woff2") format("woff2");font-weight:700;font-style:italic;font-display:block;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
 
 /* --- Euclid Flex XL, WebXL cut (display) --- */
-@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-Ultralight-WebXL.woff2") format("woff2");font-weight:100;font-style:normal;font-display:swap}
-@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-UltralightItalic-WebXL.woff2") format("woff2");font-weight:100;font-style:italic;font-display:swap}
-@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-Thin-WebXL.woff2") format("woff2");font-weight:200;font-style:normal;font-display:swap}
-@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-ThinItalic-WebXL.woff2") format("woff2");font-weight:200;font-style:italic;font-display:swap}
-@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-Light-WebXL.woff2") format("woff2");font-weight:300;font-style:normal;font-display:swap}
-@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-LightItalic-WebXL.woff2") format("woff2");font-weight:300;font-style:italic;font-display:swap}
-@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-Regular-WebXL.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap}
-@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-RegularItalic-WebXL.woff2") format("woff2");font-weight:400;font-style:italic;font-display:swap}
-@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-Medium-WebXL.woff2") format("woff2");font-weight:500;font-style:normal;font-display:swap}
-@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-MediumItalic-WebXL.woff2") format("woff2");font-weight:500;font-style:italic;font-display:swap}
-@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-Semibold-WebXL.woff2") format("woff2");font-weight:600;font-style:normal;font-display:swap}
-@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-SemiboldItalic-WebXL.woff2") format("woff2");font-weight:600;font-style:italic;font-display:swap}
-@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-Bold-WebXL.woff2") format("woff2");font-weight:700;font-style:normal;font-display:swap}
-@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-BoldItalic-WebXL.woff2") format("woff2");font-weight:700;font-style:italic;font-display:swap}
+@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-Ultralight-WebXL.woff2") format("woff2");font-weight:100;font-style:normal;font-display:block}
+@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-UltralightItalic-WebXL.woff2") format("woff2");font-weight:100;font-style:italic;font-display:block}
+@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-Thin-WebXL.woff2") format("woff2");font-weight:200;font-style:normal;font-display:block}
+@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-ThinItalic-WebXL.woff2") format("woff2");font-weight:200;font-style:italic;font-display:block}
+@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-Light-WebXL.woff2") format("woff2");font-weight:300;font-style:normal;font-display:block}
+@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-LightItalic-WebXL.woff2") format("woff2");font-weight:300;font-style:italic;font-display:block}
+@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-Regular-WebXL.woff2") format("woff2");font-weight:400;font-style:normal;font-display:block}
+@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-RegularItalic-WebXL.woff2") format("woff2");font-weight:400;font-style:italic;font-display:block}
+@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-Medium-WebXL.woff2") format("woff2");font-weight:500;font-style:normal;font-display:block}
+@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-MediumItalic-WebXL.woff2") format("woff2");font-weight:500;font-style:italic;font-display:block}
+@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-Semibold-WebXL.woff2") format("woff2");font-weight:600;font-style:normal;font-display:block}
+@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-SemiboldItalic-WebXL.woff2") format("woff2");font-weight:600;font-style:italic;font-display:block}
+@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-Bold-WebXL.woff2") format("woff2");font-weight:700;font-style:normal;font-display:block}
+@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-BoldItalic-WebXL.woff2") format("woff2");font-weight:700;font-style:italic;font-display:block}
 
 /* The same three glyphs for the display family, so they survive a dropped feature setting. */
-@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-Ultralight-WebXL.woff2") format("woff2");font-weight:100;font-style:normal;font-display:swap;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
-@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-UltralightItalic-WebXL.woff2") format("woff2");font-weight:100;font-style:italic;font-display:swap;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
-@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-Thin-WebXL.woff2") format("woff2");font-weight:200;font-style:normal;font-display:swap;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
-@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-ThinItalic-WebXL.woff2") format("woff2");font-weight:200;font-style:italic;font-display:swap;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
-@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-Light-WebXL.woff2") format("woff2");font-weight:300;font-style:normal;font-display:swap;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
-@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-LightItalic-WebXL.woff2") format("woff2");font-weight:300;font-style:italic;font-display:swap;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
-@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-Regular-WebXL.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
-@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-RegularItalic-WebXL.woff2") format("woff2");font-weight:400;font-style:italic;font-display:swap;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
-@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-Medium-WebXL.woff2") format("woff2");font-weight:500;font-style:normal;font-display:swap;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
-@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-MediumItalic-WebXL.woff2") format("woff2");font-weight:500;font-style:italic;font-display:swap;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
-@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-Semibold-WebXL.woff2") format("woff2");font-weight:600;font-style:normal;font-display:swap;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
-@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-SemiboldItalic-WebXL.woff2") format("woff2");font-weight:600;font-style:italic;font-display:swap;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
-@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-Bold-WebXL.woff2") format("woff2");font-weight:700;font-style:normal;font-display:swap;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
-@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-BoldItalic-WebXL.woff2") format("woff2");font-weight:700;font-style:italic;font-display:swap;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
+@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-Ultralight-WebXL.woff2") format("woff2");font-weight:100;font-style:normal;font-display:block;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
+@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-UltralightItalic-WebXL.woff2") format("woff2");font-weight:100;font-style:italic;font-display:block;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
+@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-Thin-WebXL.woff2") format("woff2");font-weight:200;font-style:normal;font-display:block;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
+@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-ThinItalic-WebXL.woff2") format("woff2");font-weight:200;font-style:italic;font-display:block;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
+@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-Light-WebXL.woff2") format("woff2");font-weight:300;font-style:normal;font-display:block;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
+@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-LightItalic-WebXL.woff2") format("woff2");font-weight:300;font-style:italic;font-display:block;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
+@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-Regular-WebXL.woff2") format("woff2");font-weight:400;font-style:normal;font-display:block;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
+@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-RegularItalic-WebXL.woff2") format("woff2");font-weight:400;font-style:italic;font-display:block;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
+@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-Medium-WebXL.woff2") format("woff2");font-weight:500;font-style:normal;font-display:block;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
+@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-MediumItalic-WebXL.woff2") format("woff2");font-weight:500;font-style:italic;font-display:block;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
+@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-Semibold-WebXL.woff2") format("woff2");font-weight:600;font-style:normal;font-display:block;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
+@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-SemiboldItalic-WebXL.woff2") format("woff2");font-weight:600;font-style:italic;font-display:block;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
+@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-Bold-WebXL.woff2") format("woff2");font-weight:700;font-style:normal;font-display:block;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
+@font-face{font-family:"Euclid Flex XL";src:url("/fonts/EuclidFlex-BoldItalic-WebXL.woff2") format("woff2");font-weight:700;font-style:italic;font-display:block;unicode-range:U+0025,U+0030-0031;font-feature-settings:"ss12" 1}
 
 /* --- Operator Mono SSm + Baskerville 10 Pro (unchanged) --- */
-@font-face{font-family:"Operator Mono SSm";src:url("/fonts/OperatorMonoSSmLig-Light.woff2") format("woff2");font-weight:300;font-style:normal;font-display:swap}
-@font-face{font-family:"Operator Mono SSm";src:url("/fonts/OperatorMonoSSmLig-LightItalic.woff2") format("woff2");font-weight:300;font-style:italic;font-display:swap}
-@font-face{font-family:"Operator Mono SSm";src:url("/fonts/OperatorMonoSSmLig-Book.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap}
-@font-face{font-family:"Operator Mono SSm";src:url("/fonts/OperatorMonoSSmLig-BookItalic.woff2") format("woff2");font-weight:400;font-style:italic;font-display:swap}
-@font-face{font-family:"Operator Mono SSm";src:url("/fonts/OperatorMonoSSmLig-Medium.woff2") format("woff2");font-weight:500;font-style:normal;font-display:swap}
-@font-face{font-family:"Operator Mono SSm";src:url("/fonts/OperatorMonoSSmLig-MediumItalic.woff2") format("woff2");font-weight:500;font-style:italic;font-display:swap}
-@font-face{font-family:"Operator Mono SSm";src:url("/fonts/OperatorMonoSSmLig-Bold.woff2") format("woff2");font-weight:700;font-style:normal;font-display:swap}
-@font-face{font-family:"Operator Mono SSm";src:url("/fonts/OperatorMonoSSmLig-BoldItalic.woff2") format("woff2");font-weight:700;font-style:italic;font-display:swap}
+@font-face{font-family:"Operator Mono SSm";src:url("/fonts/OperatorMonoSSmLig-Light.woff2") format("woff2");font-weight:300;font-style:normal;font-display:block}
+@font-face{font-family:"Operator Mono SSm";src:url("/fonts/OperatorMonoSSmLig-LightItalic.woff2") format("woff2");font-weight:300;font-style:italic;font-display:block}
+@font-face{font-family:"Operator Mono SSm";src:url("/fonts/OperatorMonoSSmLig-Book.woff2") format("woff2");font-weight:400;font-style:normal;font-display:block}
+@font-face{font-family:"Operator Mono SSm";src:url("/fonts/OperatorMonoSSmLig-BookItalic.woff2") format("woff2");font-weight:400;font-style:italic;font-display:block}
+@font-face{font-family:"Operator Mono SSm";src:url("/fonts/OperatorMonoSSmLig-Medium.woff2") format("woff2");font-weight:500;font-style:normal;font-display:block}
+@font-face{font-family:"Operator Mono SSm";src:url("/fonts/OperatorMonoSSmLig-MediumItalic.woff2") format("woff2");font-weight:500;font-style:italic;font-display:block}
+@font-face{font-family:"Operator Mono SSm";src:url("/fonts/OperatorMonoSSmLig-Bold.woff2") format("woff2");font-weight:700;font-style:normal;font-display:block}
+@font-face{font-family:"Operator Mono SSm";src:url("/fonts/OperatorMonoSSmLig-BoldItalic.woff2") format("woff2");font-weight:700;font-style:italic;font-display:block}
 
-@font-face{font-family:"Baskerville 10 Pro";src:url("/fonts/Baskerville10Pro.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap}
-@font-face{font-family:"Baskerville 10 Pro";src:url("/fonts/Baskerville10Pro-Italic.woff2") format("woff2");font-weight:400;font-style:italic;font-display:swap}
-@font-face{font-family:"Baskerville 10 Pro";src:url("/fonts/Baskerville10Pro-Medium.woff2") format("woff2");font-weight:500;font-style:normal;font-display:swap}
-@font-face{font-family:"Baskerville 10 Pro";src:url("/fonts/Baskerville10Pro-MediumItalic.woff2") format("woff2");font-weight:500;font-style:italic;font-display:swap}
-@font-face{font-family:"Baskerville 10 Pro";src:url("/fonts/Baskerville10Pro-Bold.woff2") format("woff2");font-weight:700;font-style:normal;font-display:swap}
-@font-face{font-family:"Baskerville 10 Pro";src:url("/fonts/Baskerville10Pro-BoldItalic.woff2") format("woff2");font-weight:700;font-style:italic;font-display:swap}
+@font-face{font-family:"Baskerville 10 Pro";src:url("/fonts/Baskerville10Pro.woff2") format("woff2");font-weight:400;font-style:normal;font-display:block}
+@font-face{font-family:"Baskerville 10 Pro";src:url("/fonts/Baskerville10Pro-Italic.woff2") format("woff2");font-weight:400;font-style:italic;font-display:block}
+@font-face{font-family:"Baskerville 10 Pro";src:url("/fonts/Baskerville10Pro-Medium.woff2") format("woff2");font-weight:500;font-style:normal;font-display:block}
+@font-face{font-family:"Baskerville 10 Pro";src:url("/fonts/Baskerville10Pro-MediumItalic.woff2") format("woff2");font-weight:500;font-style:italic;font-display:block}
+@font-face{font-family:"Baskerville 10 Pro";src:url("/fonts/Baskerville10Pro-Bold.woff2") format("woff2");font-weight:700;font-style:normal;font-display:block}
+@font-face{font-family:"Baskerville 10 Pro";src:url("/fonts/Baskerville10Pro-BoldItalic.woff2") format("woff2");font-weight:700;font-style:italic;font-display:block}
 
 /* The stacks, licensed families first. The ramp in app.css is this set's
    own tuning, so nothing else is re-stated here. "Dank Mono" is the

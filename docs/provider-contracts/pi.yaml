@@ -13,7 +13,6 @@ measured_on: "2026-08-23"
 runtime_compatibility:
   command: ["--help"]
   required_flags:
-    - "--provider"
     - "--print"
     - "--session"
     - "--extension"
@@ -37,8 +36,8 @@ executable:
 
 # id and thinking are the values the measured probes ran under, and the
 # catalog verification is an observed capability fact about the provider.
-# Deck binds --provider only; it passes no model or thinking selector, so
-# whatever the provider itself resolves is authoritative.
+# These are historical measurement settings. Deck passes no provider, model
+# or thinking selector; Pi owns its defaults and exact-session restoration.
 model:
   provider: zai
   id: "glm-5.2"
@@ -47,8 +46,8 @@ model:
 
 identity:
   contract: retrieved-by-hook
-  new_session_args: ["--provider", "zai", "--extension", "$HOOK_PATH"]
-  resume_args: ["--provider", "zai", "--session", "$NATIVE_ID"]
+  new_session_args: ["--extension", "$HOOK_PATH"]
+  resume_args: ["--session", "$NATIVE_ID"]
   id_format: uuidv7
   hook:
     mechanism: javascript-event-module

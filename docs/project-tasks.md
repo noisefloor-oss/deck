@@ -1,8 +1,8 @@
 # Project tasks
 
 Task boards are driven by the bundled Tasks engine, not by Deck itself.
-The image pins Tasks v2.9.0 at commit
-`ec977155fee4d34ee863795a56209bda6efafcfc` and uses `noise tasks` as its
+The image pins Tasks v2.9.1 at commit
+`5961c31a5854670f96a64c83a5d8f917bb0889b7` and uses `noise tasks` as its
 command-line interface.
 
 Deck discovers each project's task state through the engine's versioned,

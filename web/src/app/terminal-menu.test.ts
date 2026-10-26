@@ -33,6 +33,17 @@ test("the copy label names what it will take", () => {
   assert.match(terminalMenuHtml({ hasSelection: false }), /data-hint="Copy the text on the screen"/);
 });
 
+// Select text is a toggle, not an action: the row's pressed state is the
+// session's current choice, and the menu never hides it — the row is how a
+// browser user discovers that a plain drag can select at all while a TUI
+// tracks the mouse.
+test("the select-text row mirrors and defaults off", () => {
+  assert.match(terminalMenuHtml({ hasSelection: false }), /data-terminal-menu-select aria-pressed="false"/);
+  assert.match(terminalMenuHtml({ hasSelection: false, selectText: true }), /data-terminal-menu-select aria-pressed="true"/);
+  assert.match(terminalMenuHtml({ hasSelection: false }), /data-hint="Let a plain drag select text while the app tracks the mouse"/);
+  assert.match(terminalMenuHtml({ hasSelection: false }), /<span class="flex-1">Select text<\/span>/);
+});
+
 const box = { width: 168, height: 72 };
 const viewport = { width: 1200, height: 800 };
 

@@ -1,4 +1,5 @@
-import { test } from "node:test";
+import test, { mock } from "node:test";
+import { WATCH_INTERVAL_MS } from "./assets-news.ts";
 import assert from "node:assert/strict";
 import { ApiError } from "../../api/http.ts";
 import type { AssetDeleteFile, AssetDeleteResult, AssetListing } from "../../api/assets.ts";
@@ -19,6 +20,13 @@ import {
 
 const NOW = Date.parse("2026-10-18T12:00:00Z");
 
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void; reject: (cause: unknown) => void } {
+  let resolve!: (value: T) => void;
+  let reject!: (cause: unknown) => void;
+  const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
+  return { promise, resolve, reject };
+}
+
 class FakeClient {
   listing: AssetListing = fixtureAssetListing(NOW);
   lists = 0;
@@ -26,6 +34,7 @@ class FakeClient {
   subscribed = 0;
   unsubscribed = 0;
   onChange: (() => void) | null = null;
+  onClosed: (() => void) | null = null;
   answer: (files: AssetDeleteFile[]) => Promise<AssetDeleteResult[]> = async (files) =>
     files.map((file) => ({ path: file.path, outcome: "deleted" }));
   async listProjectAssets(): Promise<AssetListing> {
@@ -36,12 +45,14 @@ class FakeClient {
     this.sent.push(files);
     return this.answer(files);
   }
-  subscribeProjectAssetEvents(_project: string, onChange: () => void): () => void {
+  subscribeProjectAssetEvents(_project: string, onChange: () => void, onClosed?: () => void): () => void {
     this.subscribed++;
     this.onChange = onChange;
+    this.onClosed = onClosed ?? null;
     return () => {
       this.unsubscribed++;
       this.onChange = null;
+      this.onClosed = null;
     };
   }
 }
@@ -63,6 +74,101 @@ test("open scans and follows the change feed; close stops following it", async (
   model.close();
   assert.equal(client.unsubscribed, 1);
   assert.equal(client.onChange, null);
+});
+
+test("a closed feed rescans immediately and polls until the panel closes", async () => {
+  const client = new FakeClient();
+  const { model } = await opened(client);
+  mock.timers.enable({ apis: ["setInterval"] });
+  const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
+  try {
+    client.onClosed?.();
+    await settle();
+    assert.equal(client.lists, 2, "the disconnect itself triggers a rescan");
+
+    client.listing.locations[0]!.entries = client.listing.locations[0]!.entries.filter((entry) => entry.path !== ".deck/assets/home.png");
+    mock.timers.tick(WATCH_INTERVAL_MS);
+    await settle();
+    assert.equal(client.lists, 3);
+    assert.ok(!model.entries().some((entry) => entry.path === ".deck/assets/home.png"), "a delete observed only by polling leaves the listing");
+
+    model.close();
+    mock.timers.tick(WATCH_INTERVAL_MS);
+    await settle();
+    assert.equal(client.lists, 3, "closing stops the fallback timer");
+  } finally {
+    model.close();
+    mock.timers.reset();
+  }
+});
+
+test("slow scans coalesce poll ticks instead of superseding every answer", async () => {
+  const client = new FakeClient();
+  const pending: ReturnType<typeof deferred<AssetListing>>[] = [];
+  client.listProjectAssets = () => {
+    const next = deferred<AssetListing>();
+    pending.push(next);
+    return next.promise;
+  };
+  const model = new AssetsPanelModel(client, "proj-1");
+  const opening = model.open();
+  mock.timers.enable({ apis: ["setInterval"] });
+  const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
+  try {
+    client.onClosed?.();
+    mock.timers.tick(WATCH_INTERVAL_MS);
+    mock.timers.tick(WATCH_INTERVAL_MS);
+    assert.equal(pending.length, 1, "a pending scan allows no unbounded requests");
+
+    pending[0]!.resolve(client.listing);
+    await settle();
+    assert.equal(pending.length, 2, "ticks during the scan fold into one follow-up");
+    pending[1]!.resolve(client.listing);
+    await settle();
+    assert.equal(model.listing, client.listing, "the completed answer is allowed to land");
+
+    mock.timers.tick(WATCH_INTERVAL_MS);
+    assert.equal(pending.length, 3, "the next interval starts one fresh scan");
+    model.close();
+    pending[2]!.resolve(client.listing);
+    await opening;
+  } finally {
+    model.close();
+    for (const next of pending.slice(3)) next.resolve(client.listing);
+    mock.timers.reset();
+  }
+});
+
+test("close fences delayed poll answers and errors, including across reopen", async () => {
+  const client = new FakeClient();
+  let changes = 0;
+  let errors = 0;
+  const model = new AssetsPanelModel(client, "proj-1", {
+    onChange: () => changes++,
+    onError: () => errors++,
+  });
+  await model.open();
+  changes = 0;
+  const original = model.listing;
+  const first = deferred<AssetListing>();
+  client.listProjectAssets = () => first.promise;
+  client.onClosed?.();
+  model.close();
+  first.resolve(client.listing);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(model.listing, original, "a late answer cannot repaint a closed panel");
+  assert.equal(changes, 0);
+  assert.equal(errors, 0);
+
+  const second = deferred<AssetListing>();
+  client.listProjectAssets = () => second.promise;
+  const reopening = model.open();
+  client.onClosed?.();
+  model.close();
+  second.reject(new Error("late failure"));
+  await reopening;
+  assert.equal(errors, 0, "a late failure cannot report against a closed or newer panel");
+  assert.equal(changes, 0);
 });
 
 test("the resting summary counts listed files and their bytes", async () => {

@@ -606,6 +606,10 @@ export class WorkspaceSecurity {
           observed.storage === "closed" && observed.runtime === "stopped" && state.storage === "closed" && state.runtime === "stopped") {
         this.clearPending(); this.clearSecrets(); this.showRuntime({ kind: "locked", confirmed: true }); return;
       }
+      if (pending.operation === "lock" && observed.status === "refused" && state.storage === "open" && state.runtime === "running") {
+        this.clearPending(); this.clearSecrets(); this.showRuntime({ kind: "authorize-browser" });
+        this.notice("Locking did not start. Verify this browser to keep working, then try locking again."); return;
+      }
       if (pending.operation !== "lock" && mayOpenWorkspace(state)) {
         this.clearPending();
         if (pending.operation === "initialize") {

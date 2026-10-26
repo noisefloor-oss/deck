@@ -46,7 +46,7 @@ type freshRelaunchSpec struct {
 // cursorShippedVersion is the image's install prefix: it follows the
 // Dockerfile pin, never the measured contract, because the launch paths
 // name where the CLI IS, not the version its behavior was measured on.
-const cursorShippedVersion = "2026.10.19-6bbf2c4"
+const cursorShippedVersion = "2026.10.22-27dcf5f"
 
 // freshRelaunchSpecs is the table. Each row records what was measured against
 // the version its comment names; nothing here is inferred from a neighbour.

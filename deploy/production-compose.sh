@@ -276,11 +276,24 @@ print("external relay authenticated and reachable")
   '
 
   origin=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["services"]["app"]["environment"]["NOISEDECK_SERVER_ALLOWED_ORIGINS"])' <"$rendered")
+  app_playwright=$(compose exec -T app node -p 'require("/opt/noise-browser/node_modules/playwright/package.json").version')
+  browser_playwright=$(compose exec -T chromium node -p 'require("/opt/noise-browser/browser-versions.json").playwright')
+  test "$app_playwright" = "$browser_playwright" || {
+    echo "production-compose: app Playwright client differs from the qualified browser service" >&2
+    return 1
+  }
   compose exec -T -e NOISEDECK_VERIFY_ORIGIN="$origin" chromium sh -eu -c '
     cd /opt/noise-browser
     node --input-type=module -e '\''
       import { chromium } from "playwright";
+      import { readFileSync } from "node:fs";
+      import { createRequire } from "node:module";
+      const require = createRequire(import.meta.url);
+      const versions = JSON.parse(readFileSync("/opt/noise-browser/browser-versions.json", "utf8"));
+      if (require("playwright/package.json").version !== versions.playwright) throw new Error("Playwright service version mismatch");
       const browser = await chromium.connect("ws://127.0.0.1:3000/");
+      if (browser.version() !== versions.chromium) throw new Error(`Chromium version mismatch: ${browser.version()}`);
+      console.log(JSON.stringify({ playwright: versions.playwright, chromium: browser.version() }));
       const context = await browser.newContext();
       try {
         const page = await context.newPage();

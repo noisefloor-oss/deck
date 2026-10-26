@@ -22,6 +22,8 @@ func TestParseSlugFamilies(t *testing.T) {
 		{"gpt-5.5", "gpt", "", []int{5, 5}},
 		{"claude-sonnet-5-5", "claude", "sonnet", []int{5, 5}},
 		{"claude-opus-4-1", "claude", "opus", []int{4, 1}},
+		{"kimi-code/k3.1-pro", "kimi", "pro", []int{3, 1}},
+		{"kimi-code/k3.1-pro-highspeed", "kimi", "pro-highspeed", []int{3, 1}},
 	} {
 		got, ok := parseSlug(tc.slug)
 		if !ok {
@@ -33,7 +35,7 @@ func TestParseSlugFamilies(t *testing.T) {
 				tc.slug, got.vendor, got.tier, got.version, tc.vendor, tc.tier, tc.version)
 		}
 	}
-	for _, slug := range []string{"codex-auto-review", "gpt-daybreak-blue-latest", "fable", "latest", "gpt-"} {
+	for _, slug := range []string{"codex-auto-review", "gpt-daybreak-blue-latest", "fable", "latest", "gpt-", "kimi-code/k3", "kimi-code/k3.1", "kimi-code/k3.1-", "other/k3.1-pro"} {
 		if _, ok := parseSlug(slug); ok {
 			t.Errorf("parseSlug(%q) accepted a slug with no versioned family shape", slug)
 		}
@@ -62,10 +64,12 @@ func TestSuccessorIsLikeForLike(t *testing.T) {
 		{"untiered slug is its own family", "gpt-5.5", codexCatalogFixture, ""},
 		{"empty family offers nothing", "gpt-6.1-sol", []string{"claude-sonnet-5-6"}, ""},
 		{"minor ten beats minor nine numerically", "claude-sonnet-5-9", []string{"claude-sonnet-5-9", "claude-sonnet-5-10"}, "claude-sonnet-5-10"},
+		{"kimi moves within the pro tier", "kimi-code/k3.1-pro", []string{"kimi-code/k3.1-pro", "kimi-code/k3.2-pro", "kimi-code/k3.1-pro-highspeed"}, "kimi-code/k3.2-pro"},
 		// A workspace CLI behind an already-accepted refresh must not
 		// produce a downgrade offer: the catalog maximum is compared to
 		// the pin numerically, not by slug equality.
 		{"stale catalog never offers a downgrade", "gpt-6.2-sol", []string{"gpt-6.1-sol", "gpt-6-sol"}, ""},
+		{"stale kimi catalog never offers a downgrade", "kimi-code/k3.2-pro", []string{"kimi-code/k3.1-pro"}, ""},
 		{"same version spelled differently offers nothing", "gpt-6.2-sol", []string{"gpt-06.2-sol"}, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -112,6 +116,9 @@ func fixtureTree(t *testing.T) string {
 		"  --reviewer-model gpt-6.1-sol \\",
 		"The primary reviewer is Codex on `gpt-6.1-sol` at high reasoning effort.",
 		"The secondary reviewer is Claude on Sonnet (`claude-sonnet-5-5`), also",
+		"The tertiary reviewer is Kimi (`kimi-code/k3.1-pro`)",
+		"kimi --model kimi-code/k3.1-pro --prompt",
+		"--reviewer-model    kimi-code/k3.1-pro \\",
 		"  --reviewer-cmd 'codex exec --model gpt-6.1-sol \\",
 		"  --reviewer-model gpt-6.1-sol \\",
 	}, "\n")
@@ -130,7 +137,7 @@ func fixtureTree(t *testing.T) string {
 	if err := os.WriteFile(filepath.Join(workflowDir, "ci-heal.yaml"), []byte(workflow), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	truth := `{"schema":1,"pins":{"primary":{"harness":"codex","model":"gpt-6.1-sol"},"secondary":{"harness":"claude","model":"claude-sonnet-5-5"},"settle-fallback":{"harness":"codex","model":"gpt-6-astra"}}}`
+	truth := `{"schema":1,"pins":{"primary":{"harness":"codex","model":"gpt-6.1-sol"},"secondary":{"harness":"claude","model":"claude-sonnet-5-5"},"tertiary":{"harness":"kimi","model":"kimi-code/k3.1-pro"},"settle-fallback":{"harness":"codex","model":"gpt-6-astra"}}}`
 	noiseDir := filepath.Join(root, ".noise")
 	if err := os.MkdirAll(noiseDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -155,6 +162,9 @@ func TestDiscoverOffersAndWithholds(t *testing.T) {
 	codex := func(context.Context, string) ([]string, error) {
 		return []string{"gpt-6.1-sol", "gpt-6.2-sol", "gpt-6-astra", "gpt-7-astra"}, nil
 	}
+	kimi := func(context.Context, string) ([]string, error) {
+		return []string{"kimi-code/k3.1-pro", "kimi-code/k3.2-pro"}, nil
+	}
 	for _, tc := range []struct {
 		name       string
 		probe      func(context.Context, string, string) (Presence, error)
@@ -169,6 +179,7 @@ func TestDiscoverOffersAndWithholds(t *testing.T) {
 			wantOffers: []Offer{
 				{Role: RolePrimary, Harness: "codex", From: "gpt-6.1-sol", To: "gpt-6.2-sol"},
 				{Role: RoleSecondary, Harness: "claude", From: "claude-sonnet-5-5", To: "claude-sonnet-5-6"},
+				{Role: RoleTertiary, Harness: "kimi", From: "kimi-code/k3.1-pro", To: "kimi-code/k3.2-pro"},
 				{Role: RoleSettleFallback, Harness: "codex", From: "gpt-6-astra", To: "gpt-7-astra"},
 			},
 		},
@@ -177,13 +188,14 @@ func TestDiscoverOffersAndWithholds(t *testing.T) {
 			probe: func(_ context.Context, _, _ string) (Presence, error) { return Absent, nil },
 			wantOffers: []Offer{
 				{Role: RolePrimary, Harness: "codex", From: "gpt-6.1-sol", To: "gpt-6.2-sol"},
+				{Role: RoleTertiary, Harness: "kimi", From: "kimi-code/k3.1-pro", To: "kimi-code/k3.2-pro"},
 				{Role: RoleSettleFallback, Harness: "codex", From: "gpt-6-astra", To: "gpt-7-astra"},
 			},
 			wantNotes: 1,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			plan, err := Discover(ctx, fixtureTruth(t), "codex", "claude", codex, tc.probe)
+			plan, err := Discover(ctx, fixtureTruth(t), "codex", "claude", "kimi", codex, tc.probe, kimi)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -208,9 +220,10 @@ func TestDiscoverOffersAndWithholds(t *testing.T) {
 
 func TestDiscoverAmbiguousProbeNeverOffers(t *testing.T) {
 	ctx := context.Background()
-	plan, err := Discover(ctx, fixtureTruth(t), "codex", "claude",
+	plan, err := Discover(ctx, fixtureTruth(t), "codex", "claude", "kimi",
 		func(context.Context, string) ([]string, error) { return codexCatalogFixture, nil },
-		func(_ context.Context, _, _ string) (Presence, error) { return Ambiguous, nil })
+		func(_ context.Context, _, _ string) (Presence, error) { return Ambiguous, nil },
+		func(context.Context, string) ([]string, error) { return []string{"kimi-code/k3.1-pro"}, nil })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,13 +239,14 @@ func TestFilesRewritesEveryRepeat(t *testing.T) {
 	offers := []Offer{
 		{Role: RolePrimary, Harness: "codex", From: "gpt-6.1-sol", To: "gpt-6.2-sol"},
 		{Role: RoleSecondary, Harness: "claude", From: "claude-sonnet-5-5", To: "claude-sonnet-5-6"},
+		{Role: RoleTertiary, Harness: "kimi", From: "kimi-code/k3.1-pro", To: "kimi-code/k3.2-pro"},
 		{Role: RoleSettleFallback, Harness: "codex", From: "gpt-6-astra", To: "gpt-7-astra"},
 	}
 	files, err := Files(root, offers)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, stale := range []string{"gpt-6.1-sol", "claude-sonnet-5-5", "'gpt-6-astra'"} {
+	for _, stale := range []string{"gpt-6.1-sol", "claude-sonnet-5-5", "kimi-code/k3.1-pro", "'gpt-6-astra'"} {
 		for path, body := range files {
 			if strings.Contains(string(body.Body), stale) {
 				t.Fatalf("%s still spells %q after the rewrite", path, stale)
@@ -246,6 +260,9 @@ func TestFilesRewritesEveryRepeat(t *testing.T) {
 		"--reviewer-model gpt-6.2-sol \\",
 		"Codex on `gpt-6.2-sol` at high reasoning effort",
 		"Claude on Sonnet (`claude-sonnet-5-6`)",
+		"Kimi (`kimi-code/k3.2-pro`)",
+		"kimi --model kimi-code/k3.2-pro --prompt",
+		"--reviewer-model    kimi-code/k3.2-pro \\",
 	} {
 		if !strings.Contains(sdlc, fresh) {
 			t.Fatalf("rewritten SDLC.md is missing %q", fresh)
@@ -352,6 +369,12 @@ func TestRepeatsFailClosedOnDriftAndLeftovers(t *testing.T) {
 			name: "unoffered role drifted",
 			mutate: func(t *testing.T, root string) {
 				rewrite(t, root, "Claude on Sonnet (`claude-sonnet-5-5`)", "Claude on Sonnet (ask around)")
+			},
+		},
+		{
+			name: "tertiary recipe drifted",
+			mutate: func(t *testing.T, root string) {
+				rewrite(t, root, "kimi --model kimi-code/k3.1-pro --prompt", "kimi --model kimi-code/k3.1-pro-highspeed --prompt")
 			},
 		},
 	} {

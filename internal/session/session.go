@@ -154,7 +154,8 @@ type Session struct {
 	// browser contract.
 	NativeStoreRoot *string `json:"-"`
 
-	Status Status `json:"status"`
+	ConversationAttention *ConversationAttention `json:"conversation_attention,omitempty"`
+	Status                Status                 `json:"status"`
 	// These three fields are derived for API responses from one fresh
 	// observation plus the durable recovery-candidate record. They are not
 	// database columns.

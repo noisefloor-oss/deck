@@ -28,8 +28,8 @@ runtime_compatibility_probe:
 
 executable:
   launch_path: "/usr/local/bin/devin"
-  resolved_at_launch: "/opt/devin/3000.11.92/bin/devin"
-  proc_exe: "/opt/devin/3000.11.92/bin/devin"
+  resolved_at_launch: "/opt/devin/3000.11.205/bin/devin"
+  proc_exe: "/opt/devin/3000.11.205/bin/devin"
   proc_cmdline: "/usr/local/bin/devin"
   usable_runtime_executable_evidence: true
 

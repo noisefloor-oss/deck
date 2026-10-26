@@ -5,9 +5,11 @@ package harnesslogin
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -42,6 +44,68 @@ func TestNativePiBrowserRegistration(t *testing.T) {
 		t.Run(provider, func(t *testing.T) {
 			nativeBrowserRegistration(t, executable, "pi", provider)
 		})
+	}
+}
+
+// Exercise Pi's shipped callback implementation without an account or token exchange.
+func TestNativePiCallbackStateSuffix(t *testing.T) {
+	executable := os.Getenv("NOISEDECK_TEST_PI_EXECUTABLE")
+	if executable == "" {
+		t.Skip("set NOISEDECK_TEST_PI_EXECUTABLE for pinned native callback qualification")
+	}
+	if !shippedPiModules(executable) {
+		t.Fatal("native Pi package contract does not match shipped release")
+	}
+	real, err := filepath.EvalSymlinks(executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Dir(filepath.Dir(filepath.Dir(real)))
+	module := (&url.URL{Scheme: "file", Path: filepath.Join(root, "node_modules/@earendil-works/pi-ai/dist/auth/oauth/callback-server.js")}).String()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	script := `
+const { startOAuthCallbackServer } = await import(process.argv[1]);
+const callback = await startOAuthCallbackServer({ providerName: "Pi probe", host: "127.0.0.1", port: 0, path: "/auth/callback", state: "native-probe-state", timeoutMs: 9000,
+ complete: async code => { if (code !== "native-probe-code") throw new Error("wrong probe code"); return code; } });
+console.log(callback.redirectUri);
+try { await callback.wait(); } finally { callback.close(); }
+`
+	cmd := exec.CommandContext(ctx, "node", "--input-type=module", "-e", script, module)
+	cmd.Stderr = io.Discard
+	output, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { cancel(); _ = cmd.Wait() }()
+	line, err := bufio.NewReader(io.LimitReader(output, 1024)).ReadString('\n')
+	if err != nil {
+		t.Fatal("native callback server did not start")
+	}
+	endpoint, err := url.Parse(strings.TrimSpace(line))
+	if err != nil || endpoint.Hostname() != "127.0.0.1" || endpoint.Path != "/auth/callback" {
+		t.Fatal("unexpected native callback endpoint")
+	}
+	cb := callback{flow: PiOpenAI, authority: endpoint.Host, path: endpoint.Path, state: sha256.Sum256([]byte("native-probe-state"))}
+	query := url.Values{"code": {"native-probe-code"}, "state": {"native-probe-state" + lifeSciencesStateSuffix}}
+	target, err := cb.requestTarget("http://" + endpoint.Host + endpoint.Path + "?" + query.Encode())
+	if err != nil {
+		t.Fatal("matching suffixed callback refused")
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+endpoint.Host+target, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal("native callback delivery failed")
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("native Pi callback rejected normalized state: %d", response.StatusCode)
 	}
 }
 

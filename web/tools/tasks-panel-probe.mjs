@@ -105,6 +105,15 @@ const replacementSession = {
   presentation_state: activityOnly ? "recovering" : "running",
 };
 
+const attentionOnly = process.env.NOISEDECK_ATTENTION_PROBE === "1";
+const attentionReceipts = [];
+if (attentionOnly) {
+  session.provider = "pi";
+  replacementSession.provider = "pi";
+  session.conversation_attention = { session_id: session.id, generation: 1, context_key: "native-context-1", state: "needs_input", sequence: 2, ended_sequence: 0, seen_sequence: 0 };
+  replacementSession.conversation_attention = { session_id: replacementSession.id, generation: 1, context_key: "native-context-2", state: "ended", sequence: 3, ended_sequence: 3, seen_sequence: 0 };
+}
+
 const LONG_TASK_TITLE = "Unprioritized backlog item with a deliberately long title that must stay inside two board lines";
 const LONG_PROGRESS_TITLE = "In-progress work with a long title that verifies the middle column keeps the same card anatomy";
 const UNBROKEN_DONE_TITLE = "CompletedCardTitleWithOneDeliberatelyUnbrokenTokenThatMustWrapWithoutOverflowingItsCard";
@@ -128,7 +137,7 @@ const baseTasks = {
         status: "in-progress",
         priority: "high",
         dependencies: [1, 999],
-        description: "See Task 1 and Task 999.",
+        description: "See Task 1 and Task 999. [Focus documentation](https://example.invalid/focus).",
         subtasks: [
           { id: 1, title: "Read the descriptor", status: "done" },
           { id: 2, title: "Wire the matrix", status: "pending" },
@@ -240,6 +249,19 @@ try {
     const json = (status, body) =>
       route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
     const base = `/api/projects/${project.id}`;
+    if (attentionOnly && request.method() === "POST" && /^\/api\/sessions\/[^/]+\/attention\/seen$/.test(path)) {
+      assert.equal(request.headers()["x-csrf-token"], "probe-csrf");
+      const id = path.split("/")[3];
+      const row = [session, replacementSession].find(row => row.id === id);
+      const body = request.postDataJSON();
+      assert.equal(body.generation, row.generation);
+      assert.equal(body.context_key, row.conversation_attention.context_key);
+      assert.ok(body.ended_sequence <= row.conversation_attention.ended_sequence);
+      row.conversation_attention.seen_sequence = Math.max(row.conversation_attention.seen_sequence, body.ended_sequence);
+      attentionReceipts.push(id);
+      return route.fulfill({ status: 204 });
+    }
+
 
     if (request.method() === "GET" && [project.id, createdProject.id].some((id) => path === `/api/projects/${id}/preview/settings`)) {
       return json(200, { configured: true, self_service: true, enabled: false });
@@ -366,7 +388,7 @@ try {
       assert.equal(request.headers()["x-csrf-token"], "probe-csrf");
       const input = request.postDataJSON();
       addedTasks.push(input);
-      const id = "40";
+      const id = String(39 + addedTasks.length);
       tasks = {
         ...tasks,
         master: { ...tasks.master, tasks: [...tasks.master.tasks, { id, title: input.title, status: "pending", priority: input.priority, description: input.description, details: input.details }] },
@@ -422,10 +444,14 @@ try {
 
   const socketFrames = [];
   const socketEvents = [];
+  const heldComposerAcks = [];
+  let holdComposerAcks = false;
   let socketOpens = 0;
   let terminalConnectUrl = null;
+  let terminalSocket = null;
   const connectUrls = [];
   await page.routeWebSocket(`${origin.replace("http", "ws")}/api/sessions/*/terminal?*`, (socket) => {
+    terminalSocket = socket;
     terminalConnectUrl = socket.url();
     connectUrls.push(socket.url());
     const connection = ++socketOpens;
@@ -434,6 +460,13 @@ try {
       const frame = JSON.parse(message);
       socketFrames.push(frame);
       socketEvents.push({ connection, frame });
+      if (frame.type === "input") {
+        const ack = (code) => socket.send(JSON.stringify({
+          type: "status", code, message: code === "sent" ? "" : `write ${code}`,
+        }));
+        if (holdComposerAcks) heldComposerAcks.push(ack);
+        else ack("sent");
+      }
     });
     socket.send(JSON.stringify({ type: "attached", token: 1, generation: 1 }));
     socket.send(JSON.stringify({
@@ -445,6 +478,173 @@ try {
   await page.goto(origin, { waitUntil: "networkidle" });
   const liveTerminal = page.locator("[data-live-terminal]");
   await liveTerminal.waitFor();
+  if (process.env.NOISEDECK_COMPOSER_PROBE === "1") {
+    page.setDefaultTimeout(15000);
+    const field = page.locator('[data-region="terminal-compose"]').getByRole("textbox", { name: "Terminal input", exact: true });
+    assert.equal(await field.isVisible(), false, "desktop input goes straight to the terminal");
+    await page.locator("[data-live-more]").click();
+    await page.locator("[data-more-popover]").waitFor();
+    assert.equal(await page.locator("[data-more-popover] [data-draft-composer]").count(), 0, "desktop offers no draft composer");
+    await page.locator("[data-popover-backdrop]").click({ position: { x: 8, y: 8 } });
+    await page.locator("[data-more-popover]").waitFor({ state: "detached" });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.reload({ waitUntil: "networkidle" });
+    await field.waitFor();
+    assert.equal(await field.getAttribute("rows"), "1", "the phone compose row is one line");
+    const from = socketFrames.length;
+    await field.fill("First line café\nSecond line 日本語");
+    await field.click({ position: { x: 10, y: 10 } });
+    assert.ok(await field.evaluate(element => element.selectionStart < element.value.length), "a tap places the draft caret before the end");
+    await page.keyboard.insertText("Edited ");
+    await page.keyboard.press("End");
+    await page.keyboard.insertText(" again");
+    assert.equal(socketFrames.slice(from).filter(f => f.type === "input").length, 0, "editing sends no terminal input");
+    const draft = await field.inputValue();
+    assert.ok(draft.includes("Edited ") && draft.includes(" again") && draft.includes("日本語"));
+    const sendButton = page.getByRole("button", { name: "Send", exact: true });
+    const info = page.locator("[data-info-status]");
+    const ack = (code) => {
+      assert.ok(heldComposerAcks.length > 0, `missing held acknowledgement for ${code}`);
+      heldComposerAcks.shift()(code);
+    };
+    holdComposerAcks = true;
+    await page.keyboard.press("Enter");
+    await waitFor(() => socketFrames.slice(from).filter(f => f.type === "input").length >= 2, "Return sends the draft");
+    assert.deepEqual(socketFrames.slice(from).filter(f => f.type === "input").map(f => Buffer.from(f.data, "base64").toString()), [draft.replace(/\n/g, "\r"), "\r"], "paste precedes submit");
+    assert.equal(await field.inputValue(), draft, "the draft clears before any write is acknowledged");
+    ack("sent");
+    await page.waitForTimeout(50);
+    assert.equal(await field.inputValue(), draft, "paste success clears the draft before Return succeeds");
+    ack("sent");
+    await waitFor(async () => await field.inputValue() === "", "final write success clears the submitted snapshot");
+    holdComposerAcks = false;
+    await field.fill("Unsent draft");
+    await page.setViewportSize({ width: 1024, height: 768 });
+    assert.equal(await field.isVisible(), false);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await field.waitFor();
+    assert.equal(await field.inputValue(), "Unsent draft", "widening past the phone layout preserves the session draft");
+    await page.reload({ waitUntil: "networkidle" });
+    await field.waitFor();
+    assert.equal(await field.inputValue(), "", "draft text is never persisted");
+
+    // Empty input is one tracked Return, not a paste with an empty payload.
+    holdComposerAcks = true;
+    let before = socketFrames.length;
+    await sendButton.click();
+    await waitFor(() => socketFrames.slice(before).filter(f => f.type === "input").length === 1, "empty Return");
+    assert.equal(Buffer.from(socketFrames.at(-1).data, "base64").toString(), "\r");
+    ack("sent");
+    await waitFor(() => heldComposerAcks.length === 0, "empty Return acknowledgement");
+    holdComposerAcks = false;
+
+    const revealOutcome = async () => {
+      await page.mouse.move(0, 0);
+      await field.evaluate(element => element.blur());
+    };
+
+    // A second submit while either write is pending is rejected, not duplicated.
+    await field.fill("Overlapping draft");
+    holdComposerAcks = true;
+    await sendButton.click();
+    await waitFor(() => heldComposerAcks.length === 2, "first overlapping flush");
+    before = socketFrames.length;
+    await page.locator("[data-mobile-compose-form]").dispatchEvent("submit");
+    await page.waitForTimeout(50);
+    assert.equal(socketFrames.length, before, "an overlapping flush emitted more terminal input");
+    await revealOutcome();
+    await info.filter({ hasText: "Terminal input is not ready" }).waitFor({ state: "attached" });
+    assert.equal(await field.inputValue(), "Overlapping draft");
+    ack("sent");
+    ack("sent");
+    await waitFor(async () => await field.inputValue() === "", "overlap draft success");
+    holdComposerAcks = false;
+
+    // Success applies only to the submitted snapshot, never to later edits.
+    await field.fill("Submitted snapshot");
+    holdComposerAcks = true;
+    await sendButton.click();
+    await waitFor(() => heldComposerAcks.length === 2, "snapshot writes");
+    await field.fill("Later edit");
+    ack("sent");
+    ack("sent");
+    await page.waitForTimeout(50);
+    assert.equal(await field.inputValue(), "Later edit", "final success erased an edit made while sending");
+    holdComposerAcks = false;
+    await sendButton.click();
+    await waitFor(async () => await field.inputValue() === "", "later edit sent successfully");
+
+    for (const code of ["failed", "uncertain"]) {
+      const value = `${code} draft`;
+      await field.fill(value);
+      holdComposerAcks = true;
+      await sendButton.click();
+      await waitFor(() => heldComposerAcks.length === 2, `${code} writes`);
+      ack("sent");
+      ack(code);
+      await revealOutcome();
+      await info.filter({ hasText: "may have been partially sent. Inspect the terminal before retrying" }).waitFor({ state: "attached" });
+      assert.equal(await field.inputValue(), value, `${code} outcome erased the draft`);
+      holdComposerAcks = false;
+    }
+
+    // Disposal fences callbacks from the old session and preserves its draft.
+    await field.fill("Stale session draft");
+    holdComposerAcks = true;
+    await sendButton.click();
+    await waitFor(() => heldComposerAcks.length === 2, "stale session writes");
+    await page.locator('[data-session="session-2"]').evaluate(element => element.click());
+    await waitFor(() => connectUrls.at(-1)?.includes("/session-2/"), "second session attachment");
+    ack("sent");
+    ack("sent");
+    assert.equal(await field.inputValue(), "", "a stale callback populated the newly selected session");
+    await page.locator('[data-session="session-1"]').evaluate(element => element.click());
+    await waitFor(() => connectUrls.at(-1)?.includes("/session-1/"), "first session reattachment");
+    assert.equal(await field.inputValue(), "Stale session draft", "the stale session lost its unsubmitted draft");
+
+    // Closing before either acknowledgement settles both writes as interrupted.
+    await sendButton.click();
+    await waitFor(() => heldComposerAcks.length === 2, "interrupted writes");
+    await terminalSocket.close();
+    await revealOutcome();
+    await info.filter({ hasText: "Inspect the terminal before retrying" }).waitFor({ state: "attached" });
+    assert.equal(await field.inputValue(), "Stale session draft", "interrupted writes erased the draft");
+    console.log("phone composer browser probe: all assertions passed");
+    await context.close(); await browser.close(); await new Promise(done => server.close(done)); process.exit(0);
+  }
+  if (attentionOnly) {
+    page.setDefaultTimeout(15000);
+    await page.bringToFront();
+    const first = page.locator('[data-session="session-1"]');
+    const second = page.locator('[data-session="session-2"]');
+    const visibleMark = (row, state) => row.locator(`[data-conversation-attention="${state}"]`).locator("visible=true");
+    assert.equal(await visibleMark(first, "needs_input").count(), 1, "native input need is distinct from activity");
+    assert.equal(await visibleMark(second, "ended").count(), 1, "background completion is unseen");
+    assert.deepEqual(attentionReceipts, [], "viewing an input request does not dismiss it or another conversation");
+    await page.getByRole("button", { name: "Project tasks", exact: true }).click();
+    await page.locator("[data-tm-add-task]").click();
+    await page.getByRole("dialog").waitFor();
+    session.conversation_attention = { ...session.conversation_attention, sequence: 3, ended_sequence: 3, state: "ended" };
+    await waitFor(async () => await visibleMark(first, "ended").count() === 1, "new boundary arrives behind the dialog", 15000);
+    assert.deepEqual(attentionReceipts, [], "a covering dialog prevents automatic acknowledgement");
+    session.conversation_attention.state = "needs_input";
+    session.conversation_attention.sequence = 4;
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await waitFor(() => attentionReceipts.includes("session-1"), "visible conversation acknowledges its completed boundary", 15000);
+    await waitFor(async () => await visibleMark(first, "needs_input").count() === 1, "pending input remains after view", 15000);
+    assert.equal(replacementSession.conversation_attention.seen_sequence, 0, "another conversation stays unseen");
+    await page.reload({ waitUntil: "networkidle" });
+    await liveTerminal.waitFor();
+    assert.equal(await visibleMark(second, "ended").count(), 1, "unseen backend state survives reload");
+    await second.click();
+    await waitFor(() => attentionReceipts.includes("session-2"), "selecting the other conversation acknowledges it", 15000);
+    await waitFor(async () => await visibleMark(second, "ended").count() === 0, "receipt is reflected in fresh state", 15000);
+    await page.setViewportSize({ width: 390, height: 844 });
+    if (await visibleMark(first, "needs_input").count() === 0) await page.getByRole("button", { name: "Sessions", exact: true }).click();
+    assert.equal(await visibleMark(first, "needs_input").count(), 1, "phone rows retain pending native input");
+    console.log("conversation-attention browser probe: all assertions passed");
+    await context.close(); await browser.close(); await new Promise(done => server.close(done)); process.exit(0);
+  }
   // Every row renders the spinner markup twice — the desktop meta cell and
   // the phone's leading status cell — and only the viewport's scope is
   // visible, so the assertions count visible spinners, never DOM matches.
@@ -589,6 +789,70 @@ try {
   const projectToggle = page.locator('[data-project-toggle="project-1"]');
   const projectName = projectToggle.locator('[data-project-name]');
   await projectName.waitFor();
+  if (process.env.NOISEDECK_SIDEBAR_SIZE_PROBE === "1") {
+    const handle = page.getByRole("separator", { name: "Resize sidebar" });
+    const sidebar = page.locator('[data-region="sidebar"]');
+    const width = async () => Math.round((await sidebar.boundingBox()).width);
+    await handle.waitFor();
+    assert.equal(await width(), 272);
+    const before = resizeCount();
+    const start = await handle.boundingBox();
+    await page.mouse.move(start.x + 4, start.y + 100);
+    await page.mouse.down();
+    await page.mouse.move(start.x + 132, start.y + 100);
+    await page.mouse.up();
+    assert.equal(await width(), 400, "drag changes sidebar layout width");
+    await waitFor(() => resizeCount() > before, "sidebar drag refits the real terminal");
+    assert.equal(await page.evaluate(() => localStorage.getItem("noisedeck.sidebar.width")), "400");
+    await page.reload({ waitUntil: "networkidle" });
+    await handle.waitFor();
+    assert.equal(await width(), 400, "width survives reload");
+    await handle.focus();
+    await page.keyboard.press("ArrowRight");
+    assert.equal(await width(), 416, "keyboard adjustment");
+    await page.keyboard.press("Home");
+    assert.equal(await width(), 240, "minimum width");
+    await page.keyboard.press("End");
+    assert.equal(await width(), 560, "maximum width");
+    await page.setViewportSize({ width: 800, height: 900 });
+    await waitFor(async () => await width() === 440, "temporary viewport clamp");
+    assert.equal(await page.evaluate(() => localStorage.getItem("noisedeck.sidebar.width")), "560", "clamp does not overwrite preference");
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await waitFor(async () => await width() === 560, "desktop restores preferred width");
+    await handle.focus();
+    await page.keyboard.press("Enter");
+    assert.equal(await width(), 272, "keyboard reset");
+    const cancelStart = await handle.boundingBox();
+    await page.mouse.move(cancelStart.x + 4, cancelStart.y + 100);
+    await page.mouse.down();
+    await page.mouse.move(cancelStart.x + 100, cancelStart.y + 100);
+    await handle.dispatchEvent("pointercancel", { pointerId: 1 });
+    await page.mouse.up();
+    assert.equal(await width(), 272, "cancelled drag restores width");
+    await page.getByRole("button", { name: "Collapse sidebar" }).click();
+    await waitForSidebarState(true, "sidebar closes");
+    assert.equal(await handle.isVisible(), false, "collapsed handle is hidden");
+    await page.getByRole("button", { name: "Show sidebar" }).click();
+    await waitForSidebarState(false, "sidebar reopens");
+    await handle.waitFor();
+    await page.setViewportSize({ width: 390, height: 844 });
+    assert.equal(await handle.isVisible(), false, "phone has no resize handle");
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await handle.waitFor();
+    await page.evaluate(() => localStorage.setItem("noisedeck.sidebar.width", "Infinity"));
+    await page.reload({ waitUntil: "networkidle" });
+    await handle.waitFor();
+    assert.equal(await width(), 272, "invalid stored preference uses default");
+    await page.evaluate(() => { Storage.prototype.setItem = () => { throw new Error("blocked"); }; });
+    await handle.focus();
+    await page.keyboard.press("ArrowRight");
+    assert.equal(await width(), 288, "blocked storage does not prevent resizing");
+    console.log("sidebar-size browser probe: all assertions passed");
+    await context.close();
+    await browser.close();
+    await new Promise(done => server.close(done));
+    process.exit(0);
+  }
   await assertLongProjectName("desktop sidebar");
   assert.equal(await projectToggle.getByText(/^\d+ · /).count(), 0, "expanded project omits its session count");
   await projectToggle.click();
@@ -766,6 +1030,30 @@ try {
   assert.equal(resizeCount(), beforeOpenResizes + 1,
     "the Tasks toggle reports exactly one terminal resize");
   await panel.getByRole("button", { name: /Wire the provider descriptor/ }).waitFor();
+
+  // The Tasks panel rides the shared docked-panel resizing: a drag on its
+  // left boundary narrows it by exactly the drag, Enter returns the
+  // stylesheet's responsive width, and nothing is saved before either.
+  const tasksHandle = page.locator('[data-panel-resize="tasks"]');
+  await tasksHandle.waitFor();
+  const tasksSaved = () => page.evaluate(() => localStorage.getItem("noisedeck.panel.tasks.width"));
+  assert.equal(await tasksSaved(), null, "no Tasks width is saved before the user resizes");
+  const beforeTasksDrag = await box(panel);
+  await page.mouse.move(beforeTasksDrag.x + 4, beforeTasksDrag.y + 100);
+  await page.mouse.down();
+  await page.mouse.move(beforeTasksDrag.x + 84, beforeTasksDrag.y + 100, { steps: 6 });
+  await page.mouse.up();
+  const narrowedTasks = await box(panel);
+  near(narrowedTasks.width, beforeTasksDrag.width - 80, "an 80px right drag narrows the Tasks panel 80px");
+  assert.equal(await tasksSaved(), String(Math.round(beforeTasksDrag.width - 80)), "the drag commits the Tasks width");
+  await tasksHandle.focus();
+  await page.keyboard.press("ArrowLeft");
+  const steppedTasks = await box(panel);
+  near(steppedTasks.width, narrowedTasks.width + 16, "ArrowLeft widens the Tasks panel by one keyboard step");
+  await page.keyboard.press("Enter");
+  const resetTasks = await box(panel);
+  near(resetTasks.width, beforeTasksDrag.width, "Enter returns the Tasks panel's responsive width");
+  assert.equal(await tasksSaved(), null, "Enter clears the saved Tasks width");
 
   // The left dock uses the same lifecycle. Its intermediate flex widths
   // remain browser presentation only; xterm and the PTY settle once.
@@ -1319,6 +1607,14 @@ try {
   const taskReference = dialog.locator('[data-task-dependencies] [data-task-ref="1"]');
   await taskReference.hover();
   await taskReference.focus();
+  tasks = { ...tasks, master: { ...tasks.master, tasks: tasks.master.tasks.map(task => task.id === 4 ? { ...task, title: "Refresh while task reference has focus" } : task) } };
+  await waitFor(async () => (await panel.locator('[data-tm-task="4"] [data-tm-card-title]').textContent()) === "Refresh while task reference has focus", "poll updates a detail dialog with a focused task reference", 15000);
+  assert.equal(await taskReference.evaluate(element => element === document.activeElement), true, "poll preserves focus on a task reference");
+  const focusLink = dialog.getByRole("link", { name: "Focus documentation" });
+  await focusLink.focus();
+  tasks = { ...tasks, master: { ...tasks.master, tasks: tasks.master.tasks.map(task => task.id === 4 ? { ...task, title: "Refresh while markdown link has focus" } : task) } };
+  await waitFor(async () => (await panel.locator('[data-tm-task="4"] [data-tm-card-title]').textContent()) === "Refresh while markdown link has focus", "poll updates a detail dialog with a focused markdown link", 15000);
+  assert.equal(await focusLink.evaluate(element => element === document.activeElement), true, "poll preserves focus on a markdown link");
   await dialog.getByRole("button", { name: "Close task" }).focus();
   await page.mouse.move(0, 0);
   await page.waitForTimeout(400);
@@ -1522,21 +1818,52 @@ try {
   await addTaskDialog.waitFor();
   assert.equal(await addTaskDialog.getByLabel("Title").evaluate((el) => el === document.activeElement), true,
     "task title receives initial focus");
+  await addTaskDialog.getByLabel("Title").fill("Unsaved focus regression");
+  await addTaskDialog.getByRole("button", { name: "Cancel", exact: true }).focus();
+  tasks = { ...baseTasks, master: { ...baseTasks.master, tasks: baseTasks.master.tasks.map(task => task.id === 1 ? { ...task, title: "Refresh while Cancel has focus" } : task) } };
+  await waitFor(async () => (await panel.locator('[data-tm-task="1"] [data-tm-card-title]').textContent()) === "Refresh while Cancel has focus", "canonical poll redraws the board with an open dialog", 15000);
+  assert.equal(await addTaskDialog.getByRole("button", { name: "Cancel", exact: true }).evaluate(element => document.activeElement === element), true, "poll preserves Cancel focus");
+  assert.equal(await addTaskDialog.getByLabel("Title").inputValue(), "Unsaved focus regression", "poll preserves edited fields alongside button focus");
+  await page.keyboard.press("Enter");
+  await addTaskDialog.waitFor({ state: "detached" });
+  assert.equal(addedTasks.length, 0, "Enter on Cancel never creates a task");
+  tasks = baseTasks;
+  await panel.getByRole("button", { name: "Add task" }).click();
+  await addTaskDialog.waitFor();
+  await addTaskDialog.getByLabel("Title").fill("Submit focus regression");
+  const addTaskSubmit = addTaskDialog.locator("[data-tm-task-add-submit]");
+  await addTaskSubmit.focus();
+  tasks = { ...baseTasks, master: { ...baseTasks.master, tasks: baseTasks.master.tasks.map(task => task.id === 1 ? { ...task, title: "Refresh while submit has focus" } : task) } };
+  await waitFor(async () => (await panel.locator('[data-tm-task="1"] [data-tm-card-title]').textContent()) === "Refresh while submit has focus", "canonical poll redraws the board with Add task submit focused", 15000);
+  assert.equal(await addTaskSubmit.evaluate(element => document.activeElement === element), true, "poll preserves Add task submit focus");
+  assert.equal(await addTaskDialog.getByLabel("Title").inputValue(), "Submit focus regression", "poll preserves the title alongside submit focus");
+  await page.keyboard.press("Enter");
+  await addTaskDialog.waitFor({ state: "detached" });
+  assert.equal(addedTasks.length, 1, "Enter after redraw issues one task mutation");
+  assert.deepEqual(addedTasks[0], {
+    title: "Submit focus regression",
+    description: "",
+    details: "",
+    priority: "medium",
+  });
+
+  await panel.getByRole("button", { name: "Add task" }).click();
+  await addTaskDialog.waitFor();
   await addTaskDialog.getByLabel("Title").fill("Literal; $(do-not-run)");
   await addTaskDialog.getByLabel("Description").fill("Description <b>stays text</b>");
   await addTaskDialog.getByLabel("Details").fill("Details && untouched");
   await addTaskDialog.getByLabel("Priority").selectOption("high");
   await addTaskDialog.getByRole("button", { name: "Add task" }).dblclick();
   await addTaskDialog.waitFor({ state: "detached" });
-  assert.equal(addedTasks.length, 1, "rapid activation issues one task mutation");
-  assert.deepEqual(addedTasks[0], {
+  assert.equal(addedTasks.length, 2, "rapid activation adds only one task mutation");
+  assert.deepEqual(addedTasks[1], {
     title: "Literal; $(do-not-run)",
     description: "Description <b>stays text</b>",
     details: "Details && untouched",
     priority: "high",
   });
   await panel.getByRole("button", { name: /Literal; \$\(do-not-run\)/ }).waitFor();
-  await waitFor(async () => (await panel.locator("[data-tm-task]").count()) === BASE_COUNT + 1,
+  await waitFor(async () => (await panel.locator("[data-tm-task]").count()) === BASE_COUNT + 2,
     "the board follows the canonical task refresh");
 
   // With no dock motion, a close reversed 40ms later is two real repaints,

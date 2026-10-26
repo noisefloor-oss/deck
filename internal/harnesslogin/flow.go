@@ -29,6 +29,7 @@ const (
 )
 
 type callback struct {
+	flow      Flow
 	authority string
 	path      string
 	state     [32]byte
@@ -84,7 +85,7 @@ func authorization(provider, raw string) (Flow, callback, error) {
 	if q.Has("code") && (flow != PiAnthropic || q.Get("code") != "true") {
 		return "", callback{}, ErrInvalid
 	}
-	return flow, callback{authority: redirect.Host, path: redirect.Path, state: sha256.Sum256([]byte(q.Get("state")))}, nil
+	return flow, callback{flow: flow, authority: redirect.Host, path: redirect.Path, state: sha256.Sum256([]byte(q.Get("state")))}, nil
 }
 
 func strictURL(raw string) (*url.URL, error) {
@@ -122,9 +123,20 @@ func (c callback) requestTarget(raw string) (string, error) {
 	}
 	state := q.Get("state")
 	if sha256.Sum256([]byte(state)) != c.state {
+		if c.flow != CodexBrowser && c.flow != PiOpenAI {
+			return "", ErrInvalid
+		}
 		state = strings.TrimSuffix(state, lifeSciencesStateSuffix)
+		if sha256.Sum256([]byte(state)) != c.state {
+			return "", ErrInvalid
+		}
+		// Pi requires the exact state it issued. Codex handles this provider-added
+		// suffix itself, so its native callback remains unchanged.
+		if c.flow == PiOpenAI {
+			q.Set("state", state)
+		}
 	}
-	if q.Get("code") == "" || sha256.Sum256([]byte(state)) != c.state {
+	if q.Get("code") == "" {
 		return "", ErrInvalid
 	}
 	return c.path + "?" + q.Encode(), nil

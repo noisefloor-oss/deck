@@ -31,6 +31,7 @@ func NewHandler(m *Manager, sessions *Repository, projects *project.Repository, 
 // Mount registers the routes. handle and wrap are the server's registrar
 // and the auth middleware, exactly as the terminal handler takes them.
 func (h *Handler) Mount(handle func(pattern string, hd http.Handler), wrap func(http.Handler) http.Handler) {
+	handle("POST /api/sessions/{id}/attention/seen", wrap(http.HandlerFunc(h.AcknowledgeAttention)))
 	handle("GET /api/projects/{id}/sessions", wrap(http.HandlerFunc(h.List)))
 	handle("GET /api/session-activity/events", wrap(http.HandlerFunc(h.ActivityEvents)))
 	handle("GET /api/harness-usage", wrap(http.HandlerFunc(h.Usage)))
@@ -124,6 +125,11 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		h.err(w, http.StatusInternalServerError, "internal", "could not list sessions")
 		return
 	}
+	attention, err := h.sessions.ConversationAttention(r.Context(), projectID)
+	if err != nil {
+		h.err(w, http.StatusInternalServerError, "internal", "could not read conversation attention")
+		return
+	}
 	// The rows are reconciled against the panes before presentation.
 	// Observation uncertainty is projected explicitly instead of turning a
 	// passive list into a dead-end error.
@@ -135,6 +141,21 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	attentionByID := make(map[string]ConversationAttention, len(attention))
+	for _, fact := range attention {
+		attentionByID[fact.SessionID] = fact
+	}
+	for _, s := range sessions {
+		fact, ok := attentionByID[s.ID]
+		if !ok || fact.Generation != s.Generation || s.IdentityMarker == nil || s.NativeSessionID == nil || conversationKey(*s.IdentityMarker, *s.NativeSessionID) != fact.ContextKey {
+			continue
+		}
+		if s.PresentationState != PresentationRunning {
+			fact.State = "unknown"
+		}
+		s.ConversationAttention = &fact
+	}
+
 	h.json(w, http.StatusOK, sessions)
 }
 

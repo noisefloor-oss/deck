@@ -48,6 +48,12 @@ func repeatsFor(role string) ([]Repeat, error) {
 		return []Repeat{
 			{Path: sdlc, Format: "Claude on Sonnet (`%s`)", Count: 1},
 		}, nil
+	case RoleTertiary:
+		return []Repeat{
+			{Path: sdlc, Format: "Kimi (`%s`)", Count: 1},
+			{Path: sdlc, Format: "kimi --model %s --prompt", Count: 1},
+			{Path: sdlc, Format: "--reviewer-model    %s \\", Count: 1},
+		}, nil
 	case RoleSettleFallback:
 		return []Repeat{
 			// The in-repo half of the settle reviewer's model; the
@@ -108,7 +114,7 @@ const (
 	Ambiguous
 )
 
-func Discover(ctx context.Context, truth Truth, codexExec, claudeExec string, codex CatalogSource, claude MembershipProbe) (Plan, error) {
+func Discover(ctx context.Context, truth Truth, codexExec, claudeExec, kimiExec string, codex CatalogSource, claude MembershipProbe, kimi CatalogSource) (Plan, error) {
 	var codexCatalog []string
 	codexLoaded := false
 	plan := Plan{Statuses: []Status{}, Offers: []Offer{}}
@@ -153,6 +159,16 @@ func Discover(ctx context.Context, truth Truth, codexExec, claudeExec string, co
 				}
 			}
 			plan.Statuses = append(plan.Statuses, statusFor(role, pin, successor, note))
+		case "kimi":
+			catalog, err := kimi(ctx, kimiExec)
+			if err != nil {
+				return plan, fmt.Errorf("modelbump: %s: kimi catalog: %w", role, err)
+			}
+			successor, err := Successor(pin.Model, catalog)
+			if err != nil {
+				return plan, fmt.Errorf("modelbump: %s: %w", role, err)
+			}
+			plan.Statuses = append(plan.Statuses, statusFor(role, pin, successor, ""))
 		default:
 			return plan, fmt.Errorf("modelbump: %s: harness %q has no discovery source", role, pin.Harness)
 		}

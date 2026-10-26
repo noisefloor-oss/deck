@@ -118,3 +118,22 @@ for (const status of [200, 409]) test(`recovery proof response ${status} after e
     assert.equal(f.owned.everyday, undefined); assert.equal(f.admitted(), 0);
   } finally { f.close(); }
 });
+
+for (const status of ["refused", "unconfirmed"]) test(`lock outcome ${status} only permits retry after a definite clean refusal`, async () => {
+ const live = { ...state, phase: "ready", storage: "open", runtime: "running", onboarding: { ...state.onboarding, setupComplete: true } };
+ const f = fixture(async input => String(input).endsWith("/state") ? response(live) : response({ id: "lock-attempt", status, storage: "open", runtime: "running", locked: false }));
+ try {
+  const owned = f.controller as unknown as { pending?: { instanceId: string; id: string; operation: string }; observe(): Promise<void> };
+  owned.pending = { instanceId: "fixture", id: "lock-attempt", operation: "lock" };
+  await owned.observe();
+  if (status === "refused") {
+   assert.equal(owned.pending, undefined);
+   assert.match(f.root.innerHTML, /data-security-runtime="authorize-browser"/);
+   assert.match(f.root.innerHTML, /Locking did not start/);
+  } else {
+   assert.equal(owned.pending?.id, "lock-attempt");
+   assert.match(f.root.innerHTML, /data-security-runtime="lock-failed"/);
+  }
+  assert.equal(f.admitted(), 0);
+ } finally { f.close(); }
+});

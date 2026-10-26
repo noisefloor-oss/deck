@@ -1,25 +1,25 @@
 # syntax=docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e
 
-ARG NOISE_TASKS_REF=ec977155fee4d34ee863795a56209bda6efafcfc
-ARG NOISE_TASKS_VERSION=2.9.0
-ARG NOISE_VISUAL_DIFF_REF=72c44a0673c88c29b80766b85c4a0408fb84f679
-ARG NOISE_VISUAL_DIFF_VERSION=0.14.0
-ARG NOISE_SDLC_REF=5e71ef0fed8b67dd854147bbd298006fc1cf3f64
-ARG NOISE_SDLC_VERSION=0.4.0
+ARG NOISE_TASKS_REF=5961c31a5854670f96a64c83a5d8f917bb0889b7
+ARG NOISE_TASKS_VERSION=2.9.1
+ARG NOISE_VISUAL_DIFF_REF=9b5b0348791991f37e2cb5a4078f17ae55b7c644
+ARG NOISE_VISUAL_DIFF_VERSION=0.14.1
+ARG NOISE_SDLC_REF=abadbafa9f8a8fd3f41013efeb57e8ae55ecc9e2
+ARG NOISE_SDLC_VERSION=0.4.1
 
-ARG KIMI_VERSION=2.3.0
-ARG OPENCODE_VERSION=1.19.3
-ARG COMMAND_CODE_VERSION=1.87.1
+ARG KIMI_VERSION=2.3.2
+ARG OPENCODE_VERSION=1.19.4
+ARG COMMAND_CODE_VERSION=1.88.0
 ARG CLINE_VERSION=3.0.73
-ARG KILO_VERSION=7.8.15
-ARG QWEN_VERSION=0.26.0
-ARG CRUSH_VERSION=0.98.1
+ARG KILO_VERSION=7.8.17
+ARG QWEN_VERSION=0.26.1
+ARG CRUSH_VERSION=0.98.2
 
 # A local named context overrides this empty input stage when fonts are supplied.
 FROM scratch AS licensed-fonts
 COPY deploy/fonts-unsupplied /.no-licensed-fonts
 
-FROM node:26.5.0-bookworm-slim@sha256:2d49d876e96237d76de412761cf05dbfe5aee325cc4406a4d41d5824c5bb8beb AS web-build
+FROM node:26.12.1-bookworm-slim@sha256:28147155d47dc31abe0a46e0d12b59b2fb3d0a2dcc5dc65fce76a074180b16fe AS web-build
 
 WORKDIR /src/web
 RUN npm install --global pnpm@11.18.0 \
@@ -37,15 +37,60 @@ RUN --mount=type=bind,from=licensed-fonts,target=/run/noisedeck-fonts \
     && test -f dist/index.html \
     && ! find dist \( -name '*.map' -o -name 'preview.html' \) | grep -q .
 
+# Chrome security updates can arrive between Playwright releases. These
+# archives contain the fixed browser for each supported Linux architecture.
+FROM scratch AS chrome-amd64
+ADD --checksum=sha256:e6c94490f0b6b337225aeb2d2a5034858516b7017356980ba94f5176d8774a50 https://storage.googleapis.com/chrome-for-testing-public/156.0.8078.47/linux64/chrome-linux64.zip /chrome.zip
+
+FROM scratch AS chrome-arm64
+ADD --checksum=sha256:9e37000e3ee2731e45e475a6a2eac587d3c0ee5f8aef7cab5211ecd52cf3fb7b https://storage.googleapis.com/chrome-for-testing-public/156.0.8078.47/linux-arm64/chrome-linux-arm64.zip /chrome.zip
+
+FROM chrome-${TARGETARCH} AS chrome-archive
+
 # The upstream image contains browser binaries and system libraries, but
 # intentionally excludes the Playwright Node package. Reuse the exact package
 # installation resolved by web/pnpm-lock.yaml so a restart never fetches code
 # and the server cannot drift from the client.
-FROM mcr.microsoft.com/playwright:v1.62.1-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e AS browser
+FROM mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea AS browser
+
+# Remove the older bundled Chromium so it cannot be selected accidentally.
+COPY --from=chrome-archive /chrome.zip /tmp/chrome.zip
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends unzip \
+    && rm -rf /var/lib/apt/lists/* /ms-playwright/chromium* \
+    && unzip -q /tmp/chrome.zip -d /tmp/chrome \
+    && mkdir -p /opt/noise-browser \
+    && mv /tmp/chrome/chrome-* /opt/noise-browser/chrome \
+    && rm -rf /tmp/chrome /tmp/chrome.zip \
+    && test "$(/opt/noise-browser/chrome/chrome --version | awk '{print $NF}')" = "156.0.8078.47"
+
+# The G3 root signed the compromised eMudhra intermediates.
+RUN sed -i '\|^mozilla/emSign_ECC_Root_CA_-_G3.crt$|s|^|!|' /etc/ca-certificates.conf \
+    && update-ca-certificates --fresh \
+    && test ! -e /etc/ssl/certs/emSign_ECC_Root_CA_-_G3.pem
+
+# Chromium reads local distrust from NSS, independently of the OS CA bundle.
+COPY deploy/distrusted-emudhra-g3.crt /opt/noise-browser/distrusted-emudhra-g3.crt
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libnss3-tools \
+    && rm -rf /var/lib/apt/lists/* \
+    && test "$(openssl x509 -in /opt/noise-browser/distrusted-emudhra-g3.crt -outform DER | sha256sum | cut -d ' ' -f 1)" = "86a1ecba089c4a8d3bbe2734c612ba341d813e043cf9e8a862cd5c57a36bbe6b" \
+    && mkdir -p "/opt/noise-browser/nssdb" \
+    && certutil -N --empty-password -d "sql:/opt/noise-browser/nssdb" \
+    && certutil -A -d "sql:/opt/noise-browser/nssdb" -n emudhra-g3-distrusted -t "p,p,p" -i /opt/noise-browser/distrusted-emudhra-g3.crt \
+    && find "/opt/noise-browser/nssdb" -type f -exec chmod 0444 {} + \
+    && find "/opt/noise-browser/nssdb" -type d -exec chmod 0555 {} +
+
+COPY deploy/assert-tls-roots.mjs /tmp/assert-tls-roots.mjs
+RUN node /tmp/assert-tls-roots.mjs && rm /tmp/assert-tls-roots.mjs
 
 COPY --from=web-build /src/web/node_modules /opt/noise-browser/node_modules
+COPY --chmod=0555 deploy/browser-entrypoint.sh /opt/noise-browser/entrypoint.sh
+ENTRYPOINT ["/opt/noise-browser/entrypoint.sh"]
 COPY deploy/browser-server.mjs /opt/noise-browser/server.mjs
-RUN test "$(node -p "require('/opt/noise-browser/node_modules/playwright/package.json').version")" = "1.62.1" \
+COPY deploy/browser-versions.json /opt/noise-browser/browser-versions.json
+RUN test "$(node --version)" = "v24.22.1" \
+    && test "$(node -p "require('/opt/noise-browser/node_modules/playwright/package.json').version")" = "1.64.1" \
     && node --check /opt/noise-browser/server.mjs \
     && chmod 0555 /opt/noise-browser/server.mjs
 
@@ -131,13 +176,20 @@ RUN --mount=type=secret,id=github_token \
       -o /out/usr/local/libexec/noise/noise-sdlc ./cmd/noise-sdlc \
     && test "$(/out/usr/local/libexec/noise/noise-sdlc --version)" = "${NOISE_SDLC_VERSION}"
 
-FROM node:24.18.1-bookworm@sha256:19cd848a0e073d34bd8cd5545a1b6b4d28489b3e3b607366621ced442bd5f6b4 AS noise-visual-diff-build
+FROM golang:1.26.10-bookworm@sha256:ee3901c61e423732605a51f1b8157c849ec01194ea0a274213b5202b2c11e7bf AS visual-diff-go
+
+FROM node:24.22.1-bookworm@sha256:6449e19d8184d84062525b6a7524def03146c2cb04a7f08b076680d0e8e4240a AS noise-visual-diff-build
+
+# The SDK supports Visual Diff's anchored file-server helper.
+# Keep the SDK in this build stage; only the resulting SEA enters runtime.
+COPY --from=visual-diff-go /usr/local/go/ /usr/local/go/
+ENV PATH="/usr/local/go/bin:${PATH}"
 
 # The design-fidelity tool is packaged from an exact reviewed revision, same
 # contract as noise-tasks above. The revision is the commit the release tag
 # points at; the ref and version gates below are what bind it. Its SEA build
 # postjects the stage's own Node binary, so the base image must equal the
-# tool's pinned .nvmrc (24.18.1); the multi-arch base yields per-arch payloads
+# patched Node 24 runtime; the multi-arch base yields per-arch payloads
 # for free.
 ARG NOISE_VISUAL_DIFF_REPO=https://github.com/noisefloor-oss/visual-diff.git
 ARG NOISE_VISUAL_DIFF_REF
@@ -194,7 +246,7 @@ RUN set -eu; \
     test "$(/out/usr/local/bin/tmux -V)" = "tmux ${TMUX_VERSION}"
 
 # Install the large npm harness bundle while Deck and Noise tools compile.
-FROM node:26.5.0-bookworm-slim@sha256:2d49d876e96237d76de412761cf05dbfe5aee325cc4406a4d41d5824c5bb8beb AS npm-harnesses
+FROM node:26.12.1-bookworm-slim@sha256:28147155d47dc31abe0a46e0d12b59b2fb3d0a2dcc5dc65fce76a074180b16fe AS npm-harnesses
 
 ARG TARGETARCH
 ARG KIMI_VERSION
@@ -266,7 +318,7 @@ RUN --mount=type=cache,target=/root/.npm,sharing=locked \
 
 # Shared Deck runtime, utilities, and Noise tools. Go remains a build
 # dependency; optional runtime toolchains use derived images.
-FROM node:26.5.0-bookworm-slim@sha256:2d49d876e96237d76de412761cf05dbfe5aee325cc4406a4d41d5824c5bb8beb AS core
+FROM node:26.12.1-bookworm-slim@sha256:28147155d47dc31abe0a46e0d12b59b2fb3d0a2dcc5dc65fce76a074180b16fe AS core
 
 ARG NOISE_TASKS_VERSION
 ARG NOISE_VISUAL_DIFF_VERSION
@@ -309,6 +361,14 @@ RUN apt-get update \
     && command -v jq \
     && ps -p $$ -o pid= >/dev/null \
     && rm -rf /var/lib/apt/lists/*
+
+# The G3 root signed the compromised eMudhra intermediates.
+RUN sed -i '\|^mozilla/emSign_ECC_Root_CA_-_G3.crt$|s|^|!|' /etc/ca-certificates.conf \
+    && update-ca-certificates --fresh \
+    && test ! -e /etc/ssl/certs/emSign_ECC_Root_CA_-_G3.pem
+
+COPY deploy/assert-tls-roots.mjs /tmp/assert-tls-roots.mjs
+RUN node /tmp/assert-tls-roots.mjs && rm /tmp/assert-tls-roots.mjs
 
 COPY --from=tmux-build --chmod=0555 /out/usr/local/bin/tmux /usr/local/bin/tmux
 RUN test "$(tmux -V)" = "tmux 3.6a"
@@ -472,9 +532,9 @@ FROM core AS slim
 ARG TARGETARCH
 ARG NOISEDECK_RUNTIME_UID=1026
 ARG NOISEDECK_RUNTIME_GID=100
-ARG CLAUDE_CODE_VERSION=2.1.308
-ARG CLAUDE_BINARY_SHA256_AMD64=356733f185fa988e6bf3aa9a555269fdd167982a2e2a80d3c8a78037bb92ad58
-ARG CLAUDE_BINARY_SHA256_ARM64=fdd22e6cbb734d580f5664c48df4294eeec850218ff07f186f9af30426396ee1
+ARG CLAUDE_CODE_VERSION=2.1.310
+ARG CLAUDE_BINARY_SHA256_AMD64=b73676430af12f97316a798b8371f81d640f90a58bdcb8f3ce56a835bb47df56
+ARG CLAUDE_BINARY_SHA256_ARM64=9c64d9a7442436b65fcd7cc02c1aa0051bb5a7041e7788576ed3b5f29c447d54
 # These are the exact artifacts shipped by the image. Each descriptor's
 # comments record the last behavioral measurement for that provider, which is
 # not always the version pinned here.
@@ -547,18 +607,18 @@ ARG CLINE_VERSION
 ARG KILO_VERSION
 ARG QWEN_VERSION
 ARG MIMO_VERSION=0.1.15
-ARG QODER_VERSION=1.1.76
-ARG CURSOR_AGENT_VERSION=2026.10.19-6bbf2c4
-ARG CURSOR_AGENT_SHA256_AMD64=cf80cc18d8b33bf33e762353977ca1868cfc45290c92c0ffdcef83bb8b37b44f
-ARG CURSOR_AGENT_SHA256_ARM64=71a90f12a8b8183a71442b7ed4037bddc1a0f88114ec4fb9ec92782acb8e7d84
-ARG GROK_VERSION=1.0.67
+ARG QODER_VERSION=1.1.78
+ARG CURSOR_AGENT_VERSION=2026.10.22-27dcf5f
+ARG CURSOR_AGENT_SHA256_AMD64=85296944e4600a83c4b764f578d1502bf9c416db200d33a593e8f3ecabfdc294
+ARG CURSOR_AGENT_SHA256_ARM64=22a36df9720830668ccd4d707e5190204ab9c8a0efb2f068cc914895f804d3ec
+ARG GROK_VERSION=1.0.70
 ARG BUN_VERSION=1.3.14
 ARG OMP_VERSION=18.12.6
 ARG CRUSH_VERSION
 ARG PI_VERSION=1.4.0
-ARG DEVIN_VERSION=3000.11.92
-ARG DEVIN_SHA256_AMD64=2d829139682e038cf122510f1170eee3d7060bcc7ebf92445cbc5d28c9fbcfa0
-ARG DEVIN_SHA256_ARM64=881e83b0df06dd57a307004e299407c2c3745f288546e0a339a67fbebe7cb6c0
+ARG DEVIN_VERSION=3000.11.205
+ARG DEVIN_SHA256_AMD64=2e65c8b93682258fc91f5e4cead92e3698338cebf1b31dbc32a3201cb63705c4
+ARG DEVIN_SHA256_ARM64=a9b10d318319439446eb5204b0d147cac01cb0a639c77f8740de73206a3181a5
 
 USER root
 ENV HOME=/root
@@ -773,7 +833,7 @@ USER ${NOISEDECK_RUNTIME_UID}:${NOISEDECK_RUNTIME_GID}
 # inherit the Deck server, Tasks engine, application healthcheck, or build
 # toolchain. Provider artifacts are added by a separately pinned profile image;
 # the trusted materializer supplies its exact argv and environment.
-FROM node:26.5.0-bookworm-slim@sha256:2d49d876e96237d76de412761cf05dbfe5aee325cc4406a4d41d5824c5bb8beb AS task-workload-substrate
+FROM node:26.12.1-bookworm-slim@sha256:28147155d47dc31abe0a46e0d12b59b2fb3d0a2dcc5dc65fce76a074180b16fe AS task-workload-substrate
 
 ARG NOISEDECK_TASK_UID=1026
 ARG NOISEDECK_TASK_GID=100
@@ -786,6 +846,14 @@ RUN apt-get update \
     && if [ -z "${existing_user}" ]; then useradd --uid "${NOISEDECK_TASK_UID}" --gid "${NOISEDECK_TASK_GID}" --home-dir /home/agent --no-create-home --shell /bin/bash task-agent; else usermod --login task-agent --home /home/agent --gid "${NOISEDECK_TASK_GID}" --shell /bin/bash "${existing_user}"; fi \
     && install -d -m 0700 -o "${NOISEDECK_TASK_UID}" -g "${NOISEDECK_TASK_GID}" /home/agent /run/noisedeck \
     && install -d -m 1777 /tmp
+
+# The G3 root signed the compromised eMudhra intermediates.
+RUN sed -i '\|^mozilla/emSign_ECC_Root_CA_-_G3.crt$|s|^|!|' /etc/ca-certificates.conf \
+    && update-ca-certificates --fresh \
+    && test ! -e /etc/ssl/certs/emSign_ECC_Root_CA_-_G3.pem
+
+COPY deploy/assert-tls-roots.mjs /tmp/assert-tls-roots.mjs
+RUN node /tmp/assert-tls-roots.mjs && rm /tmp/assert-tls-roots.mjs
 
 ENV HOME=/home/agent
 HEALTHCHECK NONE
@@ -803,13 +871,14 @@ CMD []
 FROM runtime AS mempalace
 ARG NOISEDECK_RUNTIME_UID=1026
 ARG NOISEDECK_RUNTIME_GID=100
-ARG UV_VERSION=0.8.15
+ARG UV_VERSION=0.13.5
 ARG MEMPALACE_VERSION=3.10.0
 # MemPalace PR 2631 (rowid-ordered page scans with early termination and
 # compact tool replies) until it lands in a release: the logstream read
 # hot path is 3x faster at every page size. The version below is what the
 # pinned commit still reports, and the readiness checks assert it.
 ARG MEMPALACE_COMMIT=bb01fd8c00bf5890111b67fd7783fddb48c5dcbe
+COPY deploy/mempalace/security-uv.lock /tmp/security-uv.lock
 USER root
 RUN apt-get update \
     && apt-get install -y --no-install-recommends python3 python3-venv python3-nacl \
@@ -821,14 +890,20 @@ RUN apt-get update \
     && git -C /tmp/mempalace-src fetch --depth 1 origin refs/pull/2631/head \
     && git -C /tmp/mempalace-src checkout --detach FETCH_HEAD \
     && test "$(git -C /tmp/mempalace-src rev-parse HEAD)" = "${MEMPALACE_COMMIT}" \
+    && cp /tmp/security-uv.lock /tmp/mempalace-src/uv.lock \
     && UV_PROJECT_ENVIRONMENT=/opt/mempalace/venv \
-      /tmp/mempalace-uv/bin/uv sync --project /tmp/mempalace-src --python /usr/bin/python3 --frozen --no-dev --no-editable \
+      /tmp/mempalace-uv/bin/uv sync --project /tmp/mempalace-src --python /usr/bin/python3 --locked --no-dev --no-editable \
     && install -d /opt/mempalace/skills /opt/mempalace/hooks \
     && ln -s /opt/mempalace/venv/bin/mempalace /usr/local/bin/mempalace \
     && ln -s /opt/mempalace/venv/bin/mempalace-mcp /usr/local/bin/mempalace-mcp \
-    && rm -rf /tmp/mempalace-uv /tmp/mempalace-src /root/.cache/uv /home/agent/.cache \
+    && rm -rf /tmp/security-uv.lock /tmp/mempalace-uv /tmp/mempalace-src /root/.cache/uv /home/agent/.cache \
     && install -d -m 0700 -o "${NOISEDECK_RUNTIME_UID}" -g "${NOISEDECK_RUNTIME_GID}" /home/agent/.cache \
     && test "$(mempalace --version)" = "MemPalace ${MEMPALACE_VERSION}"
+# Python clients use the same patched trust store as system TLS clients.
+RUN ca_bundle="$(/opt/mempalace/venv/bin/python -c 'import certifi; print(certifi.where())')" \
+    && ln -sf /etc/ssl/certs/ca-certificates.crt "${ca_bundle}" \
+    && /opt/mempalace/venv/bin/python -c "import certifi, ssl; assert not any(value == 'emSign ECC Root CA - G3' for cert in ssl.create_default_context(cafile=certifi.where()).get_ca_certs() for rdn in cert['subject'] for key, value in rdn)"
+
 COPY deploy/mempalace/skills/ /opt/mempalace/skills/
 COPY deploy/mempalace/hook_forwarder.py /usr/local/lib/noisedeck/mempalace-hook-forwarder.py
 COPY deploy/mempalace/hooks/ /opt/mempalace/hooks/

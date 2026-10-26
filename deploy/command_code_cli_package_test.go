@@ -13,7 +13,7 @@ func TestDockerfilePinsCommandCodeCLI(t *testing.T) {
 	}
 	dockerfile := string(raw)
 	for _, required := range []string{
-		"ARG COMMAND_CODE_VERSION=1.87.1",
+		"ARG COMMAND_CODE_VERSION=1.88.0",
 		`"command-code@${COMMAND_CODE_VERSION}"`,
 		`test "$(command-code --no-auto-update --version)" = "${COMMAND_CODE_VERSION}"`,
 		"command-code --no-auto-update --help",

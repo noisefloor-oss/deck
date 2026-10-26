@@ -14,6 +14,12 @@ test("the licensed sheet declares the three licensed families and nothing free",
   assert.doesNotMatch(licensed, /\/fonts\/free\//);
 });
 
+test("every licensed @font-face blocks rather than swaps", () => {
+  const faces = licensed.match(/@font-face\s*\{[^}]*\}/g) ?? [];
+  assert.ok(faces.length > 0);
+  for (const face of faces) assert.match(face, /font-display:\s*block/, face.slice(0, 80));
+});
+
 test("the licensed sheet re-states the stacks with its families first", () => {
   const root = /:root\s*\{([^}]*)\}/.exec(licensed)?.[1] ?? "";
   assert.match(root, /--font-ui:\s*"Euclid Flex"/);

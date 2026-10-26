@@ -1,7 +1,8 @@
-// agentHandle is a session's a2a handle, derived the way the server and the
-// client derive it (internal/chats.Handle, deploy/a2a/a2a.py): the harness
-// name and the first four characters of the session id. A harness a2a does
-// not know has no handle, and so no chats.
+// agentHandle is a session's a2a handle, derived the way the server and
+// the client derive it (internal/chats.Handle): the harness name and the
+// first four characters of the session id. The rule is frozen as the a2a
+// consumer contract (docs/CONTRACT.md in the a2a repository); a harness
+// outside its set has no handle, and so no chats.
 const HARNESS: Record<string, string> = {
   claude: "claude",
   codex: "codex",

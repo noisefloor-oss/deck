@@ -8,8 +8,8 @@ import (
 
 // The contracts below were measured against Pi 0.84.2.
 
-// PiDescriptor launches the maintained Pi coding agent against the user's
-// Z.ai Coding Plan. Pi allocates its own UUIDv7 session id and reports it
+// PiDescriptor launches the maintained Pi coding agent with its native
+// provider and model settings. Pi allocates its own UUIDv7 session id and reports it
 // through an extension hook rather than accepting one at launch, so its
 // IdentityContract is IdentityRetrieved, like omp and opencode.
 //
@@ -95,7 +95,8 @@ func (p *PiDescriptor) Availability() error { return nil }
 // controls argv, so it does not depend on pi's extension discovery.
 //
 // Deck selects no model or reasoning level — whatever the provider itself
-// resolves is authoritative. Deck binds only the Z.ai account.
+// resolves is authoritative. Pi 1.4 requires --model with --provider, so
+// neither selector belongs in the launch arguments.
 func (p *PiDescriptor) NewSessionArgs(spec LaunchSpec) ([]string, error) {
 	if spec.SessionID != "" {
 		return nil, fmt.Errorf(
@@ -105,7 +106,6 @@ func (p *PiDescriptor) NewSessionArgs(spec LaunchSpec) ([]string, error) {
 	}
 	argv := []string{
 		p.execPath,
-		"--provider", "zai",
 		"--extension", p.hookPath,
 	}
 	if spec.SkipPermissions {
@@ -135,7 +135,6 @@ func (p *PiDescriptor) ResumeSessionArgs(spec ResumeSpec) ([]string, error) {
 	// Deck selects no model or reasoning level on this path either.
 	argv := []string{
 		p.execPath,
-		"--provider", "zai",
 		"--session", id,
 	}
 	if spec.SkipPermissions {

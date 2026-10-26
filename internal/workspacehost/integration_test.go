@@ -101,6 +101,9 @@ func (n *assemblyNative) Lock(ctx context.Context, id string, prepare func(conte
 		status = "succeeded"
 	}
 	op := workspaceruntime.Operation{ID: id, Kind: "lock", Status: status, State: n.state}
+	if errors.Is(err, workspaceruntime.ErrLockRefused) {
+		op.Status, op.Code = "failed", "lock-preparation-refused"
+	}
 	n.ops[id] = op
 	return op, err
 }
@@ -562,7 +565,7 @@ func TestAssemblyExplicitLockUsesPrivatePreparationAndRevokesStreams(t *testing.
 	connection, events := b.websocket(), b.events()
 	defer events.Body.Close()
 	before := f.backendHits.Load()
-	for _, path := range []string{"/api/internal/workspace/prepare-lock", "/api/%69nternal/workspace/prepare-lock", "/api/internal%2fworkspace/prepare-lock", "/api/hooks/capture"} {
+	for _, path := range []string{"/api/internal/workspace/prepare-lock", "/api/%69nternal/workspace/prepare-lock", "/api/internal%2fworkspace/prepare-lock", "/api/hooks/capture", "/api/hooks/conversation"} {
 		b.call("POST", path, nil, 404, nil)
 	}
 	if f.backendHits.Load() != before || f.prepareHits.Load() != 0 {
@@ -577,6 +580,59 @@ func TestAssemblyExplicitLockUsesPrivatePreparationAndRevokesStreams(t *testing.
 		t.Fatal("lock did not pass through authenticated preparation and closure")
 	}
 	b.call("GET", "/api/sessions", nil, 403, nil)
+}
+
+func TestAssemblyCleanLockRefusalAllowsFreshProof(t *testing.T) {
+	f := newAssembly(t)
+	b := f.browser("a")
+	method := f.initialize(b)
+	f.prepareStatus.Store(http.StatusUnprocessableEntity)
+	first := b.prove(method, workspacekeys.Action{Operation: workspacekeys.Lock, Method: method.ref}, nil, 202)
+	var status workspacegateway.OperationState
+	b.call("GET", "/api/security/v1/operations/"+first, nil, 200, &status)
+	if status.Status != "refused" || status.Locked || status.Runtime != "running" {
+		t.Fatalf("clean refusal: %+v", status)
+	}
+	b.call("GET", "/api/sessions", nil, 403, nil)
+	b.prove(method, workspacekeys.Action{Operation: workspacekeys.AuthorizeBrowser, Method: method.ref}, nil, 200)
+	b.call("GET", "/api/sessions", nil, 200, nil)
+	f.prepareStatus.Store(http.StatusNoContent)
+	second := b.prove(method, workspacekeys.Action{Operation: workspacekeys.Lock, Method: method.ref}, nil, 200)
+	if second == first {
+		t.Fatal("retry reused a consumed lock proof")
+	}
+}
+
+func TestPrivateLockTransportDistinguishesCleanRefusal(t *testing.T) {
+	f := newAssembly(t)
+	b := f.browser("a")
+	f.initialize(b)
+	request := b.request(http.MethodPost, "/", nil)
+	var ownerCookie string
+	for _, cookie := range request.Cookies() {
+		if cookie.Name == "__Host-noisedeck_session" {
+			ownerCookie = cookie.Value
+		}
+	}
+	ctx := context.WithValue(context.Background(), privateRequestKey{}, privateRequest{session: ownerCookie, csrf: request.Header.Get(auth.CSRFHeader)})
+	// The production private transport authenticates the owner cookie and carries
+	// only the explicit preparation request. The fixture returns reviewed outcomes.
+	for _, tc := range []struct {
+		status int
+		want   error
+	}{
+		{http.StatusUnprocessableEntity, workspaceruntime.ErrLockRefused},
+		{http.StatusServiceUnavailable, ErrUnavailable},
+		{http.StatusNoContent, nil},
+	} {
+		f.prepareStatus.Store(int32(tc.status))
+		// Preparation requires browser grants to have been revoked before dispatch.
+		_, err := f.h.db.Exec(`DELETE FROM workspacegrants_grants`)
+		requireOK(t, err)
+		if err := f.h.prepareLock(ctx); !errors.Is(err, tc.want) {
+			t.Fatalf("status %d mapped to %v, want %v", tc.status, err, tc.want)
+		}
+	}
 }
 
 func TestAssemblyRefusesRedirectedPreparationAndMissingUnixBackend(t *testing.T) {

@@ -22,10 +22,13 @@ export function workspaceLayout(): string {
       <!-- The content row: [sidebar | main | right panel]. It is a row
            inside the shell's column flex, so the info bar sits below it
            as the last row. -->
-      <div class="flex min-h-0 flex-1 items-stretch overflow-hidden">
+      <div class="relative flex min-h-0 flex-1 items-stretch overflow-hidden">
         <aside data-region="sidebar"
           class="flex h-full w-(--sidebar-w) flex-none flex-col overflow-hidden border-r border-border bg-sidebar-surface max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-30 max-md:w-[min(86vw,var(--sidebar-w))]">
         </aside>
+        <div data-sidebar-resize role="separator" aria-orientation="vertical" aria-label="Resize sidebar"
+          title="Drag to resize. Use Left or Right, Home or End. Press Enter or double-click to reset."
+          tabindex="0" class="sidebar-resize"></div>
         <!-- The mobile sidebar overlays rather than compressing: as a flex
              sibling it left the terminal 118px of a 390px viewport. The
              scrim dismisses it and exists only while it is open. -->
@@ -71,10 +74,12 @@ export function workspaceLayout(): string {
                reclaims the same space beside the terminal. -->
           <aside data-region="files" aria-label="Files" aria-hidden="true" inert
             class="flex h-full flex-none flex-col overflow-hidden border-l border-border-strong bg-surface"
-            data-open="false"><div data-region="files-body" class="flex min-h-0 flex-1 flex-col overflow-hidden"></div></aside>
+            data-open="false"><div data-panel-resize="files" role="separator" tabindex="-1" aria-orientation="vertical"
+              aria-label="Resize Files panel" hidden class="absolute left-0 top-0 z-10 h-full w-2 cursor-col-resize"></div><div data-region="files-body" class="flex min-h-0 flex-1 flex-col overflow-hidden"></div></aside>
           <aside data-region="tasks" aria-label="Project tasks" aria-hidden="true" inert
             class="flex h-full flex-none flex-col overflow-hidden border-l border-border-strong bg-surface"
-            data-open="false"><div data-region="tasks-body" class="flex min-h-0 flex-1 flex-col overflow-hidden"></div></aside>
+            data-open="false"><div data-panel-resize="tasks" role="separator" tabindex="-1" aria-orientation="vertical"
+              aria-label="Resize Project tasks panel" hidden class="absolute left-0 top-0 z-10 h-full w-2 cursor-col-resize"></div><div data-region="tasks-body" class="flex min-h-0 flex-1 flex-col overflow-hidden"></div></aside>
           <aside data-region="chats" aria-label="Chats" aria-hidden="true" inert
             class="flex h-full flex-none flex-col overflow-hidden border-l border-border-strong bg-surface"
             data-open="false"><div data-region="chats-body" class="flex min-h-0 flex-1 flex-col overflow-hidden"></div></aside>
@@ -91,6 +96,7 @@ export function workspaceLayout(): string {
            this region carries the geometry. -->
       <footer data-region="info-bar" class="chrome chrome-bottom">
         <span class="chrome-status min-w-0 overflow-hidden text-ellipsis whitespace-nowrap" data-info-status></span>
+        <span data-release-notice role="status" hidden class="ml-auto flex self-stretch flex-none items-center gap-2 whitespace-nowrap text-caption text-text-secondary"></span>
       </footer>
       <!-- Dialogs own the top of the stack: the modals host sits above the
            popover host so a dialog never renders beneath a menu. -->

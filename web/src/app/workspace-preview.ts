@@ -328,13 +328,19 @@ if (emptyState === null) {
 // not live. The terminal itself is static fixture output,
 // so the soft keys and compose are wired to no-op handlers; only the visual
 // anatomy and a11y labels matter here.
+let previewSoftKeys: MobileTerminalSoftKeys | null = null;
 function mountPreviewMobileDock(live: boolean): void {
+  previewSoftKeys?.dispose();
   // The same condition the live app mounts on, and the one app.css paints the
   // dock at. A phone frame drawn inside a wide review page is below the
   // boundary in its own box but not in the viewport the query reads, and
   // mounting there would put a strip of keys in the a11y tree with nothing on
   // screen.
-  if (!window.matchMedia("(max-width: 600px)").matches) return;
+  if (!window.matchMedia("(max-width: 600px)").matches) {
+    region(root, "terminal-compose").innerHTML = "";
+    region(root, "terminal-dock").removeAttribute("data-dock-mounted");
+    return;
+  }
   const status = region(root, "terminal-status");
   status.innerHTML = `
     <span aria-hidden="true" class="text-(--color-console-accent)">▶▶</span>
@@ -343,7 +349,8 @@ function mountPreviewMobileDock(live: boolean): void {
   // The same receiver the live app binds a recovery strip to. A fixture that
   // builds its own describes chrome the app does not have.
   const softKeys = new MobileTerminalSoftKeys(region(root, "terminal-soft-keys"), inertSoftKeyTerminal());
-  region(root, "terminal-dock").toggleAttribute("data-dock-mounted", true);
+  previewSoftKeys = softKeys;
+  region(root, "terminal-dock").setAttribute("data-dock-mounted", live ? "live" : "recovery");
   // The screenshot fixture pops the arrow pad on the phone's primary screens,
   // matching the reference; the live app keeps it closed until
   // you ask. The pad is presentation, so a session that is not live
@@ -377,19 +384,31 @@ function mountPreviewMobileDock(live: boolean): void {
   }
   const composeHost = region(root, "terminal-compose");
   composeHost.innerHTML = mobileComposeMarkup();
-  const compose = new MobileTerminalCompose({ paste: () => {}, sendInput: () => {} });
+  const compose = new MobileTerminalCompose({
+    paste: () => {},
+    sendInput: () => {},
+    trackWrite: (send, done) => {
+      send();
+      done("sent", "");
+      return true;
+    },
+  });
   const input = composeHost.querySelector<HTMLTextAreaElement>("[data-mobile-compose-input]")!;
   const form = composeHost.querySelector<HTMLFormElement>("[data-mobile-compose-form]")!;
+  const send = (): void => {
+    const snapshot = input.value;
+    compose.flush(snapshot, (code) => {
+      if (code === "sent" && input.value === snapshot) input.value = "";
+    });
+  };
   input.addEventListener("beforeinput", (event) => {
     if (!isComposeSubmitIntent((event as InputEvent).inputType)) return;
     event.preventDefault();
-    compose.flush(input.value);
-    input.value = "";
+    send();
   });
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    compose.flush(input.value);
-    input.value = "";
+    send();
     input.focus();
   });
   popArrowPad(() => input.focus());
@@ -509,6 +528,11 @@ const assetsModel = new AssetsPanelModel(api, fixtureProject.id, {
 });
 const assets = new AssetsPanel(region(root, "assets-body"), assetsModel, {
   onClose: () => { panels.close(); focusPanelTrigger(root, "titlebar", "assets"); },
+  onOpen: (entry) => {
+    panels.set("files");
+    const opening = entry.kind === "dir" ? filesModel.openDirectory(entry.path) : filesModel.openFile(entry.path);
+    void opening.then(() => files.render());
+  },
   modals: () => root.querySelector<HTMLElement>('[data-region="modals"]'),
   imageUrl: (path) => api.projectFileImageUrl(fixtureProject.id, path),
 });

@@ -71,22 +71,26 @@ const LINES = Array.from({ length: 24 }, (_, i) => `line-${String(i).padStart(2,
 let browser;
 try {
   ({ browser } = await getBrowser());
-  await run();
+  await run("windows");
+  await run("mac");
   console.log("terminal menu probe: all assertions passed");
 } finally {
   await browser?.close();
   await new Promise((closed) => server.close(closed));
 }
 
-async function run() {
+// The mac pass stops after the right-click menu: xterm reads the platform at
+// load, and on macOS it would select the word under a right-click unless
+// told not to. The keyboard chords that follow are Windows chords.
+async function run(platform) {
   const context = await browser.newContext({
     viewport: { width: 1280, height: 800 },
     permissions: ["clipboard-read", "clipboard-write"],
   });
-  await context.addInitScript(() => {
-    Object.defineProperty(navigator, "userAgentData", { value: { platform: "Windows" } });
-    Object.defineProperty(navigator, "platform", { value: "Win32" });
-  });
+  await context.addInitScript((mac) => {
+    Object.defineProperty(navigator, "userAgentData", { value: { platform: mac ? "macOS" : "Windows" } });
+    Object.defineProperty(navigator, "platform", { value: mac ? "MacIntel" : "Win32" });
+  }, platform === "mac");
   await context.addCookies([{ name: "noisedeck_csrf", value: "cookie-csrf", url: origin }]);
   const page = await context.newPage();
   const loginRequests = [];
@@ -193,18 +197,22 @@ async function run() {
 
   const frames = [];
   let socket;
+  let emitOutput = null;
   await page.routeWebSocket(`${origin.replace("http", "ws")}/api/sessions/*/terminal?*`, (peer) => {
+    emitOutput = (data) => peer.send(JSON.stringify({ type: "output", data: Buffer.from(data).toString("base64") }));
     socket = peer;
     peer.onMessage((message) => {
       if (typeof message === "string") frames.push(JSON.parse(message));
     });
     peer.send(JSON.stringify({ type: "attached", token: 7, generation: 1 }));
-    // The application turns bracketed paste on, as every modern CLI does.
-    // What arrives as a paste and what arrives as typing are then two
-    // different things to it, and the probe can tell which one the menu sent.
+    // The application turns bracketed paste on, as every modern CLI does,
+    // and asks for mouse reports in SGR encoding, as a TUI harness does:
+    // what arrives as a paste, what arrives as typing, and what arrives as
+    // mouse bytes are then three different things to it, and the probe can
+    // tell which of the three a gesture became.
     peer.send(JSON.stringify({
       type: "output",
-      data: Buffer.from(`\u001b[?2004h${LINES.join("\r\n")}\r\n`).toString("base64"),
+      data: Buffer.from(`\u001b[?2004h\u001b[?1000h\u001b[?1006h${LINES.join("\r\n")}\r\n`).toString("base64"),
     }));
   });
 
@@ -278,19 +286,56 @@ async function run() {
     assert.ok(copiedScreen.includes(line), `the copied screen is missing ${line}`);
   }
 
-  // 4. With a selection, Copy takes the selection and says so. The drag is
-  // the user's own gesture over the cell grid; nothing on the page
-  // exposes xterm's selection, so the copied text is the measurement.
-  await page.mouse.move(box.x + 8, box.y + 8);
-  await page.mouse.down();
-  await page.mouse.move(box.x + 120, box.y + 8, { steps: 8 });
-  await page.mouse.up();
+  // 4. The application tracks the mouse, so an ordinary drag is reported to
+  // it and selects nothing: the menu still says it would copy the screen.
+  // That is the defect Select text exists for, seen from both sides.
+  const dragOverFirstLine = async () => {
+    await page.mouse.move(box.x + 8, box.y + 8);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 120, box.y + 8, { steps: 8 });
+    await page.mouse.up();
+  };
+  // Mouse reports ride the terminal's reply channel, not the input channel:
+  // an SGR sequence beginning \u001b[< is the application seeing the mouse.
+  const mouseFrames = (from) => frames.slice(from).filter((frame) =>
+    frame.type === "reply" && Buffer.from(frame.data, "base64").toString().startsWith("\u001b[<"));
+  const inputFrames = (from) => frames.slice(from).filter((frame) => frame.type === "input");
+  const dragStart = frames.length;
+  await dragOverFirstLine();
+  await waitFor(() => mouseFrames(dragStart).length > 0, "the drag was reported to the application");
+  await screen.click({ button: "right", position: { x: 200, y: 300 } });
+  await menu.waitFor();
+  assert.equal(
+    await menu.locator("[data-terminal-menu-copy]").innerText(),
+    "Copy screen",
+    "a drag under mouse capture made no selection the browser could copy",
+  );
+
+  // 5. Select text routes the drag to the browser: the same plain drag now
+  // selects, nothing mouse-shaped reaches the application for it, the pane
+  // carries the chip that says so, and clicking the chip hands the mouse
+  // back to the application.
+  await menu.locator("[data-terminal-menu-select]").click();
+  await menu.waitFor({ state: "detached" });
+  const chip = page.locator("[data-live-select-text]");
+  await chip.waitFor();
+  assert.equal(
+    await chip.getAttribute("aria-pressed"),
+    "true",
+    "the pane shows the session routes drags to the browser",
+  );
+  const selectDragStart = frames.length;
+  await dragOverFirstLine();
+  assert.ok(
+    inputFrames(selectDragStart).length === 0 && mouseFrames(selectDragStart).length === 0,
+    `the select-text drag still reached the application: ${JSON.stringify(frames.slice(selectDragStart))}`,
+  );
   await screen.click({ button: "right", position: { x: 200, y: 300 } });
   await menu.waitFor();
   assert.equal(
     await menu.locator("[data-terminal-menu-copy]").innerText(),
     "Copy",
-    "a selection must not be labelled as a screen copy",
+    "with select text on, the plain drag must have made a selection",
   );
   await menu.locator("[data-terminal-menu-copy]").click();
   await menu.waitFor({ state: "detached" });
@@ -304,6 +349,21 @@ async function run() {
     !copiedSelection.includes(LINES[1]),
     "the selection copy took the screen instead of the dragged cells",
   );
+  await chip.click();
+  await chip.waitFor({ state: "hidden" });
+  const offDragStart = frames.length;
+  await dragOverFirstLine();
+  await waitFor(() => mouseFrames(offDragStart).length > 0, "turning select text off restores mouse reporting");
+
+  // 6. The chord checks need the plain buffer back: the application turns
+  // mouse reporting off, and an ordinary drag selects natively again.
+  emitOutput("\u001b[?1000l\u001b[?1006l");
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  await dragOverFirstLine();
+  if (platform === "mac") {
+    await context.close();
+    return;
+  }
 
   // Windows native copy must not also send an interrupt to the session.
   await page.evaluate(() => navigator.clipboard.writeText("before-control-copy"));

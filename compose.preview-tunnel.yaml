@@ -1,7 +1,7 @@
 # Opt-in ingress only; DNS administration credentials never enter the app.
 services:
   preview-tunnel:
-    image: cloudflare/cloudflared@sha256:0aa26e284f05e6c77ae375b8c9c11d9eb6a448fb7bcd8d40f31cb6176189eb38
+    image: cloudflare/cloudflared@sha256:faa8e0a1475f137c910be6025f43c8e4092fdd35461b31e19fd1390657a1ff39
     network_mode: service:app
     depends_on:
       app:

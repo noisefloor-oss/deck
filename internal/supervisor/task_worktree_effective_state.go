@@ -276,7 +276,7 @@ var taskWorktreeMountVector = []TaskWorktreeMountRole{
 }
 
 var taskWorktreeConfigEnv = []string{
-	"HOME=/home/agent", "PATH=/usr/local/bin:/usr/bin:/bin", "NODE_VERSION=26.5.0", "YARN_VERSION=1.22.22", "TERM=xterm-256color",
+	"HOME=/home/agent", "PATH=/usr/local/bin:/usr/bin:/bin", "NODE_VERSION=26.12.1", "YARN_VERSION=1.22.22", "TERM=xterm-256color",
 }
 
 var taskWorktreeMaskedPaths = []string{

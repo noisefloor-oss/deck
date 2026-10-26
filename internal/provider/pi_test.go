@@ -2,12 +2,19 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/creack/pty"
 )
 
 func mustPi(t *testing.T) *PiDescriptor {
@@ -68,7 +75,7 @@ func TestProviderSessionArgsDoNotOverrideModelOrThinking(t *testing.T) {
 					t.Fatalf("%s args: %v", path.name, err)
 				}
 				for _, arg := range args {
-					if strings.HasPrefix(arg, "--model") || strings.HasPrefix(arg, "--thinking") {
+					if strings.HasPrefix(arg, "--model") || strings.HasPrefix(arg, "--thinking") || (provider.name == "pi" && strings.HasPrefix(arg, "--provider")) {
 						t.Fatalf("%s argv = %v, contains provider selector %q", path.name, args, arg)
 					}
 				}
@@ -88,7 +95,6 @@ func TestPiRetrievedIdentityArgs(t *testing.T) {
 	}
 	want := []string{
 		"/usr/local/bin/pi",
-		"--provider", "zai",
 		"--extension", "/home/claude/.pi/noisedeck-provider-hook.js",
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -101,7 +107,7 @@ func TestPiRetrievedIdentityArgs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want = []string{"/usr/local/bin/pi", "--provider", "zai", "--session", testUUID}
+	want = []string{"/usr/local/bin/pi", "--session", testUUID}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("resume argv = %v, want %v", got, want)
 	}
@@ -184,9 +190,11 @@ func TestPiUnknownExactSessionFailsLoudly(t *testing.T) {
 	requireInstalledPi(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "/usr/local/bin/pi",
-		"--session", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-		"--print", "synthetic unknown-session probe")
+	argv, err := mustPi(t).ResumeSessionArgs(ResumeSpec{NativeSessionID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.CommandContext(ctx, argv[0], append(argv[1:], "--print", "synthetic unknown-session probe")...)
 	cmd.Env = []string{
 		"HOME=" + t.TempDir(),
 		"PATH=/usr/local/bin:/usr/bin:/bin",
@@ -230,5 +238,85 @@ func TestPiInjectionContract(t *testing.T) {
 	c := mustPi(t).Injection()
 	if !c.Verified || !c.UseBracketedPaste || c.SubmitKey != "Enter" || !c.SupportsMultiline || c.AcceptsInputDuringTurn != ActiveTurnQueued || !c.DiscardsInputDuringModal {
 		t.Fatalf("injection = %+v", c)
+	}
+}
+
+// Exercise the descriptor argv, not a separately assembled Pi command. A
+// provider-only override made Pi 1.4 exit before the identity hook could fire.
+func TestPiNativeDescriptorStartup(t *testing.T) {
+	requireInstalledPi(t)
+	root := t.TempDir()
+	hook := filepath.Join(root, "capture.mjs")
+	if err := os.WriteFile(hook, PiHookPlugin, 0600); err != nil {
+		t.Fatal(err)
+	}
+	captured := make(chan string, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/capture" || r.Header.Get("X-Noisedeck-Hook-Token") != "synthetic-startup-grant" {
+			http.NotFound(w, r)
+			return
+		}
+		var body struct {
+			SessionID string `json:"session_id"`
+			Cwd       string `json:"cwd"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 2048)).Decode(&body); err != nil || body.SessionID == "" || body.Cwd != root {
+			http.Error(w, "invalid native capture", 400)
+			return
+		}
+		select {
+		case captured <- body.SessionID:
+		default:
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	descriptor, err := NewPi("/usr/local/bin/pi", hook)
+	if err != nil {
+		t.Fatal(err)
+	}
+	argv, err := descriptor.NewSessionArgs(LaunchSpec{SkipPermissions: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Isolate discovery and network access; keep the descriptor's provider/model
+	// arguments unchanged so their real parser and startup path are qualified.
+	argv = append(argv, "--offline", "--no-mcp", "--no-extensions", "--no-skills", "--no-context-files", "--no-prompt-templates", "--no-session")
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+	cmd.Dir = root
+	cmd.Env = append([]string{
+		"HOME=" + root,
+		"PATH=/usr/local/bin:/usr/bin:/bin",
+		"TERM=xterm-256color",
+		"PI_CODING_AGENT_DIR=" + filepath.Join(root, "agent"),
+		"NOISEDECK_SESSION_HOOK_URL=" + server.URL + "/capture",
+		"NOISEDECK_SESSION_HOOK_TOKEN=synthetic-startup-grant",
+	}, descriptor.Environment()...)
+	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 30, Cols: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer terminal.Close()
+	drained := make(chan struct{})
+	go func() {
+		defer close(drained)
+		_, _ = io.Copy(io.Discard, terminal)
+	}()
+	exited := make(chan error, 1)
+	go func() { exited <- cmd.Wait() }()
+	defer func() {
+		cancel()
+		_ = cmd.Process.Kill()
+		<-drained
+	}()
+	select {
+	case <-captured:
+		// The actual CLI reached session_start without a provider/model override.
+	case err := <-exited:
+		t.Fatalf("descriptor launch exited before native session_start: %v", err)
+	case <-ctx.Done():
+		t.Fatal("descriptor launch never reported native session_start")
 	}
 }

@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// fakeCLI writes a shell script masquerading as the claude executable.
+// fakeCLI writes a shell script masquerading as a provider executable.
 func fakeCLI(t *testing.T, body string) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -60,4 +60,40 @@ func TestClaudeMemberDemandsRunEvidence(t *testing.T) {
 			t.Fatalf("presence = %v, err = %v; want Ambiguous", got, err)
 		}
 	})
+}
+
+func TestKimiCatalogReadsManagedAliases(t *testing.T) {
+	cli := fakeCLI(t, `[ "$1 $2 $3" = "provider list --json" ] || exit 9
+printf '%s\n' '{"models":{"zeta/other":{},"kimi-code/k3.2-pro":{},"kimi-code/k3":{},"kimi-code/k3.1-pro":{}}}'
+`)
+	got, err := KimiCatalog(context.Background(), cli)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"kimi-code/k3", "kimi-code/k3.1-pro", "kimi-code/k3.2-pro"}
+	if len(got) != len(want) {
+		t.Fatalf("catalog = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("catalog = %v, want %v", got, want)
+		}
+	}
+}
+
+func TestKimiCatalogFailsClosed(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body string
+	}{
+		{"malformed JSON", "printf 'not json\\n'\n"},
+		{"no managed models", "printf '%s\\n' '{\"models\":{\"zeta/other\":{}}}'\n"},
+		{"CLI failure", "exit 1\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := KimiCatalog(context.Background(), fakeCLI(t, tc.body)); err == nil {
+				t.Fatal("KimiCatalog accepted an unusable catalog")
+			}
+		})
+	}
 }

@@ -297,7 +297,7 @@ func TestReleaseAcceptanceWorkflowContract(t *testing.T) {
 	if !ok {
 		t.Fatal("release acceptance workflow has no portable-checks job")
 	}
-	assertRunnerName(t, "portable-checks", portableJob, "ubuntu-24.04")
+	assertRunnerName(t, "portable-checks", portableJob, privateCIRunner)
 	assertJobLacksStep(t, "portable-checks", portableJob, "Reconcile M1 runner watchdog")
 	assertJobHasStep(t, "portable-checks", portableJob, "Test and build frontend")
 	assertJobHasStep(t, "portable-checks", portableJob, "Select the native acceptance runner")
@@ -352,7 +352,7 @@ func TestReleaseAcceptanceWorkflowContract(t *testing.T) {
 	if !ok {
 		t.Fatal("release acceptance workflow has no bwrap-proof job")
 	}
-	assertRunnerName(t, "bwrap-proof", bwrapProof, "ubuntu-24.04")
+	assertRunnerName(t, "bwrap-proof", bwrapProof, `${{ github.repository == 'noisefloor-oss/deck' && github.event.repository.visibility == 'public' && 'ubuntu-24.04' || fromJSON('["self-hosted","Linux","X64"]') }}`)
 	for _, step := range []string{
 		"Check out source",
 		"Prove the pinned Bubblewrap executable identity",
@@ -370,7 +370,7 @@ func TestReleaseAcceptanceWorkflowContract(t *testing.T) {
 	if !ok {
 		t.Fatal("release acceptance workflow has no native-linux-amd64 certification job")
 	}
-	assertRunnerName(t, "native-linux-amd64", gate, "ubuntu-24.04")
+	assertRunnerName(t, "native-linux-amd64", gate, privateCIRunner)
 	assertJobHasStep(t, "native-linux-amd64", gate, "Certify selected native backend")
 	gateNeeds, ok := gate["needs"].([]any)
 	if !ok || len(gateNeeds) != 3 {
@@ -384,7 +384,7 @@ func TestReleaseAcceptanceWorkflowContract(t *testing.T) {
 		"deploy/select-native-runner.sh",
 		`group: release-acceptance-${{ github.event_name == 'push' && 'push' || github.run_id }}`,
 		`test "${BWRAP_RESULT}" = success`,
-		"NOISEDECK_NATIVE_BACKEND: ${{ inputs.native_backend || vars.NOISEDECK_NATIVE_BACKEND || 'github' }}",
+		"NOISEDECK_NATIVE_BACKEND: ${{ github.repository == 'noisefloor-oss/deck' && github.event.repository.visibility == 'public' && 'github' || inputs.native_backend || vars.NOISEDECK_NATIVE_BACKEND || 'self-hosted' }}",
 		"fromJSON(needs.portable-checks.outputs.native_runner)",
 		"useblacksmith/setup-docker-builder@9309da73a81f66976a6d750572e221508b1e2682",
 		`max-cache-size-mb: "5120"`,
@@ -447,6 +447,34 @@ func TestReleaseAcceptanceWorkflowContract(t *testing.T) {
 	if setup < 0 || build < 0 || setup >= build {
 		t.Fatalf("Blacksmith builder setup must precede the native build: setup=%d build=%d", setup, build)
 	}
+	for _, required := range []string{
+		`install -d -m 0711 "${CI_ROOT}"`,
+		`install -d -m 0777`,
+		`install -d -m 1777 "${CI_ROOT}/tmp"`,
+		`chcon -t container_file_t -l s0 deploy/sidecar-resolv.conf`,
+		`getfattr -n security.selinux deploy/sidecar-resolv.conf`,
+		`if [ -e /sys/fs/selinux/enforce ]; then`,
+		"- name: Verify disposable mount access",
+		`test "$(/tmp/probe)" = mount-access-ok`,
+	} {
+		if !strings.Contains(text, required) {
+			t.Errorf("release acceptance workflow is missing %q", required)
+		}
+	}
+	if strings.Contains(text, `sudo chown 1000:1000 "${CI_ROOT}/tmp"`) {
+		t.Error("disposable Compose fixture must not require privileged ownership changes")
+	}
+	if strings.Contains(text, "cp deploy/sidecar-resolv.conf") {
+		t.Error("the production wrapper must use the labeled resolver already in the disposable checkout")
+	}
+	if strings.Contains(text, "'chromium': {'volumes': [resolver]}") {
+		t.Error("the default Compose file set must not introduce a resolver-only chromium service")
+	}
+	fixture := strings.Index(text, "- name: Create disposable Compose fixture")
+	mountProbe := strings.Index(text, "- name: Verify disposable mount access")
+	if fixture < 0 || mountProbe < 0 || fixture >= mountProbe || mountProbe >= build {
+		t.Fatalf("disposable mount access must be proved before the native build: fixture=%d probe=%d build=%d", fixture, mountProbe, build)
+	}
 	// The hosted-runner disk reclaim must happen before any image build:
 	// without it the runtime, browser, and MemPalace builds plus the BuildKit
 	// cache exceed the disk left after the preinstalled toolchains.
@@ -455,7 +483,7 @@ func TestReleaseAcceptanceWorkflowContract(t *testing.T) {
 		t.Fatalf("hosted runner disk reclaim must precede the native build: reclaim=%d build=%d", reclaim, build)
 	}
 	assertJobStepIf(t, "native-worker", worker, "Reclaim hosted runner disk before image builds",
-		"runner.os == 'Linux' && needs.portable-checks.outputs.native_backend == 'github'")
+		"runner.environment == 'github-hosted' && (runner.os == 'Linux' && needs.portable-checks.outputs.native_backend == 'github')")
 	for _, reclaimed := range []string{
 		"/usr/local/lib/android",
 		"/opt/hostedtoolcache",
@@ -555,6 +583,19 @@ func assertActionsPinnedBySHA(t *testing.T, raw []byte) {
 
 func assertRunnerName(t *testing.T, jobName string, job map[string]any, want string) {
 	t.Helper()
+	if strings.HasPrefix(want, "[") {
+		labels, ok := job["runs-on"].([]any)
+		expected := strings.Fields(strings.Trim(want, "[]"))
+		if !ok || len(labels) != len(expected) {
+			t.Fatalf("%s runs-on = %v, want label list %q", jobName, job["runs-on"], want)
+		}
+		for i, label := range labels {
+			if label != expected[i] {
+				t.Fatalf("%s runner label %d = %v, want %s", jobName, i, label, expected[i])
+			}
+		}
+		return
+	}
 	if got, ok := job["runs-on"].(string); !ok || got != want {
 		t.Fatalf("%s runs-on = %v, want %q", jobName, job["runs-on"], want)
 	}

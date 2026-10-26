@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { nativeClipboardKey, planClipboardKey, readClipboard, viewportText, writeClipboard, type CopyKeyInput, type ScreenBuffer } from "./copy.ts";
+import { forceSelectionModifier, nativeClipboardKey, planClipboardKey, readClipboard, viewportText, writeClipboard, type CopyKeyInput, type ScreenBuffer } from "./copy.ts";
 
 const key = (overrides: Partial<CopyKeyInput> = {}): CopyKeyInput => ({
   type: "keydown",
@@ -149,4 +149,13 @@ test("the clipboard helpers fail quietly in every shape and report what happened
   assert.equal(await readClipboard({ readText: () => Promise.reject(new Error("denied")) }), null);
   assert.equal(await readClipboard({ readText: async () => "" }), null, "an empty clipboard pastes nothing");
   assert.equal(await readClipboard({ readText: async () => "paste me" }), "paste me");
+});
+
+// The platform split of the force-selection modifier, pinned so the
+// Select-text toggle cannot silently break one platform: xterm reads
+// Option on macOS (behind the macOptionClickForcesSelection option Deck
+// enables) and Shift everywhere else.
+test("the force-selection modifier is Option on macOS and Shift elsewhere", () => {
+  assert.equal(forceSelectionModifier(true), "altKey");
+  assert.equal(forceSelectionModifier(false), "shiftKey");
 });

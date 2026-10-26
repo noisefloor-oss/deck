@@ -23,8 +23,9 @@ type DroppedHarness struct {
 // the harness fails its gates. It is recorded at discovery so a drop needs
 // no second upstream read.
 type Revert struct {
-	Version string            `json:"version"`
-	Digests map[string]string `json:"digests,omitempty"`
+	Version  string            `json:"version"`
+	Digests  map[string]string `json:"digests,omitempty"`
+	PinnedOn string            `json:"pinnedOn,omitempty"`
 }
 
 // BatchResult records the complete discovery snapshot and every applied update.
@@ -83,6 +84,17 @@ func ApplyBatch(ctx context.Context, root string, resolver *Resolver) (BatchResu
 		if err != nil {
 			return result, err
 		}
+		previousDate := ""
+		readme, readErr := os.ReadFile(filepath.Clean(filepath.Join(root, "README.md")))
+		if readErr != nil && !os.IsNotExist(readErr) {
+			return result, readErr
+		}
+		if readErr == nil {
+			previousDate, err = candidatePinDate(string(readme), b.Harness, b.From)
+			if err != nil {
+				return result, err
+			}
+		}
 		if _, err := Apply(root, b); err != nil {
 			return result, err
 		}
@@ -90,7 +102,7 @@ func ApplyBatch(ctx context.Context, root string, resolver *Resolver) (BatchResu
 		if result.Revert == nil {
 			result.Revert = map[string]Revert{}
 		}
-		result.Revert[b.Harness.Name] = Revert{Version: b.From, Digests: oldDigests}
+		result.Revert[b.Harness.Name] = Revert{Version: b.From, Digests: oldDigests, PinnedOn: previousDate}
 	}
 	raw, err := os.ReadFile(filepath.Clean(filepath.Join(root, "Dockerfile")))
 	if err != nil {
@@ -121,7 +133,7 @@ func Drop(root string, result *BatchResult, harness, reason string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := Apply(root, Bump{Harness: h, From: current, To: revert.Version, Digests: revert.Digests}); err != nil {
+	if _, err := Apply(root, Bump{Harness: h, From: current, To: revert.Version, Digests: revert.Digests, PinnedOn: revert.PinnedOn}); err != nil {
 		return fmt.Errorf("harnessbump: drop %s: %w", harness, err)
 	}
 	result.Updated = slices.Delete(result.Updated, idx, idx+1)

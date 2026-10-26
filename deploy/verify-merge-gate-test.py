@@ -68,5 +68,38 @@ class ConditionalChecks(unittest.TestCase):
             self.assertTrue(gate.verdict_failures([dict(review, **change)], self.head, "noise-review[bot]"))
 
 
+
+
+class CommitIdentity(unittest.TestCase):
+    # GitHub's squash merge lifts every head-commit author it cannot map to
+    # the pull request author into a mainline Co-authored-by trailer; these
+    # pin the gate that rejects such authorship before it can.
+
+    def commit(self, sha, login):
+        return {"sha": sha, "author": ({"login": login} if login else None)}
+
+    def test_every_commit_mapped_to_the_pr_author_passes(self):
+        commits = [self.commit("a" * 40, "ddoan"), self.commit("b" * 40, "ddoan")]
+        self.assertEqual(gate.commit_identity_failures(commits, "ddoan"), [])
+
+    def test_an_unmapped_agent_identity_is_rejected(self):
+        commits = [self.commit("a" * 40, "ddoan"), self.commit("b" * 40, None)]
+        failures = gate.commit_identity_failures(commits, "ddoan")
+        self.assertEqual(len(failures), 1)
+        self.assertIn("unmapped identity", failures[0])
+        self.assertIn("Co-authored-by", failures[0])
+
+    def test_a_foreign_account_is_rejected(self):
+        failures = gate.commit_identity_failures([self.commit("a" * 40, "someone-else")], "ddoan")
+        self.assertEqual(len(failures), 1)
+        self.assertIn("someone-else", failures[0])
+
+    def test_missing_commits_or_author_fail_closed(self):
+        self.assertTrue(gate.commit_identity_failures([], "ddoan"))
+        self.assertTrue(gate.commit_identity_failures(None, "ddoan"))
+        self.assertTrue(gate.commit_identity_failures([self.commit("a" * 40, "ddoan")], None))
+        self.assertTrue(gate.commit_identity_failures(["not-an-object"], "ddoan"))
+
+
 if __name__ == "__main__":
     unittest.main()

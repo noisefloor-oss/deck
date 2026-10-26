@@ -31,7 +31,7 @@ jobs:
         github.event.workflow_run.path == '.github/workflows/release-acceptance.yaml' &&
         github.event.workflow_run.head_branch == 'main' &&
         github.event.workflow_run.head_repository.full_name == github.repository))
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 60
     env:
       GH_TOKEN: ${{ github.token }}
@@ -74,7 +74,7 @@ jobs:
           PY
 
       - name: Reclaim unused hosted-runner SDKs
-        if: steps.admission.outputs.accepted == 'true'
+        if: runner.environment == 'github-hosted' && (steps.admission.outputs.accepted == 'true')
         run: |
           sudo rm -rf /usr/local/lib/android /opt/hostedtoolcache /usr/share/dotnet /opt/ghc /usr/local/share/powershell
 

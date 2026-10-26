@@ -42,6 +42,10 @@ func reconstructBatch(ctx context.Context, root string, resolver *Resolver, id, 
 	if _, err := git("worktree", "add", "--quiet", "--detach", scratch, strings.TrimSpace(string(base))); err != nil {
 		return false, err
 	}
+	readme, err := readmeAtHead(ctx, root, head)
+	if err != nil {
+		return false, err
+	}
 	moved := false
 	for _, h := range Catalogue {
 		from, _, err := Pinned(scratch, h)
@@ -61,7 +65,11 @@ func reconstructBatch(ctx context.Context, root string, resolver *Resolver, id, 
 		if err != nil {
 			return false, err
 		}
-		if _, err := Apply(scratch, Bump{Harness: h, From: from, To: to, Digests: digests}); err != nil {
+		date, err := candidatePinDate(readme, h, to)
+		if err != nil {
+			return false, nil
+		}
+		if _, err := Apply(scratch, Bump{Harness: h, From: from, To: to, Digests: digests, PinnedOn: date}); err != nil {
 			return false, err
 		}
 		moved = true

@@ -498,7 +498,7 @@ func provenance(pr pullRequest, authors map[string]bool) error {
 	if !ValidVersion(version) {
 		return errors.New("title carries no version")
 	}
-	allowed := map[string]bool{"Dockerfile": true}
+	allowed := map[string]bool{"Dockerfile": true, "README.md": true}
 	if name == "all" {
 		if !hexDigest.MatchString(version) {
 			return errors.New("batch identity is not a SHA256")

@@ -7,6 +7,7 @@
 // keys stay with the key strip; the terminal itself remains the only
 // surface where a keystroke leaves as it is typed.
 interface ComposeTerminal {
+  trackWrite(send: () => void, done: (code: string, message: string) => void): boolean;
   paste(text: string): void;
   sendInput(data: string): void;
 }
@@ -14,6 +15,8 @@ interface ComposeTerminal {
 export class MobileTerminalCompose {
   private readonly terminal: ComposeTerminal;
   private disposed = false;
+  private pending = false;
+  private generation = 0;
 
   constructor(terminal: ComposeTerminal) {
     this.terminal = terminal;
@@ -23,14 +26,41 @@ export class MobileTerminalCompose {
   // paste can distinguish draft line breaks from the subsequent submit key.
   // Both calls are synchronous; no timer or provider-specific key is needed.
   // An empty buffer still answers a TUI prompt that only wants Enter.
-  flush(value: string): void {
-    if (this.disposed) return;
-    if (value !== "") this.terminal.paste(value);
-    this.terminal.sendInput("\r");
+  flush(value: string, done: (code: string, message: string) => void): boolean {
+    if (this.disposed || this.pending) return false;
+    const writes = value === ""
+      ? [() => this.terminal.sendInput("\r")]
+      : [() => this.terminal.paste(value), () => this.terminal.sendInput("\r")];
+    const generation = ++this.generation;
+    let remaining = writes.length;
+    let outcome = { code: "sent", message: "" };
+    let completed = false;
+    this.pending = true;
+    const complete = (code: string, message: string): void => {
+      if (this.disposed || generation !== this.generation || completed) return;
+      if (outcome.code === "sent" && code !== "sent") outcome = { code, message };
+      remaining--;
+      if (remaining !== 0) return;
+      completed = true;
+      this.pending = false;
+      done(outcome.code, outcome.message);
+    };
+    for (let index = 0; index < writes.length; index++) {
+      if (!this.terminal.trackWrite(writes[index]!, complete)) {
+        if (index === 0) {
+          this.pending = false;
+          return false;
+        }
+        complete("failed", "The submit key was not sent.");
+      }
+    }
+    return true;
   }
 
   dispose(): void {
     this.disposed = true;
+    this.pending = false;
+    this.generation++;
   }
 }
 

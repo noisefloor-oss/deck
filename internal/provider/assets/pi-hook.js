@@ -17,6 +17,7 @@
 // Failures never throw or change provider runtime state.
 
 import { request as httpRequest } from "node:http"
+import { randomUUID } from "node:crypto"
 
 // A configured private socket is the only transport for this launch. Its
 // failure must not disclose a capture token or payload to a TCP listener.
@@ -75,7 +76,58 @@ async function deliver(url, token, body) {
 }
 
 export default function (pi) {
-  pi.on("session_start", async (_event, ctx) => {
+  let sequence = 0
+  let turn = randomUUID()
+  let phase = "unknown"
+  let prompts = 0
+  let endedSequence = 0
+  let endedTurn = ""
+  let pending = null
+  let delivering = false
+
+  const publish = (ctx) => {
+    const base = process.env.NOISEDECK_SESSION_HOOK_URL
+    const token = process.env.NOISEDECK_SESSION_HOOK_TOKEN
+    const nativeId = ctx?.sessionManager?.getSessionId?.()
+    if (!base || !token || !nativeId) return
+    let url
+    try { url = new URL("/api/hooks/conversation", base).href } catch { return }
+    // The process-monotonic clock survives extension reloads. A counter
+    // initialized at zero would leave every new event behind the old stream.
+    sequence = Math.max(sequence + 1, Number(process.hrtime.bigint() / 1000n))
+    if (phase === "ended" && turn !== endedTurn) { endedSequence = sequence; endedTurn = turn }
+    pending = { url, token, body: JSON.stringify({
+      native_id: nativeId, pid: String(process.pid), sequence,
+      turn_id: turn, state: prompts > 0 ? "needs_input" : phase,
+      ended_sequence: endedSequence, ended_turn: endedTurn,
+    }) }
+    if (delivering) return
+    delivering = true
+    void (async () => {
+      try {
+        while (pending) {
+          const item = pending
+          pending = null
+          await deliver(item.url, item.token, item.body)
+        }
+      } finally { delivering = false }
+    })().catch(() => {})
+  }
+  pi.on("agent_start", (_event, ctx) => {
+    turn = randomUUID()
+    phase = "working"
+    publish(ctx)
+  })
+  // agent_end can precede queued continuations. Only agent_settled promises
+  // that no automatic retry, compaction or queued continuation will run.
+  pi.on("agent_settled", (event, ctx) => {
+    phase = event.aborted ? "unknown" : "ended"
+    publish(ctx)
+  })
+  pi.on("ui_prompt_start", (_event, ctx) => { prompts += 1; publish(ctx) })
+  pi.on("ui_prompt_end", (_event, ctx) => { prompts = Math.max(0, prompts - 1); publish(ctx) })
+
+  pi.on("session_start", async (event, ctx) => {
     try {
       // session_start carries no id in its payload; the id is reached
       // through the hook context. It is already populated when the event
@@ -90,9 +142,11 @@ export default function (pi) {
         hook_event_name: "SessionStart",
         session_id: sessionId,
         cwd,
-        source: "startup",
+        source: event.reason ?? "startup",
+        pid: String(process.pid),
       })
       await deliver(url, token, body)
+      if (event.reason && event.reason !== "startup") publish(ctx)
     } catch {
       // A failed capture must not break the CLI. Its honest signal is the
       // pending identity expiring for this exact launch generation.

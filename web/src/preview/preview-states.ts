@@ -350,7 +350,7 @@ export const PREVIEW_STATES: readonly PreviewState[] = [
   { name: "assets-loading", params: { panel: "assets", assets: "loading" }, ready: '[data-region="assets"][data-open="true"] [data-assets-loading]' },
   { name: "assets-empty", params: { panel: "assets", assets: "empty" }, ready: '[data-region="assets"][data-open="true"] [data-assets-empty]' },
   { name: "assets-list", params: { panel: "assets", assets: "list" }, ready: '[data-region="assets"][data-open="true"] [data-assets-list]' },
-  { name: "assets-selected", params: { panel: "assets", assets: "selected" }, ready: '[data-region="assets"] [data-asset-path][aria-checked="true"]' },
+  { name: "assets-selected", params: { panel: "assets", assets: "selected" }, ready: '[data-region="assets"] [data-asset-select][aria-checked="true"]' },
   { name: "assets-truncated", params: { panel: "assets", assets: "truncated" }, ready: '[data-region="assets"] [data-assets-truncated]' },
   { name: "assets-after", params: { panel: "assets", assets: "after" }, ready: '[data-region="assets"] [data-asset-fact]' },
   { name: "delete-confirm", params: { panel: "assets", assets: "selected", dialog: "delete-assets" }, ready: '[data-assets-dialog="confirm"]' },

@@ -4,8 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -14,6 +17,84 @@ import (
 	"github.com/noisefloor-oss/deck/internal/provider"
 	"github.com/noisefloor-oss/deck/internal/tmux"
 )
+
+func TestWorkspaceLockRefusesDeadlineThatOmitsRuntimeObservation(t *testing.T) {
+	mgr, repo, tc, project := newTestEnv(t, sleeperDescriptor())
+	ctx := context.Background()
+	s, err := mgr.Create(ctx, CreateSpec{ProjectID: project, Provider: "claude", WorkDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mgr.lifecycleHooks = &lifecycleTestHooks{stopSignaled: func() { t.Fatal("refused lock signaled a session") }}
+	oldBudget := workspaceLockGracefulStop + workspaceLockForceStop +
+		workspaceLockStopsPerSession*workspaceLockWritesPerStop*stopDetachedWriteTimeout
+	shortCtx, cancel := context.WithTimeout(ctx, oldBudget+time.Second)
+	defer cancel()
+	if err := mgr.PrepareWorkspaceLock(shortCtx); !errors.Is(err, ErrWorkspaceLockRefused) {
+		t.Fatalf("deadline between the old and new budgets was not refused: %v", err)
+	}
+	release, err := mgr.gate.Admit()
+	if err != nil {
+		t.Fatalf("clean refusal disabled admission: %v", err)
+	}
+	release()
+	got, err := repo.Get(ctx, s.ID)
+	if err != nil || got.StopRequestedAt != nil || workspaceStopped(got) {
+		t.Fatalf("refused lock committed a stop marker: %+v %v", got, err)
+	}
+	if info, err := tc.PaneInfoByID(ctx, *s.TmuxPaneID); err != nil || info.Dead {
+		t.Fatalf("refused lock stopped a process: %+v %v", info, err)
+	}
+}
+
+func TestWorkspaceLockWedgedTmuxObservationIsBoundedWithoutFabricatingDeath(t *testing.T) {
+	mgr, repo, tc, project := newTestEnv(t, sleeperDescriptor())
+	ctx, cancel := context.WithTimeout(context.Background(), WorkspaceLockTimeout)
+	defer cancel()
+	s, err := mgr.Create(ctx, CreateSpec{ProjectID: project, Provider: "claude", WorkDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.CommandContext(ctx, "tmux", "-S", tc.SocketPath(),
+		"display-message", "-p", "#{pid}").Output()
+	if err != nil {
+		t.Fatalf("read private tmux server pid: %v", err)
+	}
+	serverPID, err := strconv.Atoi(strings.TrimSpace(string(out)))
+	if err != nil {
+		t.Fatalf("parse private tmux server pid: %v", err)
+	}
+	t.Cleanup(func() { _ = syscall.Kill(serverPID, syscall.SIGCONT) })
+	mgr.lifecycleHooks = &lifecycleTestHooks{workspaceLockMarked: func() {
+		applied, err := repo.MarkInterrupted(ctx, s.ID, "test fixture loses the controller while its process stays live")
+		if err != nil || !applied {
+			t.Fatalf("mark terminal session mid-lock: applied=%v err=%v", applied, err)
+		}
+		if err := syscall.Kill(serverPID, syscall.SIGSTOP); err != nil {
+			t.Fatalf("wedge private tmux server: %v", err)
+		}
+	}}
+	started := time.Now()
+	lockErr := mgr.PrepareWorkspaceLock(ctx)
+	elapsed := time.Since(started)
+	if err := syscall.Kill(serverPID, syscall.SIGCONT); err != nil {
+		t.Fatalf("resume private tmux server: %v", err)
+	}
+	got, err := repo.Get(ctx, s.ID)
+	if err != nil || got.Status != StatusInterrupted || got.ExitCode != nil || !workspaceStopped(got) {
+		t.Fatalf("wedged observation fabricated exit evidence: %+v %v", got, err)
+	}
+	info, err := tc.PaneInfoByID(ctx, *s.TmuxPaneID)
+	if err != nil || info.Dead || info.PID != *s.PanePID {
+		t.Fatalf("wedged observation killed or misidentified the live process: %+v %v", info, err)
+	}
+	if !errors.Is(lockErr, ErrNotRunning) {
+		t.Fatalf("wedged observation replaced the original stop error: %v", lockErr)
+	}
+	if elapsed < workspaceLockObserveTimeout-time.Second || elapsed > 4*workspaceLockObserveTimeout {
+		t.Fatalf("wedged observation took %s, want approximately %s", elapsed, workspaceLockObserveTimeout)
+	}
+}
 
 func TestWorkspaceLockStopsAllAndUnlockDoesNotAutoResume(t *testing.T) {
 	mgr, repo, project, tc, gate := newResumeEnv(t, []string{"-c", "sleep 300; exit 0"})
@@ -90,7 +171,18 @@ func TestWorkspaceLockInterruptedFirstStopMarksEntireCohort(t *testing.T) {
 		sessions = append(sessions, s)
 	}
 	stopCtx, cancel := context.WithCancel(ctx)
-	mgr.lifecycleHooks = &lifecycleTestHooks{stopSignaled: cancel}
+	var once sync.Once
+	mgr.lifecycleHooks = &lifecycleTestHooks{stopSignaled: func() {
+		once.Do(func() {
+			for _, member := range sessions {
+				got, err := repo.Get(ctx, member.ID)
+				if err != nil || !workspaceStopped(got) {
+					t.Error("first signal preceded complete cohort intent")
+				}
+			}
+			cancel()
+		})
+	}}
 	if err := mgr.PrepareWorkspaceLock(stopCtx); err == nil {
 		t.Fatal("interrupted stop reported completion")
 	}
@@ -99,7 +191,7 @@ func TestWorkspaceLockInterruptedFirstStopMarksEntireCohort(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got.StopRequestedAt == nil || !workspaceStopped(got) {
+		if !workspaceStopped(got) {
 			t.Fatal("unsignaled cohort member was not durably excluded from recovery")
 		}
 		info, err := tc.PaneInfoByID(ctx, *s.TmuxPaneID)
@@ -132,6 +224,33 @@ func TestWorkspaceLockInterruptedFirstStopMarksEntireCohort(t *testing.T) {
 	}
 }
 
+func TestWorkspaceLockStopsThreeSessionsWithinHostBudget(t *testing.T) {
+	mgr, repo, tc, project := newTestEnv(t, sleeperDescriptor())
+	ctx, cancel := context.WithTimeout(context.Background(), WorkspaceLockTimeout)
+	defer cancel()
+	var sessions []*Session
+	for range 3 {
+		s, err := mgr.Create(ctx, CreateSpec{ProjectID: project, Provider: "claude", WorkDir: t.TempDir()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		sessions = append(sessions, s)
+	}
+	if err := mgr.PrepareWorkspaceLock(ctx); err != nil {
+		t.Fatalf("ordinary three-session lock refused: %v", err)
+	}
+	for _, s := range sessions {
+		got, err := repo.Get(ctx, s.ID)
+		if err != nil || !workspaceStopped(got) {
+			t.Fatal("cohort stop was not recorded")
+		}
+		info, err := tc.PaneInfoByID(ctx, *s.TmuxPaneID)
+		if err != nil || !info.Dead {
+			t.Fatalf("process remained live: %+v %v", info, err)
+		}
+	}
+}
+
 func TestWorkspaceLockRefusesCohortLargerThanDeadlineBeforeCommitting(t *testing.T) {
 	mgr, repo, tc, project := newTestEnv(t, sleeperDescriptor())
 	ctx := context.Background()
@@ -147,9 +266,14 @@ func TestWorkspaceLockRefusesCohortLargerThanDeadlineBeforeCommitting(t *testing
 	shortCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	err := mgr.PrepareWorkspaceLock(shortCtx)
-	if !errors.Is(err, ErrUnverifiable) || !strings.Contains(err.Error(), "2 sessions") {
+	if !errors.Is(err, ErrWorkspaceLockRefused) || !strings.Contains(err.Error(), "2 sessions") {
 		t.Fatalf("undersized deadline was not refused with the cohort size: %v", err)
 	}
+	release, admissionErr := mgr.gate.Admit()
+	if admissionErr != nil {
+		t.Fatalf("clean refusal disabled input: %v", admissionErr)
+	}
+	release()
 	for _, s := range sessions {
 		got, err := repo.Get(ctx, s.ID)
 		if err != nil || got.StopRequestedAt != nil || workspaceStopped(got) {
@@ -175,7 +299,7 @@ func TestWorkspaceLockRefusesDeadlineThatOmitsDetachedStopWrites(t *testing.T) {
 	windows := workspaceLockGracefulStop + workspaceLockForceStop
 	shortCtx, cancel := context.WithTimeout(ctx, windows+time.Second)
 	defer cancel()
-	if err := mgr.PrepareWorkspaceLock(shortCtx); !errors.Is(err, ErrUnverifiable) {
+	if err := mgr.PrepareWorkspaceLock(shortCtx); !errors.Is(err, ErrWorkspaceLockRefused) {
 		t.Fatalf("deadline covering only the stop windows was not refused: %v", err)
 	}
 	got, err := repo.Get(ctx, s.ID)
@@ -199,9 +323,11 @@ func TestWorkspaceLockWaitsBeforePersistingOrSignaling(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer release()
-	stopCtx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
+	stopCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	if err := mgr.PrepareWorkspaceLock(stopCtx); !errors.Is(err, context.DeadlineExceeded) {
+	timer := time.AfterFunc(10*time.Millisecond, cancel)
+	defer timer.Stop()
+	if err := mgr.PrepareWorkspaceLock(stopCtx); !errors.Is(err, context.Canceled) {
 		t.Fatalf("did not drain admitted writer: %v", err)
 	}
 	got, err := repo.Get(ctx, s.ID)
@@ -213,7 +339,7 @@ func TestWorkspaceLockWaitsBeforePersistingOrSignaling(t *testing.T) {
 	}
 }
 
-func TestWorkspaceLockAcceptsObservedExitBetweenCohortStops(t *testing.T) {
+func TestWorkspaceLockAcceptsObservedExitDuringPreparation(t *testing.T) {
 	mgr, repo, tc, project := newTestEnv(t, sleeperDescriptor())
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
@@ -225,10 +351,7 @@ func TestWorkspaceLockAcceptsObservedExitBetweenCohortStops(t *testing.T) {
 		}
 		sessions = append(sessions, s)
 	}
-	mgr.lifecycleHooks = &lifecycleTestHooks{stopSignaled: func() {
-		mgr.lifecycleHooks.stopSignaled = nil
-		// Model the second CLI finishing and reconciliation publishing its exit
-		// while the first member's stop has not yet returned.
+	mgr.lifecycleHooks = &lifecycleTestHooks{workspaceLockMarked: func() {
 		if err := mgr.Stop(ctx, sessions[1].ID, false); err != nil {
 			t.Fatal(err)
 		}
@@ -309,10 +432,12 @@ func TestWorkspaceLockDrainsLaunchBeforeTakingCohort(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("launch never reached native precommit boundary")
 	}
-	lockCtx, stop := context.WithTimeout(ctx, 10*time.Millisecond)
+	lockCtx, stop := context.WithCancel(ctx)
+	timer := time.AfterFunc(10*time.Millisecond, stop)
+	defer timer.Stop()
 	err := mgr.PrepareWorkspaceLock(lockCtx)
 	stop()
-	if !errors.Is(err, context.DeadlineExceeded) {
+	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("lock crossed a launch in flight: %v", err)
 	}
 	rows, err := repo.ListActive(ctx)
@@ -418,5 +543,83 @@ func TestWorkspaceLockRefusesLiveProvisionalRecovery(t *testing.T) {
 				t.Fatalf("uncertain lock reopened admission: %v", err)
 			}
 		})
+	}
+}
+
+func TestWorkspaceLockIncludesLaunchAdmittedDuringPreflight(t *testing.T) {
+	mgr, repo, tc, project := newTestEnv(t, sleeperDescriptor())
+	ctx, cancel := context.WithTimeout(context.Background(), WorkspaceLockTimeout)
+	defer cancel()
+	var admitted *Session
+	mgr.lifecycleHooks = &lifecycleTestHooks{workspaceLockPreflight: func() {
+		var err error
+		admitted, err = mgr.Create(ctx, CreateSpec{ProjectID: project, Provider: "claude", WorkDir: t.TempDir()})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}}
+	if err := mgr.PrepareWorkspaceLock(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if admitted == nil {
+		t.Fatal("preflight did not admit the concurrent launch")
+	}
+	got, err := repo.Get(ctx, admitted.ID)
+	if err != nil || !workspaceStopped(got) {
+		t.Fatal("admitted launch lost durable stop intent")
+	}
+	info, err := tc.PaneInfoByID(ctx, *admitted.TmuxPaneID)
+	if err != nil || !info.Dead {
+		t.Fatalf("admitted launch remained live: %+v %v", info, err)
+	}
+}
+
+func TestWorkspaceLockWorkerFailureCancelsQueuedStops(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	started := make(chan string, workspaceLockWorkers+1)
+	fail := make(chan struct{})
+	failed := errors.New("first stop failed")
+	result := make(chan error, 1)
+	cohort := make([]*Session, workspaceLockWorkers+1)
+	for i := range cohort {
+		cohort[i] = &Session{ID: string(rune('a' + i))}
+	}
+	go func() {
+		result <- stopWorkspaceCohort(ctx, cohort, func(ctx context.Context, s *Session) error {
+			started <- s.ID
+			if s.ID == "a" {
+				select {
+				case <-fail:
+					return failed
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			}
+			<-ctx.Done()
+			return ctx.Err()
+		})
+	}()
+	for range workspaceLockWorkers {
+		select {
+		case id := <-started:
+			if id == "e" {
+				t.Fatal("worker limit exceeded")
+			}
+		case <-ctx.Done():
+			t.Fatal("stop workers never started")
+		}
+	}
+	close(fail)
+	select {
+	case err := <-result:
+		if !errors.Is(err, failed) {
+			t.Fatalf("first error lost: %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatal("worker cancellation did not drain")
+	}
+	if len(started) != 0 {
+		t.Fatal("queued stop ran after cancellation")
 	}
 }

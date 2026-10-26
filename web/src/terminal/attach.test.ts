@@ -4,6 +4,7 @@ import { AgentTerminal } from "./attach.ts";
 import type { MountedTerminal } from "./term.ts";
 import type { ScrollCommand } from "./scroll.ts";
 import type { Transport } from "./attachment.ts";
+import type { TerminalOutbound } from "./outbound.ts";
 import type { Terminal } from "@xterm/xterm";
 
 class FakeTransport implements Transport {
@@ -47,6 +48,9 @@ function fakeMount(record: {
   jumps?: number;
   resets?: number;
   ctrlCancels?: number;
+  inputs?: string[];
+  pastes?: string[];
+  outbound?: (event: TerminalOutbound) => void;
 }): MountedTerminal {
   const dimensions = {
     cols: 80,
@@ -54,6 +58,9 @@ function fakeMount(record: {
     write: () => {},
   };
   const term = dimensions as unknown as Terminal;
+  const input = (data: string): void => {
+    record.outbound?.({ kind: "input", data: new TextEncoder().encode(data) });
+  };
   return {
     terminal: term,
     fit: () => {
@@ -63,11 +70,15 @@ function fakeMount(record: {
         dimensions.rows = record.fitDimensions.rows;
       }
     },
+    setSelectText: () => false,
     setTheme: () => {},
     setFontSize: (px) => {
       record.fontSizes.push(px);
     },
-    onOutbound: () => ({ dispose: () => {} }),
+    onOutbound: (fn) => {
+      record.outbound = fn;
+      return { dispose: () => {} };
+    },
     onScroll: (fn) => {
       record.scrollFns?.push(fn);
       return { dispose: () => {} };
@@ -86,9 +97,15 @@ function fakeMount(record: {
       return { dispose: () => {} };
     },
     focus: () => {},
-    sendInput: () => {},
+    sendInput: (data) => {
+      record.inputs?.push(data);
+      input(data);
+    },
     copyable: () => ({ fromSelection: false, text: "" }),
-    paste: () => {},
+    paste: (text) => {
+      record.pastes?.push(text);
+      input(text);
+    },
     jumpToLive: () => {
       record.jumps = (record.jumps ?? 0) + 1;
       record.scrollFns?.at(-1)?.({ direction: "live" });
@@ -438,5 +455,35 @@ test("mount scroll commands become scroll frames only while an attachment is liv
       { type: "scroll", token: 7, generation: 1, direction: "up", lines: 3 },
       { type: "scroll", token: 7, generation: 1, direction: "down", lines: 24 },
     ]);
+  });
+});
+
+test("trackWrite wraps any mount write and sendTracked delegates to it", (t) => {
+  withLocation(() => {
+    const record = { fontSizes: [] as number[], inputs: [] as string[], pastes: [] as string[] };
+    const transport = new FakeTransport();
+    const outcomes: string[] = [];
+    const term = new AgentTerminal(
+      {} as HTMLElement,
+      {},
+      {
+        controllerID: "test-controller",
+        transportFactory: () => transport,
+        mountTerminal: () => fakeMount(record),
+      },
+    );
+    t.after(() => term.dispose());
+    term.attach("session-1");
+    transport.deliver(`{"type":"attached","token":7,"generation":1}`);
+
+    assert.equal(term.trackWrite(() => term.mounted.paste("draft"), (code) => outcomes.push(`paste:${code}`)), true);
+    assert.equal(term.sendTracked("\r", (code) => outcomes.push(`input:${code}`)), true);
+    assert.deepEqual(record.pastes, ["draft"]);
+    assert.deepEqual(record.inputs, ["\r"]);
+    assert.deepEqual(outcomes, []);
+    transport.deliver(`{"type":"status","code":"sent","message":""}`);
+    assert.deepEqual(outcomes, ["paste:sent"]);
+    transport.deliver(`{"type":"status","code":"sent","message":""}`);
+    assert.deepEqual(outcomes, ["paste:sent", "input:sent"]);
   });
 });

@@ -22,7 +22,7 @@ SHA = 'a' * 40
 
 def document(sha=SHA):
     return dict(schema=1, sha=sha, uid=1003, gid=1003,
-                playwright='1.62.1', mempalace='3.10.0', go='1.26.10',
+                playwright='1.64.1', mempalace='3.10.0', go='1.26.10',
                 font_files={'Euclid.woff2': 'b' * 64},
                 images={role: REG + '/' + PREFIX + '-' + role + '@sha256:' + str(i) * 64
                         for i, role in enumerate(('free', 'licensed', 'browser'), 1)})
@@ -159,7 +159,7 @@ class ReleaseImagesTest(unittest.TestCase):
     def test_manifest_rejects_unsafe_or_partial_sets(self):
         module.validate(document(), REG, PREFIX, True)
         for key, value in [('sha', 'main'), ('uid', True), ('gid', 0),
-                           ('playwright', '^1.62.1'), ('font_files', {}),
+                           ('playwright', '^1.64.1'), ('font_files', {}),
                            ('images', {'free': document()['images']['free']})]:
             with self.subTest(key=key), self.assertRaises(ValueError):
                 module.validate(dict(document(), **{key: value}), REG, PREFIX, True)

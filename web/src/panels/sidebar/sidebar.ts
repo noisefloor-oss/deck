@@ -129,7 +129,14 @@ export function sessionMetaHtml(session: SessionSummary, streaming: boolean, cha
   const slot = chat === null
     ? trailing
     : `<span data-meta-slot class="inline-flex w-[26px] flex-none items-center justify-end overflow-hidden whitespace-nowrap">${trailing}</span>`;
-  return `${mark}${attention}${slot}`;
+  const fact = session.conversation_attention;
+  const currentConversation = fact?.session_id === session.id && fact.generation === session.generation;
+  const needsInput = currentConversation && fact.state === "needs_input" && isVerifiedRunningSession(session);
+  const unseen = currentConversation && fact.ended_sequence > fact.seen_sequence;
+  const conversation = needsInput || unseen
+    ? `<span data-conversation-attention="${needsInput ? "needs_input" : "ended"}" role="img" aria-label="${needsInput ? "Agent needs input" : "Unseen ended turn"}" class="mr-1.5 flex h-4 w-4 flex-none items-center justify-center rounded-full ${needsInput ? "bg-warning text-text-on-accent" : "border border-accent text-accent"}">${needsInput ? "?" : "✓"}</span>`
+    : "";
+  return `${conversation}${mark}${attention}${slot}`;
 }
 
 // modKeyLabel maps the platform to the shortcut chip's label:

@@ -117,6 +117,33 @@ func TestProductionTmpHostVerifierUsesEffectiveFilesystem(t *testing.T) {
 	}
 }
 
+func TestProductionTmpHostVerifierChecksRuntimeAccess(t *testing.T) {
+	// This verifier rejects RAM-backed binds; /tmp may itself be tmpfs.
+	checkout, err := filepath.Abs(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := os.MkdirTemp(checkout, ".tmp-host-test-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(source) })
+	if err := os.Chmod(source, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	otherIdentity := fmt.Sprintf("%d:%d", os.Getuid()+1, os.Getgid()+1)
+	if out, err := verifyProductionTmpHost(t, source, otherIdentity); err != nil {
+		t.Fatalf("writable source owned by another identity failed: %v\n%s", err, out)
+	}
+	if err := os.Chmod(source, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	out, err := verifyProductionTmpHost(t, source, otherIdentity)
+	if err == nil || !strings.Contains(out, "rwx permissions") {
+		t.Fatalf("inaccessible source result = %v, output %q", err, out)
+	}
+}
+
 func TestProductionTmpHostVerifierRejectsMissingSource(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "does-not-exist")
 	identity := fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid())
@@ -140,7 +167,7 @@ func TestProductionPreviewConnectorProfile(t *testing.T) {
 	env["NOISEDECK_PROJECT_PREVIEWS_BIND"] = "127.0.0.1:8840"
 	env["NOISEDECK_PROJECT_PREVIEWS_UNCONFINED"] = "true"
 	connector := map[string]any{
-		"image":        "cloudflare/cloudflared@sha256:0aa26e284f05e6c77ae375b8c9c11d9eb6a448fb7bcd8d40f31cb6176189eb38",
+		"image":        "cloudflare/cloudflared@sha256:faa8e0a1475f137c910be6025f43c8e4092fdd35461b31e19fd1390657a1ff39",
 		"network_mode": "service:app", "read_only": true, "user": "65532:65532", "cap_drop": []string{"ALL"},
 		"security_opt": []string{"no-new-privileges:true"}, "cpus": 0.25, "mem_limit": 268435456,
 		"volumes": []any{map[string]any{"target": "/run/secrets/preview-token", "read_only": true}, sidecarResolverFixture()},

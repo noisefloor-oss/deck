@@ -31,6 +31,7 @@ import {
 
 export interface AssetsPanelShellCallbacks {
   onClose?: () => void;
+  onOpen?: (entry: AssetEntry) => void;
   // The dialogs mount above the whole workspace: a scrim inside the panel
   // would cover only the panel.
   modals: () => HTMLElement | null;
@@ -124,13 +125,13 @@ export class AssetsPanel {
         img.replaceWith(glyph("file-text"));
       }, { once: true });
     }
-    for (const row of this.container.querySelectorAll<HTMLElement>("[data-asset-path]")) {
-      const path = row.dataset.assetPath ?? "";
-      row.addEventListener("click", () => this.model.toggle(path));
-      row.addEventListener("keydown", (event) => {
-        if (event.key !== " " && event.key !== "Enter") return;
-        event.preventDefault();
-        this.model.toggle(path);
+    for (const select of this.container.querySelectorAll<HTMLElement>("[data-asset-select]")) {
+      select.addEventListener("click", () => this.model.toggle(select.dataset.assetSelect ?? ""));
+    }
+    for (const open of this.container.querySelectorAll<HTMLElement>("[data-asset-open]")) {
+      open.addEventListener("click", () => {
+        const entry = this.model.entries().find((candidate) => candidate.path === open.dataset.assetOpen);
+        if (entry !== undefined) this.cb.onOpen?.(entry);
       });
     }
   }
@@ -216,21 +217,26 @@ export class AssetsPanel {
       ? "text-text-tertiary"
       : outcome.outcome === "unconfirmed" ? "text-warning-on-tint" : "text-text-secondary";
     const label = [entry.name, size, fact].filter((part) => part !== null && part !== "").join(", ");
+    const check = `<span aria-hidden="true" data-asset-check="${checked}" class="asset-check">${lucideIcon("check", 12)}</span>`;
     const slot = deletable
-      ? `<span aria-hidden="true" data-asset-check="${checked}" class="asset-check">${lucideIcon("check", 12)}</span>`
-      : `<span aria-hidden="true" data-asset-lock class="flex text-text-tertiary">${lucideIcon("lock", 13)}</span>`;
+      ? `<button type="button" data-asset-select="${escapeHtml(entry.path)}" role="checkbox" aria-checked="${checked}"
+          aria-label="Select ${escapeHtml(entry.name)} for deletion" data-hint="${hints.SELECT_ASSET}"
+          class="flex h-[30px] w-[18px] flex-none items-center justify-center">${check}</button>`
+      : `<span data-asset-slot class="flex h-[30px] w-[18px] flex-none items-center justify-center text-text-tertiary">${lucideIcon("lock", 13)}</span>`;
     return `
-      <div data-asset-path="${escapeHtml(entry.path)}" role="checkbox" tabindex="0"
-        aria-checked="${checked}" ${deletable ? "" : 'aria-disabled="true"'} aria-label="${escapeHtml(label)}"
-        ${deletable ? `data-hint="${hints.SELECT_ASSET}"` : ""} data-selected="${checked}"
-        class="asset-row flex items-start gap-2.5 rounded-control px-2.5 py-1 ${deletable ? "cursor-pointer" : ""}">
-        <span data-asset-slot class="flex h-[30px] w-[18px] flex-none items-center justify-center">${slot}</span>
-        ${this.thumbHtml(entry)}
-        <span class="flex min-w-0 flex-1 flex-col leading-[1.3]">
-          <span data-asset-name class="truncate text-body-sm leading-[1.3] text-text-primary">${escapeHtml(entry.name)}</span>
-          <span data-asset-meta class="whitespace-nowrap text-caption leading-[1.3] text-text-tertiary">${escapeHtml(meta)}</span>
-          ${fact === null || fact === "" ? "" : `<span data-asset-fact class="truncate text-caption leading-[1.3] ${factTone}">${escapeHtml(fact)}</span>`}
-        </span>
+      <div data-asset-path="${escapeHtml(entry.path)}" data-selected="${checked}"
+        class="asset-row flex items-start gap-2.5 rounded-control px-2.5 py-1">
+        ${slot}
+        <button type="button" data-asset-open="${escapeHtml(entry.path)}" aria-label="${escapeHtml(label)}"
+          data-hint="${entry.kind === "dir" ? hints.OPEN_THIS_FOLDER : hints.OPEN_THIS_FILE}"
+          class="flex min-w-0 flex-1 cursor-pointer items-start gap-2.5 rounded-control-sm text-left">
+          ${this.thumbHtml(entry)}
+          <span class="flex min-w-0 flex-1 flex-col leading-[1.3]">
+            <span data-asset-name class="truncate text-body-sm leading-[1.3] text-text-primary">${escapeHtml(entry.name)}</span>
+            <span data-asset-meta class="whitespace-nowrap text-caption leading-[1.3] text-text-tertiary">${escapeHtml(meta)}</span>
+            ${fact === null || fact === "" ? "" : `<span data-asset-fact class="truncate text-caption leading-[1.3] ${factTone}">${escapeHtml(fact)}</span>`}
+          </span>
+        </button>
       </div>`;
   }
 
@@ -400,8 +406,10 @@ function glyph(name: "file-text"): Element {
 }
 
 function focusKey(element: HTMLElement): string | null {
-  const path = element.dataset.assetPath;
-  if (path !== undefined) return `[data-asset-path="${CSS.escape(path)}"]`;
+  for (const [key, hook] of [["assetSelect", "data-asset-select"], ["assetOpen", "data-asset-open"]] as const) {
+    const path = element.dataset[key];
+    if (path !== undefined) return `[${hook}="${CSS.escape(path)}"]`;
+  }
   for (const hook of ["data-assets-rescan", "data-assets-close", "data-assets-clear", "data-assets-delete"]) {
     if (element.hasAttribute(hook)) return `[${hook}]`;
   }

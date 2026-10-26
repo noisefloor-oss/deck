@@ -9,6 +9,7 @@ import (
 
 	"github.com/noisefloor-oss/deck/internal/auth"
 	"github.com/noisefloor-oss/deck/internal/session"
+	"github.com/noisefloor-oss/deck/internal/workspaceruntime"
 )
 
 type privateRequestKey struct{}
@@ -58,6 +59,9 @@ func (h *Host) prepareLock(ctx context.Context) error {
 		return ErrUnavailable
 	}
 	_ = response.Body.Close()
+	if response.StatusCode == http.StatusUnprocessableEntity {
+		return workspaceruntime.ErrLockRefused
+	}
 	if response.StatusCode != http.StatusNoContent {
 		return ErrUnavailable
 	}

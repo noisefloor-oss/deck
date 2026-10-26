@@ -331,6 +331,9 @@ func (s *Service) Status(ctx context.Context, login auth.Login, id string) (work
 		if record.Action.Operation == workspacekeys.Lock && nativeErr == nil && nativeOp.Status == "succeeded" && state.Locked {
 			status = "complete"
 		}
+		if record.Action.Operation == workspacekeys.Lock && nativeErr == nil && nativeOp.Status == "failed" && nativeOp.Code == "lock-preparation-refused" && running(state) {
+			status = "refused"
+		}
 		if (record.Action.Operation == workspacekeys.Initialize || record.Action.Operation == workspacekeys.Unlock) && record.Status == "complete" && running(state) && state.Epoch == record.RuntimeEpoch {
 			status = "complete"
 		}

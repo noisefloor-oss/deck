@@ -2,6 +2,7 @@ package boot
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -29,7 +30,11 @@ func workspaceLockHandler(prepare func(context.Context) error) http.Handler {
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), budget)
 		defer cancel()
-		if prepare(ctx) != nil {
+		if err := prepare(ctx); err != nil {
+			if errors.Is(err, session.ErrWorkspaceLockRefused) {
+				http.Error(w, "workspace lock preparation refused", http.StatusUnprocessableEntity)
+				return
+			}
 			http.Error(w, "workspace lock preparation unconfirmed", http.StatusServiceUnavailable)
 			return
 		}

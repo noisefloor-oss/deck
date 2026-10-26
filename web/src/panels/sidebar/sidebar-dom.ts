@@ -1,3 +1,4 @@
+import { SidebarSize } from "./sidebar-size.ts";
 // The sidebar's DOM shell: renders a SidebarModel into the
 // workspace frame and forwards its events. All state lives in the model
 // (and ultimately on the server); this file only draws and listens. The
@@ -356,6 +357,8 @@ export class Sidebar {
   // rewrite it — and drop the render cache — on every age tick.
   private sessionMetaWritten = new Map<string, string>();
 
+  private sidebarSize: SidebarSize | null = null;
+
   constructor(
     container: HTMLElement,
     model: SidebarModel,
@@ -369,6 +372,11 @@ export class Sidebar {
     this.onConnectGitHub = onConnectGitHub;
     this.projectActions = projectActions;
     this.render();
+    if (typeof ResizeObserver !== "undefined") {
+      const workspace = this.container.closest<HTMLElement>("[data-workspace]");
+      const handle = workspace?.querySelector<HTMLElement>("[data-sidebar-resize]");
+      if (workspace && handle) this.sidebarSize = new SidebarSize(workspace, handle);
+    }
     if (typeof window !== "undefined") {
       this.metaTimer = window.setInterval(() => this.refreshSessionMeta(), 30_000);
       void this.loadLayout();
@@ -913,6 +921,7 @@ export class Sidebar {
 
   dispose(): void {
     this.disposed = true;
+    this.sidebarSize?.dispose();
     ++this.githubReadGeneration;
     this.githubRepositories?.close();
     this.previewDialog?.close(false);
@@ -1103,6 +1112,7 @@ export class Sidebar {
     this.container.inert = this.collapsed;
     this.container.setAttribute("aria-hidden", this.collapsed ? "true" : "false");
     this.renderSidebarExpand(workspace);
+    this.sidebarSize?.refresh();
     const m = this.model;
     this.applyDefaultExpansion();
     // Saved project colours re-apply on every draw: a refresh rebuilt the

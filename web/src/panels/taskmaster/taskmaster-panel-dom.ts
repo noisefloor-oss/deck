@@ -16,7 +16,7 @@ import type { AddTaskInput, TmTask } from "../../api/tasks.ts";
 import { DIALOG_BODY, DIALOG_FOOT, ICON_BUTTON, SECONDARY_SM_BUTTON, SELECT_FIELD, dialogHead, selectShellHtml } from "../../ui/controls.ts";
 import { activateDialog } from "../../ui/dialog-focus.ts";
 import { ModalSlot, returnFocus } from "../../ui/modal-host.ts";
-import { editedModalFields, focusedModalField, restoreModalEdits, restoreModalFocus, type ModalFocus } from "../../ui/modal-fields.ts";
+import { editedModalFields, focusedModalControl, restoreModalEdits, restoreModalFocus, type ModalFocus } from "../../ui/modal-fields.ts";
 import { escapeHtml } from "../../lib/escape.ts";
 import { formatFileSize } from "../../lib/format.ts";
 import { lucideIcon } from "../../ui/icons.ts";
@@ -189,7 +189,7 @@ export class TaskmasterPanel {
     if (this.disposed) return;
     this.captureBoardScroll();
     // A dialog hosted in the container loses focus to the rewrite below.
-    const modalFocus = focusedModalField(this.modalSlot.element);
+    const modalFocus = focusedModalControl(this.modalSlot.element);
     const m = this.model;
     if (m.state !== "ready") this.stopPolling();
     this.hideTaskPopover();
@@ -933,7 +933,7 @@ export class TaskmasterPanel {
           ${DIALOG_FOOT(`
             <button type="button" data-tm-task-add-cancel ${busy ? "disabled" : ""} data-hint="${hints.CANCEL_ADDING_TASK}"
               class="h-9 rounded-control border border-border bg-surface-card px-3 text-body-sm text-text-primary hover:bg-wash-hover disabled:opacity-45 pointer-coarse:min-h-11">Cancel</button>
-            <button type="submit" ${busy ? "disabled" : ""} data-hint="${hints.ADD_TASK_TO_BOARD}"
+            <button type="submit" data-tm-task-add-submit ${busy ? "disabled" : ""} data-hint="${hints.ADD_TASK_TO_BOARD}"
               class="h-9 rounded-control bg-accent px-4 text-body-sm font-medium text-text-on-accent hover:bg-accent-hover disabled:opacity-45 pointer-coarse:min-h-11">${busy ? "Adding…" : "Add task"}</button>
           `)}
         </form>`;

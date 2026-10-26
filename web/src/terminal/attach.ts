@@ -183,14 +183,18 @@ export class AgentTerminal {
     this.mounted.jumpToLive();
   }
 
-  // Types text into the live attachment and reports that write's own
-  // outcome (sent, failed, uncertain, interrupted) to done. False when
-  // nothing is attached, in which case nothing was written. A reattach
-  // ends the old attachment, so it can only settle as interrupted.
-  sendTracked(text: string, done: (code: string, message: string) => void): boolean {
+  // Runs one synchronous terminal write and reports that write's own outcome
+  // (sent, failed, uncertain, interrupted) to done. False when nothing is
+  // attached, in which case nothing was written. A reattach ends the old
+  // attachment, so it can only settle as interrupted.
+  trackWrite(send: () => void, done: (code: string, message: string) => void): boolean {
     const attachment = this.attachment;
     if (this.disposed || attachment === null) return false;
-    return attachment.trackWrite(() => this.mounted.sendInput(text), done);
+    return attachment.trackWrite(send, done);
+  }
+
+  sendTracked(text: string, done: (code: string, message: string) => void): boolean {
+    return this.trackWrite(() => this.mounted.sendInput(text), done);
   }
 
   // writeOutcome is the live attachment's last terminal write outcome

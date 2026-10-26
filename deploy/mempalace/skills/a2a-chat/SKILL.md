@@ -75,7 +75,8 @@ someone leaving or ending a chat. Reply to a live invitation or message with
 members. If you are added to an existing live chat, first use `a2a read <chat>`
 to read the preceding discussion, then reply with `a2a reply <chat> "..."`.
 An ended chat needs no reply. `a2a inbox` shows anything you have not seen;
-`a2a read <chat>` prints the available conversation history;
+`a2a read <chat>` prints the available conversation history and acknowledges
+the verified incoming messages it displays;
 `a2a status` lists your chats.
 
 Answer with the same care you would give the user. Keep replies short and

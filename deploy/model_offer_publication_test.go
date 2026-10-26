@@ -117,10 +117,10 @@ func newOfferFixture(t *testing.T) offerFixture {
 	if err := os.WriteFile(filepath.Join(fx.bin, "gh"), []byte(mockGH), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// The script refuses to run without both CLIs on PATH; a CI runner
-	// has neither. Discovery is replaced by the prepared plan, so inert
-	// stubs satisfy the guard.
-	for _, cli := range []string{"codex", "claude"} {
+	// The script refuses to run without all three CLIs on PATH; a CI runner
+	// has none. Discovery is replaced by the prepared plan, so inert stubs
+	// satisfy the guard.
+	for _, cli := range []string{"codex", "claude", "kimi"} {
 		if err := os.WriteFile(filepath.Join(fx.bin, cli), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 			t.Fatal(err)
 		}

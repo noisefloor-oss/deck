@@ -22,9 +22,10 @@ jobs:
     permissions:
       contents: read
       actions: read
+      pull-requests: read
     # Private fork code must never execute on a persistent home runner.
-    if: vars.NOISEDECK_SELF_HOSTED_CI != 'true' || !github.event.repository.private || github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ${{ vars.NOISEDECK_SELF_HOSTED_CI == 'true' && github.event.repository.private && fromJSON('["self-hosted","Linux","deck-ci-private"]') || 'ubuntu-24.04' }}
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ${{ github.repository == 'noisefloor-oss/deck' && github.event.repository.visibility == 'public' && 'ubuntu-24.04-arm' || fromJSON('["self-hosted","Linux","ARM64"]') }}
     timeout-minutes: 5
     outputs:
       mode: ${{ steps.select.outputs.mode }}
@@ -46,11 +47,26 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: python3 -B .github/scripts/ci_scope.py
 
+      - name: Verify head commits are authored by the pull request's author
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # Fails the PR at open time rather than the merge: GitHub's squash
+        # merge lifts any head-commit author it cannot map to the PR author
+        # into a mainline Co-authored-by trailer that no body-scanning check
+        # ever sees, because it is injected from commit metadata at merge.
+        run: python3 deploy/verify-merge-gate.py --identity-only "${{ github.event.pull_request.number }}"
+
   documentation:
     needs: scope
-    runs-on: ${{ vars.NOISEDECK_SELF_HOSTED_CI == 'true' && github.event.repository.private && fromJSON('["self-hosted","Linux","deck-ci-private"]') || 'ubuntu-24.04' }}
+    runs-on: ${{ github.repository == 'noisefloor-oss/deck' && github.event.repository.visibility == 'public' && 'ubuntu-24.04-arm' || fromJSON('["self-hosted","Linux","ARM64"]') }}
     timeout-minutes: 10
     steps:
+      - name: Reject external fork source on persistent runners
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+        run: |
+          echo "Import this change into a same-repository branch before running self-hosted CI." >&2
+          exit 1
       - name: Check out source
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -86,7 +102,7 @@ jobs:
   frontend:
     needs: scope
     if: (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && contains(fromJSON(needs.scope.outputs.jobs || '[]'), 'frontend')
-    runs-on: ${{ vars.NOISEDECK_SELF_HOSTED_CI == 'true' && github.event.repository.private && fromJSON('["self-hosted","Linux","deck-ci-private"]') || 'ubuntu-24.04' }}
+    runs-on: ${{ github.repository == 'noisefloor-oss/deck' && github.event.repository.visibility == 'public' && 'ubuntu-24.04-arm' || fromJSON('["self-hosted","Linux","ARM64"]') }}
     timeout-minutes: 15
     steps:
       - name: Check out source
@@ -112,7 +128,7 @@ jobs:
       - name: Install pinned Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 26.5.0
+          node-version: 26.12.1
 
       - name: Check Go formatting
         run: test -z "$(gofmt -l .)"
@@ -144,7 +160,7 @@ jobs:
     # servers do not serialize behind a UI shard. tools/browser.mjs launches
     # the pinned local Chromium when no sidecar is named.
     if: (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && contains(fromJSON(needs.scope.outputs.jobs || '[]'), 'probes')
-    runs-on: ${{ vars.NOISEDECK_SELF_HOSTED_CI == 'true' && github.event.repository.private && fromJSON('["self-hosted","Linux","deck-ci-private"]') || 'ubuntu-24.04' }}
+    runs-on: ${{ github.repository == 'noisefloor-oss/deck' && github.event.repository.visibility == 'public' && 'ubuntu-24.04-arm' || fromJSON('["self-hosted","Linux","ARM64"]') }}
     timeout-minutes: 25
     steps:
       - name: Check out source
@@ -161,7 +177,7 @@ jobs:
       - name: Install pinned Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 26.5.0
+          node-version: 26.12.1
 
       - name: Install frontend dependencies and build
         working-directory: web
@@ -231,7 +247,7 @@ jobs:
   lint:
     needs: scope
     if: (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && contains(fromJSON(needs.scope.outputs.jobs || '[]'), 'lint')
-    runs-on: ${{ vars.NOISEDECK_SELF_HOSTED_CI == 'true' && github.event.repository.private && fromJSON('["self-hosted","Linux","deck-ci-private"]') || 'ubuntu-24.04' }}
+    runs-on: ${{ github.repository == 'noisefloor-oss/deck' && github.event.repository.visibility == 'public' && 'ubuntu-24.04-arm' || fromJSON('["self-hosted","Linux","ARM64"]') }}
     timeout-minutes: 15
     steps:
       - name: Check out source
@@ -292,7 +308,7 @@ jobs:
   go-serialized:
     needs: scope
     if: (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && contains(fromJSON(needs.scope.outputs.jobs || '[]'), 'go-serialized')
-    runs-on: ${{ vars.NOISEDECK_SELF_HOSTED_CI == 'true' && github.event.repository.private && fromJSON('["self-hosted","Linux","deck-ci-private"]') || 'ubuntu-24.04' }}
+    runs-on: ${{ github.repository == 'noisefloor-oss/deck' && github.event.repository.visibility == 'public' && 'ubuntu-24.04-arm' || fromJSON('["self-hosted","Linux","ARM64"]') }}
     timeout-minutes: 15
     steps:
       - name: Check out source
@@ -375,7 +391,7 @@ jobs:
   go-parallel:
     needs: scope
     if: (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && contains(fromJSON(needs.scope.outputs.jobs || '[]'), 'go-parallel')
-    runs-on: ${{ vars.NOISEDECK_SELF_HOSTED_CI == 'true' && github.event.repository.private && fromJSON('["self-hosted","Linux","deck-ci-private"]') || 'ubuntu-24.04' }}
+    runs-on: ${{ github.repository == 'noisefloor-oss/deck' && github.event.repository.visibility == 'public' && 'ubuntu-24.04-arm' || fromJSON('["self-hosted","Linux","ARM64"]') }}
     timeout-minutes: 15
     steps:
       - name: Check out source
@@ -424,7 +440,7 @@ jobs:
   experiment-enabled:
     needs: scope
     if: (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && contains(fromJSON(needs.scope.outputs.jobs || '[]'), 'experiment-enabled')
-    runs-on: ${{ vars.NOISEDECK_SELF_HOSTED_CI == 'true' && github.event.repository.private && fromJSON('["self-hosted","Linux","deck-ci-private"]') || 'ubuntu-24.04' }}
+    runs-on: ${{ github.repository == 'noisefloor-oss/deck' && github.event.repository.visibility == 'public' && 'ubuntu-24.04-arm' || fromJSON('["self-hosted","Linux","ARM64"]') }}
     timeout-minutes: 15
     steps:
       - name: Check out source
@@ -470,7 +486,7 @@ jobs:
     # hostile probe runs from inside the jail and must find nothing, and
     # the verdict channel must work.
     if: (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && contains(fromJSON(needs.scope.outputs.jobs || '[]'), 'jail-probe')
-    runs-on: ${{ vars.NOISEDECK_SELF_HOSTED_CI == 'true' && github.event.repository.private && fromJSON('["self-hosted","Linux","deck-ci-private"]') || 'ubuntu-24.04' }}
+    runs-on: ${{ github.repository == 'noisefloor-oss/deck' && github.event.repository.visibility == 'public' && 'ubuntu-24.04-arm' || fromJSON('["self-hosted","Linux","ARM64"]') }}
     timeout-minutes: 20
     steps:
       - name: Check out source
@@ -485,7 +501,7 @@ jobs:
       - name: Install pinned Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 26.5.0
+          node-version: 26.12.1
 
       - name: Install the pinned Codex with no lifecycle script
         run: |
@@ -591,7 +607,7 @@ jobs:
   deploy-suite:
     needs: scope
     if: (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && contains(fromJSON(needs.scope.outputs.jobs || '[]'), 'deploy-suite')
-    runs-on: ${{ vars.NOISEDECK_SELF_HOSTED_CI == 'true' && github.event.repository.private && fromJSON('["self-hosted","Linux","deck-ci-private"]') || 'ubuntu-24.04' }}
+    runs-on: ${{ github.repository == 'noisefloor-oss/deck' && github.event.repository.visibility == 'public' && 'ubuntu-24.04-arm' || fromJSON('["self-hosted","Linux","ARM64"]') }}
     timeout-minutes: 15
     env:
       # The double-build reproducibility proof costs ~100s of in-container
@@ -648,12 +664,17 @@ jobs:
       fail-fast: false
       matrix:
         suite: [parallel, serialized, deploy]
-    runs-on: ${{ vars.NOISEDECK_SELF_HOSTED_CI == 'true' && github.event.repository.private && fromJSON('["self-hosted","Linux","deck-ci-private"]') || 'ubuntu-24.04' }}
+    runs-on: ${{ github.repository == 'noisefloor-oss/deck' && github.event.repository.visibility == 'public' && 'ubuntu-24.04-arm' || fromJSON('["self-hosted","Linux","ARM64"]') }}
     timeout-minutes: 45
     env:
       NOISEDECK_CI_FAST: "1"
       TMPDIR: /tmp
     steps:
+      - name: Reject external fork source on persistent runners
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+        run: |
+          echo "Import this change into a same-repository branch before running self-hosted CI." >&2
+          exit 1
       - name: Check out source
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -758,9 +779,14 @@ jobs:
   fast-checks:
     if: always()
     needs: [scope, documentation, frontend, probes, lint, go-serialized, go-parallel, deploy-suite, experiment-enabled, jail-probe, source-export]
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.repository == 'noisefloor-oss/deck' && github.event.repository.visibility == 'public' && 'ubuntu-24.04-arm' || fromJSON('["self-hosted","Linux","ARM64"]') }}
     timeout-minutes: 5
     steps:
+      - name: Reject external fork source on persistent runners
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+        run: |
+          echo "Import this change into a same-repository branch before running self-hosted CI." >&2
+          exit 1
       - name: Certify fast checks
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}

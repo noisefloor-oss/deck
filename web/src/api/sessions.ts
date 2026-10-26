@@ -1,7 +1,9 @@
+import type { ConversationAttention } from "../terminal/conversation-attention.ts";
 export interface SessionSummary {
   id: string;
   project_id: string;
   provider: string;
+  conversation_attention?: ConversationAttention;
   codex_login_helper?: boolean;
   // display_name is the user's own label; empty renders the
   // provider. Metadata, never identity.

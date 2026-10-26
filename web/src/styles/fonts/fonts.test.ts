@@ -39,6 +39,13 @@ test("every entry imports @fonts immediately after app.css", () => {
 // The free faces stand in for licensed ones through descriptors, so every
 // face of every family must carry the full set; a face missing one renders
 // at its own metrics and moves every line box that face touches.
+// Text waits for Deck's own face rather than painting in the fallback stack.
+test("every free @font-face blocks rather than swaps", () => {
+  const faces = free.match(/@font-face\s*\{[^}]*\}/g) ?? [];
+  assert.ok(faces.length > 0);
+  for (const face of faces) assert.match(face, /font-display:\s*block/, face.slice(0, 80));
+});
+
 test("every free @font-face carries size-adjust and the vertical overrides", () => {
   const faces = free.match(/@font-face\{[^}]*\}/g) ?? [];
   assert.ok(faces.length >= 12, `expected every face of the three families, got ${faces.length}`);

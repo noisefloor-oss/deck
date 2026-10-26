@@ -106,15 +106,17 @@ type Manager struct {
 }
 
 type lifecycleTestHooks struct {
-	resumeGated          func()
-	resumeSpawned        func(*tmux.PaneInfo)
-	resumeCommitted      func()
-	removeGated          func()
-	removeExecuting      func()
-	removeBeforeSignal   func()
-	removeProcessStopped func()
-	removePaneKilled     func()
-	stopSignaled         func()
+	workspaceLockPreflight func()
+	workspaceLockMarked    func()
+	resumeGated            func()
+	resumeSpawned          func(*tmux.PaneInfo)
+	resumeCommitted        func()
+	removeGated            func()
+	removeExecuting        func()
+	removeBeforeSignal     func()
+	removeProcessStopped   func()
+	removePaneKilled       func()
+	stopSignaled           func()
 }
 
 // SetProjectPreviewSocket supplies only the nonsecret metadata socket location

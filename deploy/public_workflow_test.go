@@ -1,8 +1,11 @@
 package deploy
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -44,12 +47,22 @@ func TestPublicWorkflowRepositoryAdmission(t *testing.T) {
 	for _, file := range []string{"public-image.yaml", "release.yml"} {
 		workflow := readPublicWorkflow(t, file)
 		for event := range workflow.Events {
-			if event != "push" && (file != "public-image.yaml" || event != "workflow_dispatch") {
+			if event != "push" && event != "workflow_dispatch" {
 				t.Errorf("%s must not admit untrusted event %s", file, event)
 			}
 		}
 		for name, job := range workflow.Jobs {
 			condition := strings.Join(strings.Fields(job.If), " ")
+			if file == "release.yml" {
+				prefix := "github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && "
+				if name == "build" {
+					prefix = "!cancelled() && ((github.event_name == 'workflow_dispatch' && github.repository == 'noisefloor-oss/deck') || needs.release-create.result == 'success') && "
+				}
+				if !strings.HasPrefix(condition, prefix) {
+					t.Fatalf("%s must retain its event/dependency guard", name)
+				}
+				condition = strings.TrimPrefix(condition, prefix)
+			}
 			if condition != policy {
 				t.Fatalf("%s/%s admission = %q, want public non-fork repository-bound opt-in", file, name, condition)
 			}
@@ -152,6 +165,175 @@ gh release upload "$GITHUB_REF_NAME" \
 						if strings.Contains(key, "TOKEN") {
 							t.Fatalf("repository-code step %s must not receive publication tokens", step.Name)
 						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestPublicReleaseCandidateVersion(t *testing.T) {
+	workflow := readPublicWorkflow(t, "release.yml")
+	var script string
+	for _, step := range workflow.Jobs["build"].Steps {
+		if step.Name == "Select the build version" {
+			script = step.Run
+		}
+	}
+	if script == "" {
+		t.Fatal("missing version selection")
+	}
+	for _, tc := range []struct {
+		event, ref, want string
+		valid            bool
+	}{
+		{"workflow_dispatch", "feature/qualification", "candidate-0123456789012345678901234567890123456789", true},
+		{"push", "v0.4.0", "0.4.0", true},
+		{"push", "v0.4.0-rc.1+build", "0.4.0-rc.1+build", true},
+		{"push", "main", "", false},
+		{"push", "v0.4.0;touch injected", "", false},
+	} {
+		t.Run(tc.event+"/"+tc.ref, func(t *testing.T) {
+			dir := t.TempDir()
+			output := filepath.Join(dir, "output")
+			cmd := exec.Command("bash", "-eu", "-c", script)
+			cmd.Dir = dir
+			cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "GITHUB_EVENT_NAME=" + tc.event, "GITHUB_REF_NAME=" + tc.ref, "GITHUB_OUTPUT=" + output, "GITHUB_SHA=0123456789012345678901234567890123456789"}
+			data, err := cmd.CombinedOutput()
+			if (err == nil) != tc.valid {
+				t.Fatalf("version selection: %v %s", err, data)
+			}
+			if tc.valid {
+				got, err := os.ReadFile(output)
+				if err != nil || string(got) != "value="+tc.want+"\n" {
+					t.Fatalf("version output = %q, %v", got, err)
+				}
+			}
+			if _, err := os.Stat(filepath.Join(dir, "injected")); !os.IsNotExist(err) {
+				t.Fatal("ref executed as shell code")
+			}
+		})
+	}
+}
+
+func TestPublicReleaseEventGuards(t *testing.T) {
+	workflow := readPublicWorkflow(t, "release.yml")
+	for _, tc := range []struct {
+		name, event, ref, result, repo, visibility, optIn string
+		cancelled, build, write                           bool
+	}{
+		{"branch-dispatch", "workflow_dispatch", "refs/heads/candidate", "skipped", "noisefloor-oss/deck", "public", "", false, true, false},
+		{"tag-dispatch", "workflow_dispatch", "refs/tags/v0.4.0", "skipped", "noisefloor-oss/deck", "public", "", false, true, false},
+		{"tag-push", "push", "refs/tags/v0.4.0", "success", "noisefloor-oss/deck", "public", "", false, true, true},
+		{"failed-release", "push", "refs/tags/v0.4.0", "failure", "noisefloor-oss/deck", "public", "", false, false, true},
+		{"skipped-release", "push", "refs/tags/v0.4.0", "skipped", "noisefloor-oss/deck", "public", "", false, false, true},
+		{"cancelled-dispatch", "workflow_dispatch", "refs/heads/candidate", "skipped", "noisefloor-oss/deck", "public", "", true, false, false},
+		{"mirror-dispatch", "workflow_dispatch", "refs/heads/candidate", "skipped", "mirror/deck", "public", "mirror/deck", false, false, false},
+		{"mirror-tag", "push", "refs/tags/v0.4.0", "success", "mirror/deck", "public", "mirror/deck", false, true, true},
+		{"private-dispatch", "workflow_dispatch", "refs/heads/candidate", "skipped", "noisefloor-oss/deck", "private", "", false, false, false},
+	} {
+		for name, job := range workflow.Jobs {
+			t.Run(tc.name+"/"+name, func(t *testing.T) {
+				want := tc.write
+				if name == "build" {
+					want = tc.build
+				}
+				// The publish job's implicit successful-needs gate is separate
+				// from this explicit admission expression.
+				quote := strconv.Quote
+				expression := strings.NewReplacer(
+					"!cancelled()", strconv.FormatBool(tc.cancelled)+" == false",
+					"startsWith(github.ref, 'refs/tags/v')", strconv.FormatBool(strings.HasPrefix(tc.ref, "refs/tags/v"))+" == true",
+					"github.event_name", quote(tc.event),
+					"github.event.repository.visibility", quote(tc.visibility),
+					"github.event.repository.fork", "false",
+					"needs.release-create.result", quote(tc.result),
+					"vars.NOISEDECK_PUBLIC_RELEASE_REPOSITORY", quote(tc.optIn),
+					"github.repository", quote(tc.repo),
+				).Replace(strings.Join(strings.Fields(job.If), " "))
+				cmd := exec.Command("bash", "-c", "[[ "+expression+" ]]")
+				data, err := cmd.CombinedOutput()
+				if (err == nil) != want {
+					t.Fatalf("guard = %v, want %v: %v %s", err == nil, want, err, data)
+				}
+			})
+		}
+	}
+}
+
+func TestPublicRunnerRouting(t *testing.T) {
+	for _, file := range []string{"ci-fast.yaml", "release-acceptance.yaml", "public-image.yaml", "release.yml"} {
+		var workflow map[string]any
+		if err := yaml.Unmarshal(readWorkflow(t, file), &workflow); err != nil {
+			t.Fatal(err)
+		}
+		for name, value := range workflow["jobs"].(map[string]any) {
+			job := value.(map[string]any)
+			route, ok := job["runs-on"].(string)
+			if !ok {
+				t.Fatalf("%s/%s has unexpected runner type", file, name)
+			}
+			// Existing backend selector owns this dynamic route.
+			if name == "native-worker" {
+				continue
+			}
+			rows := []map[string]any{{}}
+			if strategy, ok := job["strategy"].(map[string]any); ok {
+				if matrix, ok := strategy["matrix"].(map[string]any); ok {
+					if include, ok := matrix["include"].([]any); ok {
+						rows = nil
+						for _, row := range include {
+							rows = append(rows, row.(map[string]any))
+						}
+					}
+				}
+			}
+			for _, row := range rows {
+				arch := "ARM64"
+				if name == "bwrap-proof" || file == "public-image.yaml" || row["arch"] == "amd64" {
+					arch = "X64"
+				}
+				for _, scenario := range []struct {
+					repo, visibility string
+					hosted           bool
+				}{
+					{"noisefloor-oss/deck", "public", true},
+					{"private-owner/deck", "private", false},
+					{"noisefloor-oss/deck", "private", false},
+					{"mirror/deck", "public", false},
+				} {
+					data, err := json.Marshal(row)
+					if err != nil {
+						t.Fatal(err)
+					}
+					// Only the boolean and fromJSON grammar used above is supported.
+					// Unsupported functions or operators fail this evaluation.
+					script := `import json,sys
+expression,repo,visibility,row=sys.argv[1:]
+row=json.loads(row)
+expression=expression.removeprefix("${{").removesuffix("}}").strip()
+expression=expression.replace("github.repository","repo").replace("github.event.repository.visibility","visibility").replace("matrix.os", "row['os']").replace("matrix.runner", "row['runner']").replace("&&"," and ").replace("||"," or ")
+print(json.dumps(eval(expression,{"__builtins__":{}},{"repo":repo,"visibility":visibility,"row":row,"fromJSON":json.loads})))`
+					output, err := exec.Command("python3", "-c", script, route, scenario.repo, scenario.visibility, string(data)).CombinedOutput()
+					if err != nil {
+						t.Fatalf("%s/%s: %v %s", file, name, err, output)
+					}
+					var actual any
+					if err := json.Unmarshal(output, &actual); err != nil {
+						t.Fatal(err)
+					}
+					var want any = []any{"self-hosted", "Linux", arch}
+					if row["arch"] == "amd64" {
+						want = []any{"self-hosted", "Linux", "X64", "ubuntu-24.04"}
+					}
+					if scenario.hosted {
+						want = "ubuntu-24.04-arm"
+						if arch == "X64" {
+							want = "ubuntu-24.04"
+						}
+					}
+					if !reflect.DeepEqual(actual, want) {
+						t.Errorf("%s/%s %s/%s arch %s: got %v want %v", file, name, scenario.repo, scenario.visibility, arch, actual, want)
 					}
 				}
 			}

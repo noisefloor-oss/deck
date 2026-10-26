@@ -239,13 +239,42 @@ def check_failures(checks: list[dict[str, object]], head: str, number: int,
     return failures
 
 
+def commit_identity_failures(commits: object, expected: object) -> list[str]:
+    """Every commit on a pull request's head must be authored by the pull
+    request author's GitHub account. GitHub's squash merge turns any other
+    author - including an identity it cannot map to an account at all,
+    which is exactly what an agent's ad-hoc name and email look like - into
+    a Co-authored-by trailer on the mainline commit, injected from commit
+    metadata at merge time where no review of the pull request surface ever
+    sees it. The check reads the account mapping GitHub itself uses, so it
+    cannot disagree with the mechanism it guards against."""
+    if not isinstance(commits, list) or not commits:
+        return ["no commits were returned for the pull request's head"]
+    login = expected if isinstance(expected, str) else None
+    failures: list[str] = []
+    for commit in commits:
+        if not isinstance(commit, dict):
+            failures.append("a commit entry was not an object")
+            continue
+        sha = str(commit.get("sha") or "?")[:12]
+        who = commit.get("author")
+        mapped = who.get("login") if isinstance(who, dict) else None
+        if login is None or mapped != login:
+            failures.append(
+                f"commit {sha} is not authored by the pull request's author account"
+                f" ({'unmapped identity' if not mapped else mapped}): GitHub's squash"
+                " merge would lift it into a mainline Co-authored-by trailer"
+            )
+    return failures
+
+
 def check_pr(number: int, reviewer: str, owner: str, name: str) -> list[str]:
     data = gh(
         "pr",
         "view",
         str(number),
         "--json",
-        "state,isDraft,headRefOid,mergeable,mergeStateStatus,statusCheckRollup",
+        "state,isDraft,headRefOid,mergeable,mergeStateStatus,statusCheckRollup,author",
     )
     assert isinstance(data, dict)
     failures: list[str] = []
@@ -259,6 +288,13 @@ def check_pr(number: int, reviewer: str, owner: str, name: str) -> list[str]:
         failures.append(f"mergeable is {data.get('mergeable')!r}")
     if data.get("mergeStateStatus") != "CLEAN":
         failures.append(f"merge state is {data.get('mergeStateStatus')!r}")
+
+    # GitHub's squash merge lifts every head commit author it cannot map to
+    # the PR author into a mainline "Co-authored-by:" trailer at merge time,
+    # from commit metadata no review of the PR surface ever sees, so foreign
+    # authorship fails closed here.
+    commits = gh("api", f"repos/{owner}/{name}/pulls/{number}/commits", "--paginate")
+    failures.extend(commit_identity_failures(commits, (data.get("author") or {}).get("login")))
 
     failures.extend(check_failures(data.get("statusCheckRollup") or [], str(head or ""), number, owner, name))
 
@@ -289,6 +325,8 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("prs", nargs="+", type=int, help="PR prefix, bottom to top")
     parser.add_argument("--reviewer", default="noise-review[bot]")
+    parser.add_argument("--identity-only", action="store_true",
+                        help="verify only head-commit authorship; the CI early signal")
     args = parser.parse_args()
 
     repo = gh("repo", "view", "--json", "nameWithOwner")
@@ -298,7 +336,13 @@ def main() -> int:
     failed = False
     for number in args.prs:
         try:
-            failures = check_pr(number, args.reviewer, owner, name)
+            if args.identity_only:
+                data = gh("pr", "view", str(number), "--json", "author")
+                assert isinstance(data, dict)
+                commits = gh("api", f"repos/{owner}/{name}/pulls/{number}/commits", "--paginate")
+                failures = commit_identity_failures(commits, (data.get("author") or {}).get("login"))
+            else:
+                failures = check_pr(number, args.reviewer, owner, name)
         except (RuntimeError, AssertionError, KeyError, TypeError, ValueError) as exc:
             failures = [f"verification error: {exc}"]
         if failures:

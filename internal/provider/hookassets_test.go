@@ -195,17 +195,17 @@ func TestOmpHookAssetChecksum(t *testing.T) {
 func TestPiHookAssetCarriesTheCaptureMechanism(t *testing.T) {
 	asset := string(PiHookPlugin)
 	for _, want := range []string{
-		`pi.on("session_start"`,             // the event subscription in CODE
-		`ctx?.sessionManager?.getSessionId`, // the id source the notes measured
-		`ctx?.sessionManager?.getCwd`,       // cwd correlation
-		"NOISEDECK_SESSION_HOOK_URL",        // capture endpoint from the launch env
-		"NOISEDECK_SESSION_HOOK_TOKEN",      // the launch-only credential
-		"X-Noisedeck-Hook-Token",            // the header hookcapture requires
-		`hook_event_name: "SessionStart"`,   // the payload shape the receiver POSTs
-		"session_id",                        // the payload's identity field
-		`source: "startup",`,                // capture is startup-only
-		"const body = JSON.stringify",       // retry attempts reuse one serialized body
-		"await deliver(url, token, body)",   // delivery stays in the hook process
+		`pi.on("session_start"`,              // the event subscription in CODE
+		`ctx?.sessionManager?.getSessionId`,  // the id source the notes measured
+		`ctx?.sessionManager?.getCwd`,        // cwd correlation
+		"NOISEDECK_SESSION_HOOK_URL",         // capture endpoint from the launch env
+		"NOISEDECK_SESSION_HOOK_TOKEN",       // the launch-only credential
+		"X-Noisedeck-Hook-Token",             // the header hookcapture requires
+		`hook_event_name: "SessionStart"`,    // the payload shape the receiver POSTs
+		"session_id",                         // the payload's identity field
+		`source: event.reason ?? "startup",`, // initial launch attestation
+		"const body = JSON.stringify",        // retry attempts reuse one serialized body
+		"await deliver(url, token, body)",    // delivery stays in the hook process
 	} {
 		if !strings.Contains(asset, want) {
 			t.Errorf("pi-hook.js is missing %q — provisioning would install a broken hook", want)
@@ -223,7 +223,7 @@ func TestPiHookAssetCarriesTheCaptureMechanism(t *testing.T) {
 // `sha256sum internal/provider/assets/pi-hook.js` when the hook deliberately
 // changes.
 func TestPiHookAssetChecksum(t *testing.T) {
-	const want = "2f23047599c13e1144e6a559445e2cf73533082f966e5e632d3a1e9a872a553f"
+	const want = "a2dbc914a8977e8eff6d1317af8a6d2af0426c8d3359fd40675969f4346586c4"
 	if got := fmt.Sprintf("%x", sha256.Sum256(PiHookPlugin)); got != want {
 		t.Fatalf("pi-hook.js sha256 = %s, want %s (deliberate hook change? update both)", got, want)
 	}

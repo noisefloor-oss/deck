@@ -9,6 +9,8 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"sort"
+	"strings"
 	"time"
 )
 
@@ -53,6 +55,36 @@ func CodexCatalog(ctx context.Context, execPath string) ([]string, error) {
 	if len(slugs) == 0 {
 		return nil, fmt.Errorf("modelbump: codex catalog lists no visible models; refusing to offer anything")
 	}
+	return slugs, nil
+}
+
+// KimiCatalog lists the configured Kimi Code aliases without starting a
+// session or making a model call. Only managed Kimi Code aliases participate
+// in the k-version tier-family comparison; other configured providers can use
+// different naming grammars.
+func KimiCatalog(ctx context.Context, execPath string) ([]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	raw, err := exec.CommandContext(ctx, execPath, "provider", "list", "--json").Output()
+	if err != nil {
+		return nil, fmt.Errorf("modelbump: %s provider list --json: %w", execPath, err)
+	}
+	var doc struct {
+		Models map[string]json.RawMessage `json:"models"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return nil, fmt.Errorf("modelbump: decoding kimi model catalog: %w", err)
+	}
+	var slugs []string
+	for alias := range doc.Models {
+		if strings.HasPrefix(alias, "kimi-code/") {
+			slugs = append(slugs, alias)
+		}
+	}
+	if len(slugs) == 0 {
+		return nil, fmt.Errorf("modelbump: kimi catalog lists no managed models; refusing to offer anything")
+	}
+	sort.Strings(slugs)
 	return slugs, nil
 }
 

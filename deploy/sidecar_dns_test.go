@@ -123,7 +123,17 @@ func TestProductionResolverHostPreflight(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			command := exec.Command("python3", "verify-production-compose.py", "--check-host-files")
+			// Label enforcement has its own matrix in TestProductionResolverActualSELinuxLabel.
+			script := `import pathlib, runpy, sys
+from unittest.mock import patch
+original = pathlib.Path.exists
+def exists(path):
+    return False if str(path) == '/sys/fs/selinux/enforce' else original(path)
+with patch.object(pathlib.Path, 'exists', exists):
+    sys.argv.append('--check-host-files')
+    runpy.run_path('verify-production-compose.py', run_name='__main__')
+`
+			command := exec.Command("python3", "-c", script)
 			command.Stdin = bytes.NewReader(payload)
 			out, err := command.CombinedOutput()
 			if (err == nil) != tc.ok {

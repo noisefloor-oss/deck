@@ -65,6 +65,32 @@ func TestLockStopsProjectBeforeNormalUnmount(t *testing.T) {
 	}
 }
 
+func TestLockCleanRefusalAllowsFreshAttempt(t *testing.T) {
+	f := runningFixture(t)
+	ctx := context.Background()
+	op, err := f.c.Lock(ctx, "refused", func(context.Context) error { return ErrLockRefused })
+	if !errors.Is(err, ErrLockRefused) || op.Status != "failed" || op.Stage != "complete" || op.State.Storage != "open" || !f.app {
+		t.Fatalf("clean refusal: %+v %v", op, err)
+	}
+	for _, call := range f.calls {
+		if call.path == f.cfg.SealedComposePath || call.path == f.cfg.FusermountPath {
+			t.Fatal("refusal authorized shutdown")
+		}
+	}
+	if err := f.c.Close(); err != nil {
+		t.Fatal(err)
+	}
+	f.open()
+	op, err = f.c.Lock(ctx, "refused", func(context.Context) error { t.Fatal("replayed refused preparation"); return nil })
+	if err != nil || op.Status != "failed" {
+		t.Fatalf("refusal history changed: %+v %v", op, err)
+	}
+	op, err = f.c.Lock(ctx, "retry", func(context.Context) error { return nil })
+	if err != nil || op.Status != "succeeded" || !op.State.Locked {
+		t.Fatalf("fresh attempt blocked: %+v %v", op, err)
+	}
+}
+
 func TestLockPreparationFailurePreservesOpenRuntime(t *testing.T) {
 	f := runningFixture(t)
 	op, err := f.c.Lock(context.Background(), "lock", func(context.Context) error { return errors.New("synthetic private failure") })

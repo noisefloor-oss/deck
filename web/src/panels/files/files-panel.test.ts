@@ -235,6 +235,44 @@ test("activating a file opens it read-only in the viewer", async () => {
   assert.deepEqual(m.view, { kind: "text", content: "alpha\nbeta\n" });
 });
 
+test("openFile previews the server's listed entry and honors the activation guard", async () => {
+  const { api, calls } = fakeFileApi();
+  const m = model(api);
+  await m.openFile("docs/architecture.md");
+  assert.equal(m.dir, "docs");
+  assert.equal(m.selected?.path, "docs/architecture.md");
+  assert.deepEqual(m.view, { kind: "text", content: "alpha\nbeta\n" });
+
+  await m.openFile("README.md", () => false);
+  assert.equal(m.dir, "", "the requested directory still opens");
+  assert.equal(m.selected, null, "a stale handoff cannot select a file");
+  assert.deepEqual(calls.viewed, ["docs/architecture.md"]);
+});
+
+test("openFile cannot restore a viewer after the panel resets during its listing", async () => {
+  const base = fakeFileApi();
+  const pending = deferred<FileListing>();
+  let delayed = false;
+  const api = {
+    ...base.api,
+    listProjectFiles: (id: string, path: string): Promise<FileListing> =>
+      delayed ? pending.promise : base.api.listProjectFiles(id, path),
+  };
+  const m = model(api);
+  await m.openFile("docs/architecture.md");
+  assert.equal(m.selected?.path, "docs/architecture.md");
+
+  delayed = true;
+  const work = m.openFile("docs/architecture.md");
+  m.reset();
+  pending.resolve({ path: "docs", at_root: false, entries: [entry("docs/architecture.md")] });
+  await work;
+
+  assert.equal(m.selected, null);
+  assert.equal(m.view, null);
+  assert.deepEqual(base.calls.viewed, ["docs/architecture.md"], "the stale open never reads the file again");
+});
+
 test("closing the viewer fences a late view response", async () => {
   const pending = deferred<FileView>();
   const { api } = fakeFileApi({ viewProjectFile: async () => pending.promise });
@@ -1858,7 +1896,7 @@ test("the shell escapes the names and paths the server returned", async () => {
   assert.ok(box.html().includes("&lt;img"), "it renders as visible text instead");
 });
 
-test("marked rows show their words as text and carry no nested data-hints", async () => {
+test("marked rows color their icons and keep status words accessible", async () => {
   const marked: FileListing = {
     path: "",
     at_root: true,
@@ -1871,8 +1909,14 @@ test("marked rows show their words as text and carry no nested data-hints", asyn
   const { api } = fakeFileApi({ listProjectFiles: async () => marked });
   const { box } = await shellShowing(entry("README.md"), api);
   const html = box.html();
-  assert.match(html, /data-files-change="modified"[^>]*>Modified</);
-  assert.match(html, /data-files-change="new"[^>]*>New</);
+  assert.match(html, /data-files-change="modified" class="flex-none text-git-modified"/);
+  assert.match(html, /data-files-change="new" class="flex-none text-git-added"/);
+  assert.match(html, /<span class="sr-only">Modified<\/span>/);
+  assert.match(html, /<span class="sr-only">New<\/span>/);
+  assert.ok(html.includes('data-hint="Modified · Open this folder"'));
+  assert.ok(html.includes('data-hint="Modified · Open this file"'));
+  assert.ok(html.includes('data-hint="New · Open this file"'));
+  assert.ok(!html.includes('data-files-change="modified" class="flex-none text-caption'), "the status no longer takes a visible metadata column");
   assertNoNestedDataHints(html, "marked rows");
 });
 

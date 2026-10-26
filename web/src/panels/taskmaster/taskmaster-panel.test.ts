@@ -1064,6 +1064,7 @@ test("the Add task dialog is labelled, focuses its required title, and has mobil
   assert.match(html, /role="dialog" aria-modal="true" aria-label="Add task"/);
   assert.match(html, /data-tm-task-title required/);
   assert.match(html, /data-tm-task-priority/);
+  assert.match(html, /<button type="submit" data-tm-task-add-submit\s+[^>]*data-hint="Add a task to this board"/);
   assert.match(html, /pointer-coarse:min-h-11/);
 });
 

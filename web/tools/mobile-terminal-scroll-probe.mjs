@@ -5,6 +5,7 @@ import { existsSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
 import { PNG } from "pngjs";
 import { browser as getBrowser } from "./browser.mjs";
+import { SETTLE_DELAYS_MS } from "../src/app/viewport.ts";
 
 const WEB = resolve(import.meta.dirname, "..");
 const DIST = join(WEB, "dist");
@@ -21,6 +22,8 @@ if (!existsSync(join(DIST, "index.html"))) {
   throw new Error("dist/index.html is missing — run `pnpm build` first");
 }
 
+const releaseNoticeProbe = process.env.NOISEDECK_RELEASE_MOBILE_PROBE === "1";
+
 const server = createServer(async (req, res) => {
   const pathname = decodeURIComponent(new URL(req.url, "http://x").pathname);
   const path = join(DIST, pathname === "/" ? "index.html" : pathname);
@@ -30,7 +33,9 @@ const server = createServer(async (req, res) => {
     return;
   }
   res.writeHead(200, { "Content-Type": MIME[extname(path)] ?? "application/octet-stream" });
-  res.end(await readFile(path));
+  let body = await readFile(path);
+  if (releaseNoticeProbe && path.endsWith("index.html")) body = Buffer.from(body.toString().replaceAll("__NOISEDECK_BUILD_ID__", "v0.3.0"));
+  res.end(body);
 });
 await new Promise((resolveServer) => server.listen(0, "127.0.0.1", resolveServer));
 const address = server.address();
@@ -99,6 +104,8 @@ async function runWidth(width, mobile, options = {}) {
       contentType: "application/json",
       body: JSON.stringify(body),
     });
+    if (releaseNoticeProbe && path === "/api/build") return json(200, { build_id: "v0.3.0" });
+    if (releaseNoticeProbe && path === "/api/release-update") return json(200, { version: "v0.4.0", release_url: "https://github.com/noisefloor-oss/deck/releases/tag/v0.4.0" });
     if (request.method() === "GET" && path === "/api/session-activity/events") {
       return route.fulfill({
         status: 200,
@@ -210,6 +217,10 @@ async function runWidth(width, mobile, options = {}) {
         if (typeof message !== "string") return;
         const frame = JSON.parse(message);
         frames.push(frame);
+        if (frame.type === "input") {
+          peer.send(JSON.stringify({ type: "status", code: "sent", message: "" }));
+          return;
+        }
         if (frame.type !== "scroll") return;
         if (frame.direction === "up") scrollActive = true;
         if (frame.direction === "live") {
@@ -240,6 +251,10 @@ async function runWidth(width, mobile, options = {}) {
   );
 
   await page.goto(origin, { waitUntil: "networkidle" });
+  if (releaseNoticeProbe) {
+    await page.locator("[data-release-notice]").waitFor({ state: "visible" });
+    assert.equal((await page.locator('[data-region="info-bar"]').boundingBox()).height, mobile ? 40 : 26);
+  }
   const terminal = page.locator("[data-live-terminal] .xterm");
   await terminal.waitFor();
   assert.equal(
@@ -760,18 +775,27 @@ async function runWidth(width, mobile, options = {}) {
 
   await assertSoftKeyInput(page, socket, frames);
 
-  await page.locator("[data-workspace]").evaluate((workspace) => {
-    workspace.style.height = "480px";
+  await page.evaluate(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) throw new Error("visual viewport is unavailable");
+    Object.defineProperty(viewport, "height", { configurable: true, get: () => 480 });
+    viewport.dispatchEvent(new Event("resize"));
   });
   await page.waitForFunction(() => {
     const bar = document.querySelector('[data-region="terminal-soft-keys"]');
     return bar instanceof HTMLElement && bar.getBoundingClientRect().bottom <= 480;
   });
+  // The frame tracker re-reads the viewport after keyboard animation settles.
+  // Wait beyond that cascade so a transient frame cannot pass this check.
+  await page.evaluate((delay) => new Promise((resolve) => setTimeout(resolve, delay)),
+    Math.max(...SETTLE_DELAYS_MS) + 50);
+  assert.equal(await page.locator("[data-workspace]").evaluate((workspace) =>
+    workspace.getBoundingClientRect().height), 480, "workspace lost its visual viewport height");
   const shrunkBar = await softKeys.boundingBox();
   assert.notEqual(shrunkBar, null);
   assert.ok(
     shrunkBar.y + shrunkBar.height <= 480,
-    `${width}px soft keys are obscured after visual viewport shrink`,
+    `${width}px soft keys are obscured after visual viewport shrink: ${JSON.stringify(shrunkBar)}`,
   );
   assert.equal(errors.length, 0, `${width}px page errors: ${errors.join("; ")}`);
 

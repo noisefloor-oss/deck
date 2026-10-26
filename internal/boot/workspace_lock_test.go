@@ -27,6 +27,8 @@ func TestPrivateLockPreparationReportsActualOutcome(t *testing.T) {
 	}{
 		{"prepared", "", "", nil, http.StatusNoContent, 1, session.WorkspaceLockTimeout},
 		{"forwarded budget", "", "20000", nil, http.StatusNoContent, 1, 20 * time.Second},
+		{"refused", "", "", session.ErrWorkspaceLockRefused, http.StatusUnprocessableEntity, 1, session.WorkspaceLockTimeout},
+		{"ambiguous stop", "", "", session.ErrUnverifiable, http.StatusServiceUnavailable, 1, session.WorkspaceLockTimeout},
 		{"unconfirmed", "", "", errors.New("private session path must not escape"), http.StatusServiceUnavailable, 1, session.WorkspaceLockTimeout},
 		{"unexpected body", "{}", "", nil, http.StatusBadRequest, 0, 0},
 		{"malformed budget", "", "90s", nil, http.StatusBadRequest, 0, 0},
@@ -87,7 +89,7 @@ func TestPrivateLockPreparationRefusesOversizedCohortBeforeCommitting(t *testing
 			repo := session.NewRepository(d)
 			mgr := session.NewManager(repo, tmuxClient, nil, "lock-")
 			var ids []string
-			for i := range 6 {
+			for i := range 12 {
 				id := fmt.Sprintf("lock-%d", i)
 				if err := repo.Create(ctx, &session.Session{ID: id, ProjectID: "lock-project", Provider: "shell",
 					TmuxSocketPath: filepath.Join(socketDir, "ac.sock"), TmuxSessionName: id, Generation: 1}); err != nil {
@@ -101,7 +103,7 @@ func TestPrivateLockPreparationRefusesOversizedCohortBeforeCommitting(t *testing
 			}
 			w := httptest.NewRecorder()
 			workspaceLockHandler(mgr.PrepareWorkspaceLock).ServeHTTP(w, r)
-			if w.Code != http.StatusServiceUnavailable {
+			if w.Code != http.StatusUnprocessableEntity {
 				t.Fatalf("oversized cohort status = %d", w.Code)
 			}
 			for _, id := range ids {

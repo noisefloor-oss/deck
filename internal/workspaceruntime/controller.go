@@ -30,6 +30,7 @@ var (
 	ErrUnsafeStorage = errors.New("workspace runtime: storage gate refused")
 	ErrPrecondition  = errors.New("workspace runtime: operation precondition failed")
 	ErrCommand       = errors.New("workspace runtime: native command failed; inspect operation state")
+	ErrLockRefused   = errors.New("workspace runtime: lock preparation refused")
 	ErrUncertain     = errors.New("workspace runtime: an earlier operation needs reconciliation")
 	ErrConflict      = errors.New("workspace runtime: operation ID already has another action")
 	ErrNotFound      = errors.New("workspace runtime: operation not found")

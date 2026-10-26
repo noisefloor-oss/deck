@@ -7,7 +7,7 @@ import type { ITheme } from "@xterm/xterm";
 export type { ITheme };
 import { isSafeUrl } from "../lib/url.ts";
 import { isWindowsClient } from "../lib/platform.ts";
-import { nativeClipboardKey, planClipboardKey, readClipboard, viewportText, writeClipboard, type ClipboardLike } from "./copy.ts";
+import { forceSelectionModifier, nativeClipboardKey, planClipboardKey, readClipboard, viewportText, writeClipboard, type ClipboardLike } from "./copy.ts";
 import { joinWrappedSelection, WrappedUrlLinkProvider } from "./links.ts";
 import {
   subscribeXtermOutbound,
@@ -57,6 +57,13 @@ export interface MountedTerminal {
   // applies bracketed paste and the line-ending transforms the application
   // expects; sendInput would deliver the raw bytes instead.
   paste: (text: string) => void;
+  // setSelectText routes a plain drag to the browser while the application
+  // has asked for mouse reports: while on, the press that would have been
+  // reported to the application starts a native selection instead — the
+  // same path Shift+drag already takes. Wheel and keyboard are untouched,
+  // and the normal buffer behaves as it always did. Returns the state
+  // applied.
+  setSelectText: (on: boolean) => boolean;
   jumpToLive: () => void;
   resetScrollback: () => void;
   dispose: () => void;
@@ -400,6 +407,20 @@ export function createTerminal(
   element.addEventListener("touchmove", touchMove, { passive: false });
   element.addEventListener("touchend", touchEnd, { passive: false });
   element.addEventListener("touchcancel", touchCancel);
+  let selectText = false;
+  // xterm decides between reporting a press to the application and starting
+  // a native selection when the press lands, and the modifier it reads for
+  // the native path while mouse reporting is on is the platform's
+  // force-selection one. A DOM modifier is a read-only getter, so the press
+  // is marked by shadowing that property with an own getter in the capture
+  // phase — before xterm sees it — and only presses over an application
+  // that asked for mouse reports are marked, so nothing changes when
+  // nothing tracks the mouse.
+  const selectPress = (event: MouseEvent): void => {
+    if (!selectText || event.type !== "mousedown" || terminal.modes.mouseTrackingMode === "none") return;
+    Object.defineProperty(event, forceSelectionModifier(isMacPlatform()), { get: () => true });
+  };
+  element.addEventListener("mousedown", selectPress, true);
   const viewportSubscription = terminal.onScroll(() => {
     if (terminal.buffer.active.type !== "normal") return;
     scrollbackSubscriber?.(
@@ -450,6 +471,10 @@ export function createTerminal(
     sendInput: (data) => terminal.input(data, true),
     copyable,
     paste: (text) => terminal.paste(text),
+    setSelectText: (on) => {
+      selectText = on;
+      return selectText;
+    },
     jumpToLive: () => {
       endGesture();
       // The normal buffer's viewport is local xterm state and can be
@@ -470,6 +495,7 @@ export function createTerminal(
       element.removeEventListener("touchcancel", touchCancel);
       viewportSubscription.dispose();
       parent.removeEventListener("copy", copyWrappedUrl, true);
+      element.removeEventListener("mousedown", selectPress, true);
       ratioWatch.dispose();
       softKeyInput.dispose();
       delete parent.dataset.terminalScrollbackLines;

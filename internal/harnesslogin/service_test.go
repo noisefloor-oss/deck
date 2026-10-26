@@ -480,6 +480,26 @@ func TestCodexAcceptsOnlyTheOnboardingStateSuffix(t *testing.T) {
 	}
 }
 
+func TestPiOpenAICallbackUsesTheIssuedState(t *testing.T) {
+	for _, state := range []string{"native-state", "native-state" + lifeSciencesStateSuffix} {
+		t.Run(state, func(t *testing.T) {
+			s, f, h := fixture(t, "pi")
+			status, err := s.Submit(context.Background(), "operator-a", h.ID, "http://localhost:1455/auth/callback?code=callback-canary&state="+url.QueryEscape(state))
+			if err != nil || status != "delivered" {
+				t.Fatalf("callback: %s %v", status, err)
+			}
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			if len(f.requests) != 1 || f.requests[0].URL.Query().Get("state") != "native-state" {
+				t.Fatal("native Pi received a modified state")
+			}
+			if f.requests[0].URL.Query().Get("code") != "callback-canary" {
+				t.Fatal("authorization code changed")
+			}
+		})
+	}
+}
+
 func TestSubmitAndDismissHaveOnlyOneWinner(t *testing.T) {
 	for range 50 {
 		s, f, h := fixture(t, "pi")
@@ -716,5 +736,17 @@ func TestRepeatedDismissalKeepsTicketMapBounded(t *testing.T) {
 	status, err := s.Submit(context.Background(), "operator-a", resumed.ID, callbackURL)
 	if err != nil || status != "delivered" || f.dials != 1 {
 		t.Fatalf("resumed handoff failed: status=%q err=%v dials=%d", status, err, f.dials)
+	}
+}
+
+func TestPiRejectsForeignCallbackStates(t *testing.T) {
+	for _, state := range []string{"wrong-state" + lifeSciencesStateSuffix, "native-state.onboarding_entrypoint=other", "native-state" + lifeSciencesStateSuffix + lifeSciencesStateSuffix, lifeSciencesStateSuffix} {
+		t.Run(state, func(t *testing.T) {
+			s, f, h := fixture(t, "pi")
+			_, err := s.Submit(context.Background(), "operator-a", h.ID, "http://localhost:1455/auth/callback?code=callback-canary&state="+url.QueryEscape(state))
+			if !errors.Is(err, ErrInvalid) || f.dials != 0 {
+				t.Fatal("foreign state reached native Pi")
+			}
+		})
 	}
 }

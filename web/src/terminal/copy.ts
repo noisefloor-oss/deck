@@ -128,3 +128,11 @@ export async function readClipboard(clipboard: ClipboardLike | undefined): Promi
     return null;
   }
 }
+
+// The modifier xterm's SelectionService reads on its force-selection path
+// while an application tracks the mouse: Option on macOS, and only behind
+// the macOptionClickForcesSelection option Deck enables; Shift everywhere
+// else. A press marked with this modifier selects instead of being reported.
+export function forceSelectionModifier(macPlatform: boolean): "altKey" | "shiftKey" {
+  return macPlatform ? "altKey" : "shiftKey";
+}

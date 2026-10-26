@@ -11,12 +11,14 @@ import (
 )
 
 type scopeWorkflowJob struct {
-	If      string
-	Needs   any
-	Outputs map[string]string
-	Steps   []struct {
+	If          string
+	Needs       any
+	Outputs     map[string]string
+	Permissions map[string]string
+	Steps       []struct {
 		Name string
 		ID   string `yaml:"id"`
+		If   string
 		Run  string
 		Env  map[string]string
 		With map[string]any
@@ -80,6 +82,28 @@ func TestCIScopeWorkflowWiring(t *testing.T) {
 	}
 	if !formatting {
 		t.Fatal("Go-only changes must retain formatting checks without the frontend job")
+	}
+}
+
+// The scope job reads the pull request to verify its head commits are
+// authored by the pull request's account. Without pull-requests: read the
+// job token cannot see a private repository's PR, the identity step fails
+// every run, and every dependent job is skipped - observed live on PR
+// 1559's first Fast checks run.
+func TestCIScopeWorkflowCanReadPullRequests(t *testing.T) {
+	scope := scopeWorkflow(t)["scope"]
+	if scope.Permissions["contents"] != "read" || scope.Permissions["actions"] != "read" || scope.Permissions["pull-requests"] != "read" {
+		t.Fatalf("scope must grant contents, actions and pull-requests read; has %v", scope.Permissions)
+	}
+	identity := false
+	for _, step := range scope.Steps {
+		if step.Name == "Verify head commits are authored by the pull request's author" {
+			identity = step.If == "github.event_name == 'pull_request'" &&
+				strings.Contains(step.Run, "verify-merge-gate.py --identity-only")
+		}
+	}
+	if !identity {
+		t.Fatal("scope must run the identity-only merge-gate check on pull_request events")
 	}
 }
 

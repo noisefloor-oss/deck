@@ -3,7 +3,7 @@
 // builds the image, and opens a pull request with the report.
 //
 //	noisedeck-harness-bump list
-//	noisedeck-harness-bump model-plan [-root DIR] [-codex PATH] [-claude PATH] [-files]
+//	noisedeck-harness-bump model-plan [-root DIR] [-codex PATH] [-claude PATH] [-kimi PATH] [-files]
 //	noisedeck-harness-bump check [-json] [-root DIR]
 //	noisedeck-harness-bump batch [-root DIR]
 //	noisedeck-harness-bump drop -harness NAME -reason TEXT -batch FILE [-root DIR]
@@ -93,6 +93,7 @@ func runContext(ctx context.Context, args []string, stdout, stderr io.Writer) er
 		root := fs.String("root", ".", "repository root")
 		codex := fs.String("codex", "codex", "codex CLI executable for catalog discovery")
 		claude := fs.String("claude", "claude", "claude CLI executable for membership probes")
+		kimi := fs.String("kimi", "kimi", "kimi CLI executable for catalog discovery")
 		files := fs.Bool("files", false, "include the planned file contents in the JSON output")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
@@ -101,7 +102,7 @@ func runContext(ctx context.Context, args []string, stdout, stderr io.Writer) er
 		if err != nil {
 			return err
 		}
-		plan, err := modelbump.Discover(ctx, truth, *codex, *claude, modelbump.CodexCatalog, modelbump.ClaudeMember)
+		plan, err := modelbump.Discover(ctx, truth, *codex, *claude, *kimi, modelbump.CodexCatalog, modelbump.ClaudeMember, modelbump.KimiCatalog)
 		if err != nil {
 			return err
 		}

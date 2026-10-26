@@ -59,6 +59,7 @@ export const RETURN_TO_LIVE_END = "Return to the live end of the output";
 export const COPY_TERMINAL_SELECTION = "Copy the selected text";
 export const COPY_TERMINAL_SCREEN = "Copy the text on the screen";
 export const PASTE_INTO_TERMINAL = "Paste the clipboard into this session";
+export const SELECT_TERMINAL_TEXT = "Let a plain drag select text while the app tracks the mouse";
 export const FINISH_AGENT_LOGIN = "Finish the sign-in this session is waiting for";
 
 // More menu

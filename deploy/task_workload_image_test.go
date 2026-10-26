@@ -12,7 +12,7 @@ func TestTaskWorkloadImageIsMinimalPinnedAndInert(t *testing.T) {
 		t.Fatal(err)
 	}
 	dockerfile := string(raw)
-	marker := "FROM node:26.5.0-bookworm-slim@sha256:2d49d876e96237d76de412761cf05dbfe5aee325cc4406a4d41d5824c5bb8beb AS task-workload-substrate"
+	marker := "FROM node:26.12.1-bookworm-slim@sha256:28147155d47dc31abe0a46e0d12b59b2fb3d0a2dcc5dc65fce76a074180b16fe AS task-workload-substrate"
 	start := strings.Index(dockerfile, marker)
 	if start < 0 {
 		t.Fatal("Dockerfile has no task-workload stage")

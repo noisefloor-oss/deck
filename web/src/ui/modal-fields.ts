@@ -7,10 +7,10 @@ export type FormField = HTMLInputElement | HTMLTextAreaElement | HTMLSelectEleme
 export interface ModalFocus {
   selector: string;
   selection: [number | null, number | null] | null;
+  fallbackToDialog?: boolean;
 }
 
-// focusedModalField names the field inside host that has focus and its
-// selection.
+// Field-only snapshots are also used by sidebar screens during navigation.
 export function focusedModalField(host: HTMLElement | null): ModalFocus | null {
   const focused = document.activeElement;
   if (focused == null || host?.contains(focused) !== true) return null;
@@ -18,6 +18,31 @@ export function focusedModalField(host: HTMLElement | null): ModalFocus | null {
   const selector = fieldSelector(focused);
   if (selector === null) return null;
   return { selector, selection: focused instanceof HTMLSelectElement ? null : [focused.selectionStart, focused.selectionEnd] };
+}
+
+// A refresh within the same dialog must also preserve buttons and links.
+export function focusedModalControl(host: HTMLElement | null): ModalFocus | null {
+  const focused = document.activeElement;
+  if (focused == null || host?.contains(focused) !== true) return null;
+  const field = focusedModalField(host);
+  if (field !== null) return { ...field, fallbackToDialog: true };
+  if (!(focused instanceof HTMLElement)) return null;
+  return { selector: controlSelector(host, focused), selection: null, fallbackToDialog: true };
+}
+
+function controlSelector(host: HTMLElement, focused: HTMLElement): string {
+  let identity = fieldSelector(focused);
+  if (focused.id) identity = `#${CSS.escape(focused.id)}`;
+  if (identity === null && focused.localName === "a") identity = `a[href="${CSS.escape(focused.getAttribute("href") ?? "")}"]`;
+  if (identity === null) return '[role="dialog"]';
+  if (host.querySelectorAll(identity).length === 1) return identity;
+  // Repeated task references keep their location as well as their target.
+  const path: string[] = [];
+  for (let element: HTMLElement | null = focused; element != null && element !== host; element = element.parentElement) {
+    const peers = [...element.parentElement?.children ?? []].filter(peer => peer.localName === element.localName);
+    path.unshift(`${element === focused ? identity : element.localName}:nth-of-type(${peers.indexOf(element) + 1})`);
+  }
+  return `:scope > ${path.join(" > ")}`;
 }
 
 // editedModalFields lists the fields inside host whose value differs from
@@ -42,7 +67,11 @@ export function restoreModalEdits(host: HTMLElement | null, edited: ReadonlyArra
 // can skip the screen's initial focus.
 export function restoreModalFocus(host: HTMLElement | null, focus: ModalFocus | null): boolean {
   if (focus === null) return false;
-  const restored = host?.querySelector<HTMLElement>(focus.selector) ?? null;
+  let restored = host?.querySelector<HTMLElement>(focus.selector) ?? null;
+  if (focus.fallbackToDialog && (restored === null || focus.selector === '[role="dialog"]')) {
+    restored = host?.querySelector<HTMLElement>('[role="dialog"]') ?? null;
+    if (restored !== null) restored.tabIndex = -1;
+  }
   restored?.focus({ preventScroll: true });
   const selection = focus.selection;
   // An email field reports no selection and refuses one.
@@ -52,8 +81,8 @@ export function restoreModalFocus(host: HTMLElement | null, focus: ModalFocus | 
 
 // fieldSelector names a modal field by its first data attribute, which a
 // re-render of the same screen draws again.
-function fieldSelector(field: FormField): string | null {
-  const attribute = [...field.attributes].find((attr) => attr.name.startsWith("data-") && attr.name !== "data-hint");
+function fieldSelector(field: HTMLElement): string | null {
+  const attribute = [...field.attributes ?? []].find((attr) => attr.name.startsWith("data-") && attr.name !== "data-hint");
   return attribute === undefined ? null : `${field.localName}[${attribute.name}="${CSS.escape(attribute.value)}"]`;
 }
 

@@ -19,7 +19,7 @@ import tempfile
 import threading
 import time
 import unittest
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -32,6 +32,36 @@ try:
     HAVE_NACL = True
 except ImportError:
     HAVE_NACL = False
+
+
+@unittest.skipUnless(hasattr(time, "tzset"), "host timezone selection requires tzset")
+class UTCEventTimes(unittest.TestCase):
+    zones = ("UTC0", "PST8PDT,M3.2.0/2,M11.1.0/2", "EST5EDT,M3.2.0/2,M11.1.0/2", "IST-5:30")
+
+    @contextmanager
+    def host_timezone(self, zone):
+        try:
+            with mock.patch.dict(os.environ, {"TZ": zone}):
+                time.tzset()
+                yield
+        finally:
+            time.tzset()
+
+    def test_event_age_is_independent_of_host_timezone(self):
+        for zone in self.zones:
+            with self.subTest(timezone=zone), self.host_timezone(zone):
+                for timestamp, epoch in (
+                    ("2026-01-15T12:00:00Z", 1768478400),
+                    ("2026-07-01T12:00:00Z", 1782907200),
+                ):
+                    with mock.patch.object(a2a.time, "time", return_value=epoch + 17):
+                        self.assertEqual(a2a._age({"created_at": timestamp}), 17)
+
+    def test_elapsed_seconds_ignore_local_daylight_saving_boundaries(self):
+        for zone in self.zones:
+            with self.subTest(timezone=zone), self.host_timezone(zone):
+                self.assertEqual(a2a._seconds_between("2026-03-08T01:59:00Z", "2026-03-08T03:01:00Z"), 3720)
+                self.assertEqual(a2a._seconds_between("2026-11-01T00:59:00Z", "2026-11-01T02:01:00Z"), 3720)
 
 
 class RelayCredentials(unittest.TestCase):
@@ -2541,7 +2571,8 @@ class A2ATest(A2ACase):
         self.append_chat("bob", "chat.closed", cid, at="2026-09-05T01:10:00Z")
         self.assertEqual(a2a.ledger("alice")["chats"][0]["state"], "forced")
         self.run_cli("alice", "chat", "bob", "anyone?", "--force")
-        fresh = next(c for c in a2a.ledger("alice")["chats"] if c["state"] in ("invited", "waiting"))
+        with mock.patch.object(a2a, "_age", return_value=0):
+            fresh = next(c for c in a2a.ledger("alice")["chats"] if c["state"] in ("invited", "waiting"))
         self.assertEqual(fresh["state"], "invited")
         with mock.patch.object(a2a, "_age", return_value=a2a.WAITING_AFTER_S + 5):
             stale = next(c for c in a2a.ledger("alice")["chats"] if c["state"] in ("invited", "waiting"))
@@ -2561,7 +2592,7 @@ class A2ATest(A2ACase):
         self.assertTrue(chat["last_row"].startswith("evt_"))
 
     def test_every_chat_action_acknowledges_what_reached_the_actor(self):
-        for action in ("accept", "decline", "leave", "end", "reply"):
+        for action in ("accept", "decline", "leave", "end", "reply", "read"):
             with self.subTest(action=action):
                 self.ls = FakeLogstream()
                 self.online("alice", "bob")
@@ -3248,6 +3279,89 @@ class A2ATest(A2ACase):
             # Spent: never again, however many passes.
             state = a2a.courier_once(state, "hostA", verbose=False)
             self.assertEqual(len(calls), 2)
+
+    def _reminder_settled_during_flush(self, action):
+        self.online("alice")
+        self.presence("bob", harness="codex")
+        self.run_cli("alice", "chat", "bob", "hi")
+        calls = []
+        with mock.patch.object(a2a, "_codex_queue", side_effect=lambda thread, text: calls.append(text) or "codex-queue"), \
+                mock.patch.object(a2a, "_age", return_value=1):
+            state = a2a.courier_once({}, "hostA", verbose=False)
+            item = next(iter(state["nudgable"].values()))
+            item["delivered_at"] -= a2a.NUDGE_AFTER_S + 1
+            changed = False
+
+            def persist(snapshot):
+                nonlocal changed
+                if not changed and any(n.get("nudge_inflight") for n in snapshot["nudgable"].values()):
+                    changed = True
+                    if action == "read":
+                        self.run_cli("bob", "read", item["chat"])
+                    else:
+                        self.run_cli("alice", "end", item["chat"], "done")
+
+            state = a2a.courier_once(state, "hostA", verbose=False, persist=persist)
+        self.assertTrue(changed)
+        self.assertEqual([line for line in calls if "reminder" in line], [])
+        self.assertEqual(state["nudgable"], {})
+
+    def test_read_committed_during_reminder_flush_prevents_submission(self):
+        self._reminder_settled_during_flush("read")
+
+    def test_close_committed_during_reminder_flush_prevents_submission(self):
+        self._reminder_settled_during_flush("close")
+
+    def test_failed_final_reminder_check_waits_without_spending_an_attempt(self):
+        self.online("alice")
+        self.presence("bob", harness="codex")
+        self.run_cli("alice", "chat", "bob", "hi")
+        calls = []
+        with mock.patch.object(a2a, "_codex_queue", side_effect=lambda thread, text: calls.append(text) or "codex-queue"), \
+                mock.patch.object(a2a, "_age", return_value=1):
+            state = a2a.courier_once({}, "hostA", verbose=False)
+            item = next(iter(state["nudgable"].values()))
+            item["delivered_at"] -= a2a.NUDGE_AFTER_S + 1
+            unavailable = False
+
+            def persist(snapshot):
+                nonlocal unavailable
+                if any(n.get("nudge_inflight") for n in snapshot["nudgable"].values()):
+                    unavailable = True
+
+            def rpc(tool, args, timeout=30.0):
+                if unavailable and tool == "mempalace_event_list" and args.get("type") == "event.ack":
+                    raise a2a.LogstreamError("synthetic receipt-list failure")
+                return self.ls.call(tool, args)
+
+            with mock.patch.object(a2a, "_rpc", side_effect=rpc):
+                state = a2a.courier_once(state, "hostA", verbose=False, persist=persist)
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(item["nudge_attempts"], 0)
+            self.assertNotIn("nudge_inflight", item)
+            state = a2a.courier_once(state, "hostA", verbose=False)
+        self.assertEqual(len([line for line in calls if "reminder" in line]), 1)
+
+    def test_already_queued_reminder_does_not_claim_current_unread_state(self):
+        self.online("alice")
+        self.presence("bob", harness="codex")
+        self.run_cli("alice", "chat", "bob", "hi")
+        accepted = []
+        with mock.patch.object(a2a, "_codex_queue", side_effect=lambda thread, text: accepted.append(text) or "codex-queue"), \
+                mock.patch.object(a2a, "_age", return_value=1):
+            state = a2a.courier_once({}, "hostA", verbose=False)
+            item = next(iter(state["nudgable"].values()))
+            item["delivered_at"] -= a2a.NUDGE_AFTER_S + 1
+            a2a.courier_once(state, "hostA", verbose=False)
+        self.run_cli("bob", "read", item["chat"])
+        self.run_cli("alice", "end", item["chat"], "done")
+        # Native queues may surface their accepted text only after both actions.
+        line = next(line for line in accepted if "reminder" in line)
+        self.assertNotIn("is still unread", line)
+        self.assertNotIn("a2a reply", line)
+        self.assertIn("a2a inbox", line)
+        self.assertIn("already read", line)
+        self.assertIn("closed", line)
 
     def test_a_read_delivery_is_never_reminded(self):
         self.online("alice")
@@ -4141,7 +4255,11 @@ class A2ATest(A2ACase):
         before_acks = len([e for e in self.ls.events if e["type"] == "event.ack"])
         transcript = self.run_cli("bob", "read", cid)
         book = a2a.ledger("bob")["chats"][0]
-        self.assertEqual(len([e for e in self.ls.events if e["type"] == "event.ack"]), before_acks)
+        after_acks = len([e for e in self.ls.events if e["type"] == "event.ack"])
+        self.assertEqual(after_acks, before_acks + 1, "read acknowledges the displayed inbound message")
+        self.run_cli("bob", "read", cid)
+        self.assertEqual(len([e for e in self.ls.events if e["type"] == "event.ack"]), after_acks,
+                         "reading the same history twice does not duplicate receipts")
         for visible in ("original invitation", "Bob authored this", "Carol sent this before Bob left", "Bob's departure"):
             self.assertIn(visible, transcript)
             self.assertIn(visible, [row["text"] for row in book["rows"]])
@@ -4151,7 +4269,8 @@ class A2ATest(A2ACase):
         for viewer in ("alice", "carol"):
             self.assertIn("Alice and Carol only", self.run_cli(viewer, "read", cid))
             self.assertIn("Alice and Carol only", [row["text"] for row in a2a.ledger(viewer)["chats"][0]["rows"]])
-        self.assertIn("1 marked read", self.run_cli("bob", "mark-read", prior["id"]))
+        self.assertIn("0 marked read", self.run_cli("bob", "mark-read", prior["id"]),
+                      "the displayed message is already acknowledged")
         self.assertIn("0 marked read", self.run_cli("bob", "mark-read", later["id"]))
         acks = [e for e in self.ls.events if e["type"] == "event.ack" and e["from_agent"] == "bob"]
         self.assertTrue(any(a2a.metadata_of(e).get("ack_of") == prior["id"] for e in acks))
@@ -7026,8 +7145,9 @@ class SealedRecipientTest(A2ACase):
         self.assertEqual(a2a.chat_binding(cid)[0], {"hostA", "hostB"})
         self.assertIn("sealed from now on", self.run_cli("alice", "read", cid))
         with self.state_b, self.host_b:
-            self.assertIn("sealed from now on", self.run_cli("far", "read", cid))
             self.assertIn("sealed from now on", self.run_cli("far", "inbox", "--peek"))
+            self.assertIn("sealed from now on", self.run_cli("far", "read", cid))
+            self.assertNotIn("sealed from now on", self.run_cli("far", "inbox", "--peek"))
             self.assertIn("sent to alice", self.run_cli("far", "reply", cid, "and back"))
         self.assertIn("and back", self.run_cli("alice", "read", cid))
         # Now that keys fixed the hosts, a pinned third host is still out.

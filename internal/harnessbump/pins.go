@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // Bump is one harness moving from one version to another, with the digest
@@ -20,6 +21,9 @@ type Bump struct {
 	To      string
 	// Digests maps an artifact's SHAArg to the new hex digest.
 	Digests map[string]string
+	// PinnedOn is candidate metadata reused during deterministic reconstruction.
+	// Empty records the UTC date of this application.
+	PinnedOn string
 }
 
 var (
@@ -151,6 +155,21 @@ func Apply(root string, b Bump) ([]string, error) {
 			return nil, err
 		}
 		plan = append(plan, more...)
+	}
+
+	when := time.Now().UTC()
+	if b.PinnedOn != "" {
+		when, err = time.Parse(time.DateOnly, b.PinnedOn)
+		if err != nil {
+			return nil, fmt.Errorf("harnessbump: invalid pin date: %w", err)
+		}
+	}
+	readme, err := planReadmePin(root, b, when)
+	if err != nil {
+		return nil, err
+	}
+	if readme != nil {
+		plan = append(plan, readme)
 	}
 
 	var changed []string

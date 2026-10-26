@@ -13,7 +13,7 @@ func TestDockerfilePinsGrokCLI(t *testing.T) {
 	}
 	dockerfile := string(raw)
 	for _, required := range []string{
-		"ARG GROK_VERSION=1.0.67",
+		"ARG GROK_VERSION=1.0.70",
 		`test "$(grok --version | awk '{print $2}')" = "${GROK_VERSION}"`,
 		"grok --help >/tmp/grok-help",
 		"--always-approve",

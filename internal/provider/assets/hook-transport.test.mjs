@@ -12,7 +12,7 @@ const sessionID = "synthetic-native-session"
 const directory = "/synthetic/project with spaces/雪"
 // omp's hook names its reporting process so the capture endpoint can reject
 // subagent session_starts; here that process is this test runner.
-const expectedBody = (name) => name === "omp"
+const expectedBody = (name) => name === "omp" || name === "pi"
   ? { hook_event_name: "SessionStart", session_id: sessionID, cwd: directory, source: "startup", pid: String(process.pid) }
   : { hook_event_name: "SessionStart", session_id: sessionID, cwd: directory, source: "startup" }
 

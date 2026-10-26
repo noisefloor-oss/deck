@@ -470,6 +470,99 @@ try {
   await page.getByRole("button", { name: "README.md" }).and(page.locator("[data-files-row]")).waitFor();
   assert.equal(await filesButton.getAttribute("aria-pressed"), "true");
 
+  // ---- shared panel resizing ----
+  const handle = page.locator('[data-panel-resize="files"]');
+  await handle.waitFor();
+  const savedWidth = () => page.evaluate(() => localStorage.getItem("noisedeck.panel.files.width"));
+  assert.equal(await savedWidth(), null, "no width is saved before the user resizes");
+  assert.equal(
+    await panel.evaluate((element) => element.style.getPropertyValue("--docked-panel-w")),
+    "",
+    "an untouched panel keeps the stylesheet's responsive width",
+  );
+  // Dragging the boundary right narrows the panel by exactly the drag; the
+  // default already sits at the row's cap, so widening first would clamp.
+  const beforeDrag = await box(panel);
+  const startX = beforeDrag.x + 4;
+  await page.mouse.move(startX, beforeDrag.y + 100);
+  await page.mouse.down();
+  await page.mouse.move(startX + 80, beforeDrag.y + 100, { steps: 6 });
+  await page.mouse.up();
+  const narrowed = await box(panel);
+  near(narrowed.width, beforeDrag.width - 80, "an 80px right drag narrows the panel 80px");
+  assert.equal(await savedWidth(), String(Math.round(beforeDrag.width - 80)), "the drag commits the width");
+  assert.equal(
+    await panel.evaluate((element) => element.style.getPropertyValue("--docked-panel-w")),
+    `${Math.round(beforeDrag.width - 80)}px`,
+    "the user width is the panel's inline override",
+  );
+  // Keyboard: ArrowLeft widens by one step, Enter returns the stylesheet
+  // default and clears the saved preference.
+  await handle.focus();
+  await page.keyboard.press("ArrowLeft");
+  const stepped = await box(panel);
+  near(stepped.width, narrowed.width + 16, "ArrowLeft widens by one keyboard step");
+  await page.keyboard.press("Enter");
+  const reset = await box(panel);
+  near(reset.width, beforeDrag.width, "Enter returns the stylesheet's responsive width");
+  assert.equal(await savedWidth(), null, "Enter clears the saved width");
+  const ariaNow = () => handle.evaluate((element) => element.getAttribute("aria-valuenow"));
+  near(Number(await ariaNow()), reset.width, "the separator reports the rendered width, not zero", 1.5);
+  // A saved width survives a phone crossing without leaking into it: the
+  // phone stylesheet owns the full-bleed panel, and the desktop override
+  // comes back when the window widens again.
+  await page.mouse.move(reset.x + 4, reset.y + 100);
+  await page.mouse.down();
+  await page.mouse.move(reset.x + 84, reset.y + 100, { steps: 6 });
+  await page.mouse.up();
+  assert.equal(await savedWidth() !== null, true, "a second drag saves again");
+  await setViewport({ width: 430, height: 900 }, "phone with a saved width");
+  assert.equal(
+    await panel.evaluate((element) => element.style.getPropertyValue("--docked-panel-w")),
+    "",
+    "the saved desktop width never overrides the phone panel",
+  );
+  await setViewport({ width: 1400, height: 900 }, "back to desktop");
+  assert.equal(
+    (await panel.evaluate((element) => element.style.getPropertyValue("--docked-panel-w"))).endsWith("px"),
+    true,
+    "the saved width is restored on the desktop",
+  );
+  await handle.focus();
+  await page.keyboard.press("Enter");
+  assert.equal(await savedWidth(), null, "reset clears the saved width for the legs that follow");
+  // Escape cancels a drag even when focus never reached the separator:
+  // the drag's own pointerdown prevents that focus change, so the cancel
+  // path cannot depend on the handle holding focus.
+  await filesButton.focus();
+  const beforeEscape = await box(panel);
+  await page.mouse.move(beforeEscape.x + 4, beforeEscape.y + 100);
+  await page.mouse.down();
+  await page.mouse.move(beforeEscape.x + 84, beforeEscape.y + 100, { steps: 6 });
+  await page.keyboard.press("Escape");
+  await page.mouse.up();
+  const afterEscape = await box(panel);
+  near(afterEscape.width, beforeEscape.width, "Escape restores the pre-drag width");
+  assert.equal(await savedWidth(), null, "an escaped drag saves nothing");
+  // A width a narrow row forced below the preferred minimum survives a
+  // reload at a wide row, clamped to what the wide row allows.
+  await setViewport({ width: 900, height: 900 }, "narrow desktop row");
+  await handle.focus();
+  await page.keyboard.press("End");
+  const narrowSaved = await savedWidth();
+  assert.equal(narrowSaved !== null && Number(narrowSaved) < 400, true, "End on a narrow row saves below the preferred minimum");
+  await setViewport({ width: 1400, height: 900 }, "widened again");
+  await page.reload({ waitUntil: "networkidle" });
+  await filesButton.waitFor();
+  await filesButton.click();
+  await waitForPanelState(panel, true, "the Files panel reopens after reload");
+  assert.equal(await savedWidth(), narrowSaved, "the forced narrow width survives the reload");
+  const afterReload = await box(panel);
+  near(afterReload.width, 400, "the wide row clamps the forced narrow width to its minimum", 1.5);
+  await handle.focus();
+  await page.keyboard.press("Enter");
+  assert.equal(await savedWidth(), null, "reset clears the width for the legs that follow");
+
   const content = page.locator('[data-region="content"]');
   const terminalCard = page.locator('[data-region="terminal-card"]');
   const contentBox = await box(content);
@@ -538,23 +631,25 @@ try {
   // ---- the list ----
   near((await box(panel.locator("[data-files-list]"))).width, LIST_W, "the list column is exactly 320px");
   const rowNames = await panel.locator("[data-files-row]").evaluateAll((rows) =>
-    rows.map((r) => r.textContent.trim().split("\n")[0].trim()));
+    rows.map((r) => r.querySelector(".min-w-0.flex-1").textContent.trim()));
   assert.deepEqual(
     rowNames,
     ["docs/", "x/", "broken/", "deep/", `${LONG_DIR_NAME}/`, "README.md", LONG_FILE_NAME, "logo.tiff"],
     "directories first, server order",
   );
   const markers = await panel.locator("[data-files-row]").evaluateAll((rows) =>
-    rows.map((r) => [r.getAttribute("data-files-row"), r.querySelector("[data-files-change]")?.textContent.trim() ?? ""])
-      .filter(([, text]) => text !== ""));
+    rows.map((r) => {
+      const icon = r.querySelector("[data-files-change]");
+      return icon === null ? null : [r.getAttribute("data-files-row"), icon.getAttribute("data-files-change"), getComputedStyle(icon).color, r.getAttribute("data-hint")];
+    }).filter((marker) => marker !== null));
   assert.deepEqual(
     markers,
-    [["docs", "Modified"], ["README.md", "Modified"], ["logo.tiff", "New"]],
-    "a modified file, the folder holding a changed file, and a new file each carry their marker as text",
+    [["docs", "modified", "rgb(217, 164, 65)", "Modified · Open this folder"], ["README.md", "modified", "rgb(217, 164, 65)", "Modified · Open this file"], ["logo.tiff", "new", "rgb(79, 178, 124)", "New · Open this file"]],
+    "modified rows are orange and new rows are green, with status words in the hint",
   );
   const rowFont = await panel.locator("[data-files-row]").first()
     .evaluate((el) => {
-      const s = getComputedStyle(el.querySelector("span:nth-child(2)"));
+      const s = getComputedStyle(el.querySelector(".min-w-0.flex-1"));
       return { family: s.fontFamily, size: s.fontSize };
     });
   await assertFontVoice(page, rowFont.family, "ui", `row name font: ${rowFont.family}`);

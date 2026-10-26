@@ -13,6 +13,7 @@ import {
 } from "./app/controller.ts";
 import { LiveWorkspace } from "./app/live.ts";
 import { bindLoginActions, loginHtml, mountSetup } from "./app/login.ts";
+import { isStableReleaseBuild, watchReleaseNotice } from "./app/release-notice.ts";
 import { documentBuildID, fetchBuildID, VersionWatcher } from "./app/version-watch.ts";
 import { mountMethodManagement } from "./app/security/management-controller.ts";
 import { WorkspaceSecurity } from "./app/security/coordinator.ts";
@@ -43,6 +44,7 @@ let controllerRelease: Promise<void> = Promise.resolve();
 let mountAbort: AbortController | null = null;
 let mountGeneration = 0;
 let versionWatcher: VersionWatcher | null = null;
+let releaseNoticeCleanup: (() => void) | null = null;
 
 const renderMountState = (message: string, error = false) => {
   root.replaceChildren();
@@ -68,6 +70,7 @@ const renderLogin = (mode: AuthMode) => {
 };
 
 const detachWorkspace = (): void => {
+  releaseNoticeCleanup?.(); releaseNoticeCleanup = null;
   workspace?.dispose(); workspace = null;
   versionWatcher?.dispose(); versionWatcher = null;
   const releasing = controller; controller = null;
@@ -168,6 +171,9 @@ const admitWorkspace = async (api: HttpApiClient, authMode: AuthMode, generation
     });
     reload.addEventListener("click", () => window.location.reload());
     versionWatcher.start();
+  }
+  if (isStableReleaseBuild(loadedBuildID)) {
+    releaseNoticeCleanup = watchReleaseNotice(root, api.onAuthorizationLost);
   }
   void workspace.start();
 };

@@ -179,9 +179,11 @@ func Harness(s *session.Session) (string, bool) {
 
 // Handle is the default a2a handle of a session's agent: the harness name
 // and the first four characters of the session id, exactly as the client
-// derives it inside the session. The effective handle can differ when the
-// agent chose a name, so the ledger is read by session, and a2a resolves
-// the name through the presence room (handle_for_session in a2a.py).
+// derives it inside the session. The rule and the ledger export the
+// console reads are frozen as the a2a consumer contract (docs/CONTRACT.md
+// in the a2a repository). The effective handle can differ when the agent
+// chose a name, so the ledger is read by session, and a2a resolves the
+// name through the presence room (handle_for_session in a2a.py).
 func Handle(s *session.Session) (string, bool) {
 	harness, ok := Harness(s)
 	if !ok {

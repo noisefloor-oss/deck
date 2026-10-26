@@ -156,3 +156,43 @@ Recreating the container ends running sessions, as in
 [The container and your sessions](#the-container-and-your-sessions).
 The native macOS procedure does not include agent chat. How the chat works
 is in [Agent-to-agent chat](a2a-chat.md).
+
+## Conversation attention
+
+Pi sessions can show **Agent needs input** when a native blocking dialog is
+open, or **Unseen ended turn** after an agent run settles. An ended turn does
+not mean the requested task succeeded. Opening the conversation acknowledges
+its ended-turn marker once the terminal or recovery transcript is visible;
+a pending input request stays marked until the native dialog closes.
+
+The current integration is qualified for Pi 1.4.0. It uses `ui_prompt_start`,
+`ui_prompt_end` and `agent_settled`, including native queued continuations.
+It does not treat an intermediate `agent_end`, quiet terminal, tool output or
+transcript text as completion. Other harnesses currently have no conversation
+attention integration and remain unknown. Existing output activity, recovery
+and agent-chat indicators retain their separate meanings.
+
+Attention facts and view receipts survive browser reloads and backend
+restarts. They are tied to the exact process generation and native
+conversation, and the sidebar receives them on its normal session refresh
+(about every ten seconds). A hidden tab or a covering dialog does not mark a
+turn seen. Only lifecycle metadata is stored; native prompts, dialog titles,
+messages and tool arguments are not collected for badges.
+
+## Public release notices
+
+A stable release installation checks GitHub's public Deck release metadata
+when the workspace first opens, then reuses successful results for six hours. The server sends no account credential,
+installation identifier or workspace data. Development, commit and prerelease
+builds do not check. An offline or rate-limited check leaves the workspace alone
+and the server can retry after fifteen minutes on a new request. An open
+browser checks every six hours, so recovery from an offline first check can
+take that long to appear unless you reload the page.
+
+When a newer stable release exists, the info bar links to its release notes.
+The **Show info bar** preference applies. On phones the bar appears only while
+a release notice is available.
+Dismiss hides that release in this browser; a later release can appear again.
+The notice never installs an update or reloads the workspace. The separate
+**New version available** header button still means the running server changed
+since this browser tab loaded, and reloads only when you click it.

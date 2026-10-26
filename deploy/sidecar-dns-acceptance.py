@@ -22,7 +22,7 @@ def require(condition, message):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--image", default="noise-browser:1.62.1", help="already-built browser image; never pulled")
+    parser.add_argument("--image", default="noise-browser:1.64.1-chromium-156.0.8078.47", help="already-built browser image; never pulled")
     args = parser.parse_args()
     if subprocess.check_output(["getenforce"], text=True).strip() != "Enforcing":
         raise SystemExit("This qualification requires enforcing SELinux; not a skipped pass")

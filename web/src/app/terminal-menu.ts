@@ -25,6 +25,10 @@ export interface TerminalMenuState {
   // copies exactly what is highlighted; with none the row copies the visible
   // screen, which is the fallback ⌘C and Ctrl+Insert already take.
   hasSelection: boolean;
+  // Whether this session routes a plain drag to the browser. On, a drag
+  // selects text instead of reaching an application that asked for mouse
+  // reports; the pane says so while it lasts.
+  selectText?: boolean;
   // Present only while the session has a login waiting to be finished.
   loginLabel?: string | null;
 }
@@ -41,6 +45,8 @@ export function terminalMenuHtml(state: TerminalMenuState): string {
         class="menuitem"><span class="flex-1">${escapeHtml(copyLabel)}</span></button>
       <button type="button" role="menuitem" data-terminal-menu-paste data-hint="${escapeHtml(hints.PASTE_INTO_TERMINAL)}"
         class="menuitem"><span class="flex-1">Paste</span></button>
+      <button type="button" role="menuitem" data-terminal-menu-select aria-pressed="${state.selectText === true ? "true" : "false"}" data-hint="${escapeHtml(hints.SELECT_TERMINAL_TEXT)}"
+        class="menuitem"><span class="flex-1">Select text</span></button>
       ${state.loginLabel ? `<button type="button" role="menuitem" data-harness-login data-hint="${escapeHtml(hints.FINISH_AGENT_LOGIN)}"
         class="menuitem"><span class="flex-1">${escapeHtml(state.loginLabel)}</span></button>` : ""}
     </div>`;

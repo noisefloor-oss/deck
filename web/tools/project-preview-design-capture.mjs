@@ -1,7 +1,6 @@
-// noise visual-diff 0.14.0 rounds reference crops to CSS pixels, but uses
-// fractional implementation boxes. At DPR 2 this can falsely report a
-// missing row. This invisible frame gives both sides the importer's crop
-// geometry without moving, restyling or hiding the application surface.
+// Keep an explicit rounded crop and reject frames that omit visible text or
+// controls or change layout. Visual Diff 0.14.1 rounds both reference and
+// implementation boxes; these containment and layout guards remain useful.
 export default async function setup(page) {
   const state = new URL(page.url()).searchParams.get("project-preview") ?? "";
   const selector = state.startsWith("menu-")

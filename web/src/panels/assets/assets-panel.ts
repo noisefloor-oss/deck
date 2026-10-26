@@ -7,6 +7,7 @@ import { formatFileSize } from "../../lib/format.ts";
 import { ApiError } from "../../api/http.ts";
 import type { AssetDeleteFile, AssetDeleteResult, AssetEntry, AssetListing, AssetLocation } from "../../api/assets.ts";
 import type { FileApiClient } from "../../api/files.ts";
+import { WATCH_INTERVAL_MS } from "./assets-news.ts";
 
 export type AssetsPanelState = "loading" | "ready" | "unavailable";
 
@@ -57,8 +58,11 @@ export class AssetsPanelModel {
   // next scan; a deleted file leaves the list.
   private outcomes = new Map<string, AssetOutcome>();
   private refreshSeq = 0;
+  private refreshing = false;
+  private refreshAgain = false;
   private openState = false;
   private unsubscribe: (() => void) | null = null;
+  private poll: ReturnType<typeof setInterval> | null = null;
 
   constructor(client: AssetClient, projectID: string, cb: AssetsPanelCallbacks = {}) {
     this.client = client;
@@ -71,19 +75,35 @@ export class AssetsPanelModel {
   }
 
   // open reads the locations and follows the change feed while the panel is
-  // open; close stops following it. The listing stays for the next open.
+  // open. A permanently closed feed falls back to polling; close stops both.
   async open(): Promise<void> {
     if (this.openState) return;
     this.openState = true;
     this.unsubscribe?.();
-    this.unsubscribe = this.client.subscribeProjectAssetEvents(this.projectID, () => void this.refresh());
+    this.unsubscribe = this.client.subscribeProjectAssetEvents(
+      this.projectID,
+      () => void this.refresh(),
+      () => {
+        if (!this.openState) return;
+        this.startPolling();
+        void this.refresh();
+      },
+    );
     await this.refresh();
+  }
+
+  private startPolling(): void {
+    if (!this.openState || this.poll !== null) return;
+    this.poll = setInterval(() => void this.refresh(), WATCH_INTERVAL_MS);
   }
 
   close(): void {
     this.openState = false;
+    ++this.refreshSeq;
     this.unsubscribe?.();
     this.unsubscribe = null;
+    if (this.poll !== null) clearInterval(this.poll);
+    this.poll = null;
   }
 
   dispose(): void {
@@ -91,7 +111,25 @@ export class AssetsPanelModel {
     ++this.refreshSeq;
   }
 
+  // One scan owns the listing at a time. Events during it fold into one
+  // follow-up instead of superseding each other and discarding every answer.
   async refresh(): Promise<void> {
+    if (this.refreshing) {
+      this.refreshAgain = true;
+      return;
+    }
+    this.refreshing = true;
+    try {
+      do {
+        this.refreshAgain = false;
+        await this.scan();
+      } while (this.refreshAgain && this.openState);
+    } finally {
+      this.refreshing = false;
+    }
+  }
+
+  private async scan(): Promise<void> {
     const seq = ++this.refreshSeq;
     let listing: AssetListing;
     try {

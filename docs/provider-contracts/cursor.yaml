@@ -55,8 +55,8 @@ executable:
   # interpreter path is unique to this pinned package, but the process is
   # still an interpreter, so pane identity rests on the full tuple.
   launch_path: "/usr/local/bin/cursor-agent"
-  launch_target: "/opt/cursor-agent/2026.10.19-6bbf2c4/dist-package/index.js"
-  proc_exe: "/opt/cursor-agent/2026.10.19-6bbf2c4/dist-package/node"
+  launch_target: "/opt/cursor-agent/2026.10.22-27dcf5f/dist-package/index.js"
+  proc_exe: "/opt/cursor-agent/2026.10.22-27dcf5f/dist-package/node"
   proc_cmdline: "/usr/local/bin/cursor-agent --use-system-ca <launch target>"
   interpreted: true
   usable_runtime_executable_evidence: false

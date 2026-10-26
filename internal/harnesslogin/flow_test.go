@@ -37,3 +37,18 @@ func TestShippedVersionsMatchImagePins(t *testing.T) {
 		}
 	}
 }
+
+func TestAnthropicCallbackDoesNotAcceptOpenAIStateMetadata(t *testing.T) {
+	u, _ := url.Parse(authURL("native-state"))
+	u.Host = "claude.ai"
+	q := u.Query()
+	q.Set("redirect_uri", "http://localhost:53692/callback")
+	u.RawQuery = q.Encode()
+	_, cb, err := authorization("pi", u.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cb.requestTarget("http://localhost:53692/callback?code=synthetic&state=" + url.QueryEscape("native-state"+lifeSciencesStateSuffix)); err == nil {
+		t.Fatal("OpenAI metadata accepted for Anthropic")
+	}
+}

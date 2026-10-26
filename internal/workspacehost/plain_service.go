@@ -139,7 +139,7 @@ func (s *plainService) Execute(ctx context.Context, login auth.Login, permit wor
 }
 
 func (s *plainService) complete(ctx context.Context, login auth.Login, permit workspacekeys.PlainStartPermit, op workspaceplain.Operation) error {
-	if op.ID != permit.ID() || op.Status != "succeeded" || !op.State.Configured || op.State.Runtime != "running" || op.State.Epoch == "" {
+	if op.ID != permit.ID() || (op.Status != "succeeded" && op.Status != "failed") || !op.State.Configured || op.State.Runtime != "running" || op.State.Epoch == "" {
 		return ErrUnavailable
 	}
 	state, err := s.observe(ctx)
@@ -175,7 +175,7 @@ func (s *plainService) Status(ctx context.Context, login auth.Login, id string) 
 		return result, err
 	}
 	result.Status, result.RuntimeState = op.Status, plainState(op.State)
-	if intent.Status == "pending" && op.Status == "succeeded" {
+	if intent.Status == "pending" && (op.Status == "succeeded" || (op.Status == "failed" && op.State.Runtime == "running")) {
 		permit, err := s.keys.AuthorizePlainStart(ctx, login, id)
 		if err != nil {
 			return result, err

@@ -117,7 +117,7 @@ var Catalogue = []Harness{
 	{Name: "omp", Executable: "omp", VersionArg: "OMP_VERSION", Source: SourceNPM, Package: "@oh-my-pi/pi-coding-agent",
 		Repeats: []Repeat{deployTest("omp_cli_package_test.go", "OMP_VERSION"), readmeRow("omp")}},
 	{Name: "pi", Executable: "pi", VersionArg: "PI_VERSION", Source: SourceNPM, Package: "@earendil-works/pi-coding-agent",
-		Repeats: []Repeat{deployTest("pi_cli_package_test.go", "PI_VERSION"), readmeRow("pi"), loginVersion("pi")}},
+		Repeats: []Repeat{deployTest("pi_cli_package_test.go", "PI_VERSION"), readmeRow("pi"), loginVersion("pi"), {Path: "internal/provider/assets/conversation-transport.test.mjs", Format: `assert.equal(pkg.version, "%s");`}}},
 	{
 		Name: "devin", Executable: "devin", VersionArg: "DEVIN_VERSION", Source: SourceDevinManifest,
 		Artifacts: []Artifact{

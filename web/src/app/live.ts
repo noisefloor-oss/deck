@@ -2,6 +2,8 @@
 // small and server-backed; this layer only coordinates their lifetimes and the
 // browser-owned WebSocket/controller lease. It never interprets terminal
 // output or invents provider/session state.
+import { ConversationAcknowledgements } from "../terminal/conversation-attention.ts";
+import { csrfToken } from "../api/http.ts";
 import { TutorialModel } from "./tutorial/model.ts";
 import { TutorialPanel } from "./tutorial/panel.ts";
 import { tutorialCatalog } from "./tutorial/lesson-files.ts";
@@ -48,7 +50,7 @@ import { flashAssetsArrived, focusPanelTrigger, mountPanelsMenu, paintAssetsNew 
 import { SECONDARY_SM_BUTTON } from "../ui/controls.ts";
 import { terminalIdentityHtml } from "../ui/terminal-identity.ts";
 import { AgentTerminal } from "../terminal/attach.ts";
-import { createTerminal, ensureMonoFontLoaded, type MountedTerminal } from "../terminal/term.ts";
+import { createTerminal, ensureMonoFontLoaded } from "../terminal/term.ts";
 import { placeTerminalMenu, terminalMenuHtml } from "./terminal-menu.ts";
 import { inertSoftKeyTerminal, MobileTerminalSoftKeys } from "../terminal/soft-keys.ts";
 import { MobileTerminalCompose, isComposeSubmitIntent } from "../terminal/mobile-compose.ts";
@@ -69,6 +71,7 @@ import {
 import { region, workspaceLayout } from "./layout.ts";
 import { TerminalFocusRequest } from "./terminal-focus.ts";
 import { InfoBar } from "./info-bar.ts";
+import { PanelSize } from "../panels/panel-size.ts";
 import { setAutoColorProjects, showAutoColorProjects } from "../lib/auto-color.ts";
 import { trackVisualViewport } from "./viewport.ts";
 import { shortcutCommand, shortcutTarget, type ShortcutCommand } from "./shortcuts.ts";
@@ -139,13 +142,18 @@ export class LiveWorkspace {
   private loginEvents: EventSource | null = null;
   private terminalSoftKeys: MobileTerminalSoftKeys | null = null;
   private terminalCompose: MobileTerminalCompose | null = null;
+  private composeDrafts = new Map<string, string>();
+  // Whether each session routes a plain drag to the browser (the terminal
+  // menu's Select text row). Per session, like the compose drafts, so a
+  // remount or a reselection restores the choice the operator made.
+  private selectTextSessions = new Map<string, boolean>();
   private dockBoundaryCleanup: (() => void) | null = null;
   // What the pane is showing, and what the dock is currently mounted for.
   // They are compared rather than assumed: the dock outlives any one terminal,
   // and the width can cross the phone boundary at any point in between.
   private dockMode: "live" | "recovery" | "none" = "none";
   private dockMounted: "live" | "recovery" | null = null;
-  private dockSource: MountedTerminal | null = null;
+  private dockSource: AgentTerminal | null = null;
   private taskRefHover: TaskRefHover | null = null;
   private statusModel: SessionStatusModel | null = null;
   private taskmasterModel: TaskmasterPanelModel | null = null;
@@ -156,6 +164,7 @@ export class LiveWorkspace {
   private taskmasterEvents: EventSource | null = null;
   private filesModel: FilesPanelModel | null = null;
   private files: FilesPanel | null = null;
+  private filesProjectID: string | null = null;
   // The Chats ledger is scoped to the selected session's agent;
   // it mounts with a session and leaves with it.
   private chatsModel: ChatsPanelModel | null = null;
@@ -171,6 +180,7 @@ export class LiveWorkspace {
   private chatIndex: ChatIndex | null = null;
   private chatIndexTimer: number | null = null;
   private selectedSessionID: string | null = null;
+  private conversationAcks: ConversationAcknowledgements | null = null;
   private connection: ConnectionState = "disconnected";
   private attachmentProblem: AttachmentProblem | null = null;
   private statusTimer: number | null = null;
@@ -285,6 +295,7 @@ export class LiveWorkspace {
   private emptyPanelsProject: string | null = null;
   private readonly lastSessionStore: LastSessionStorage;
   private infoBar: InfoBar | null = null;
+  private panelSizes: PanelSize[] = [];
 
   // Right-click over the pane opens the terminal's own Copy/Paste menu.
   // It is registered on the workspace root for the workspace's
@@ -392,6 +403,16 @@ export class LiveWorkspace {
         onChange: () => { this.repaintPanelToggles(); this.repaintTutorial(); },
       },
     );
+
+    // The docked panels carry the shared resizing controller, one per
+    // panel: each owns its saved width, drag boundary and keyboard values,
+    // and their lifetime is the workspace's.
+    for (const [region, key] of [["files", "noisedeck.panel.files.width"], ["tasks", "noisedeck.panel.tasks.width"]] as const) {
+      const host = this.root.querySelector<HTMLElement>(`[data-region="${region}"]`);
+      const handle = this.root.querySelector<HTMLElement>(`[data-panel-resize="${region}"]`);
+      if (host === null || handle === null) continue;
+      this.panelSizes.push(new PanelSize(host, handle, { key, min: 400, max: 1000, reserve: 360 }));
+    }
     this.starter = new TutorialStarterModel(api, api, tutorialStarterBundle, {
       onChange: () => this.starterChanged(),
     });
@@ -559,7 +580,33 @@ export class LiveWorkspace {
     // A backgrounded tab stops draining its socket, so the proxy drops it
     // to keep the CLI unblocked. The user did not choose
     // that, so coming back reconnects rather than asking.
-    this.reclaimOnFocus = () => this.maybeReclaim();
+    this.conversationAcks = new ConversationAcknowledgements({
+      current: () => this.sidebarModel.groups.flatMap(group => group.sessions).find(session => session.id === this.selectedSessionID),
+      visible: () => {
+        if (document.visibilityState !== "visible" || !document.hasFocus() || this.root.querySelector("[role=dialog]") !== null) return false;
+        const displayed = this.statusModel?.session;
+        const selected = this.sidebarModel.groups.flatMap(group => group.sessions).find(session => session.id === this.selectedSessionID);
+        if (!displayed || displayed.id !== selected?.id || displayed.generation !== selected.generation) return false;
+        const terminal = this.root.querySelector<HTMLElement>("[data-live-terminal], [data-recovery-scrollback]");
+        if (this.connection !== "connected" && terminal?.matches("[data-recovery-scrollback]") !== true) return false;
+        if (!terminal) return false;
+        const rect = terminal.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0 && terminal.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+      },
+      schedule: callback => requestAnimationFrame(() => requestAnimationFrame(callback)),
+      acknowledge: async (id, fact) => {
+        const token = csrfToken(document.cookie);
+        const response = await fetchWithAuthorization(`/api/sessions/${encodeURIComponent(id)}/attention/seen`, {
+          method: "POST", credentials: "same-origin", cache: "no-store", redirect: "error",
+          headers: { "Content-Type": "application/json", ...(token ? { "X-CSRF-Token": token } : {}) },
+          body: JSON.stringify({ generation: fact.generation, context_key: fact.context_key, ended_sequence: fact.ended_sequence }),
+          signal: AbortSignal.timeout(5000),
+        }, () => this.requireAuthentication());
+        if (!response.ok) throw new Error("acknowledgement unavailable");
+      },
+      changed: () => { void this.refreshSidebar(); },
+    });
+    this.reclaimOnFocus = () => { this.maybeReclaim(); this.conversationAcks?.observe(); };
     document.addEventListener("visibilitychange", this.reclaimOnFocus);
     window.addEventListener("focus", this.reclaimOnFocus);
     // The frame follows the VISUAL viewport so a software keyboard
@@ -635,6 +682,7 @@ export class LiveWorkspace {
     this.dockBoundaryCleanup?.();
     this.dockBoundaryCleanup = null;
     this.disposed = true;
+    this.conversationAcks?.dispose();
     this.stopTutorialTimers();
     this.tutorial.dispose();
     this.starter.dispose();
@@ -665,6 +713,8 @@ export class LiveWorkspace {
     this.outputActivityEvents = null;
     this.clearOutputActivity();
     this.infoBar?.dispose();
+    for (const size of this.panelSizes) size.dispose();
+    this.panelSizes = [];
     this.infoBar = null;
   }
 
@@ -1312,6 +1362,7 @@ export class LiveWorkspace {
     this.syncTutorial();
     this.sidebarModel.selectedSessionID = this.selectedSessionID;
     this.sidebar.render();
+    this.conversationAcks?.observe();
     if (this.selectedSessionID === null && !this.authRequired) {
       if (this.suppressAutoSelect) {
         this.renderEmptyPane();
@@ -1340,11 +1391,11 @@ export class LiveWorkspace {
     const epoch = ++this.epoch;
     ++this.selectionEpoch;
     this.suppressAutoSelect = false;
-    this.disposeSession();
-    this.selectedSessionID = sessionID;
-    this.sidebarModel.selectedSessionID = sessionID;
     const projectID = this.sidebarModel.groups
       .find((g) => g.sessions.some((s) => s.id === sessionID))?.project.id ?? null;
+    this.disposeSession(projectID);
+    this.selectedSessionID = sessionID;
+    this.sidebarModel.selectedSessionID = sessionID;
     this.sidebar.setProjectContext(projectID);
     this.sidebar.render();
     this.renderLoading();
@@ -1416,7 +1467,9 @@ export class LiveWorkspace {
     this.renderEmptyPane();
   }
 
-  private disposeSession(): void {
+  private disposeSession(preserveFilesProjectID: string | null = null): void {
+    const keepFilesOpen = preserveFilesProjectID !== null
+      && this.filesProjectID === preserveFilesProjectID && this.panels.isOpen("files");
     this.root.querySelector('[data-region="login-action"]')?.replaceChildren();
     this.harnessLogin?.close("context-lost");
     this.harnessLogin = null;
@@ -1449,14 +1502,17 @@ export class LiveWorkspace {
     this.taskmasterModel = null;
     this.taskmasterEvents?.close();
     this.taskmasterEvents = null;
-    this.files?.dispose();
-    this.files = null;
-    this.filesModel = null;
+    if (this.filesProjectID !== preserveFilesProjectID) {
+      this.files?.dispose();
+      this.files = null;
+      this.filesModel = null;
+      this.filesProjectID = null;
+    }
     this.assets?.dispose();
     this.assets = null;
     this.disposeChats();
     this.emptyPanelsProject = null;
-    this.panels.close(false);
+    if (!keepFilesOpen) this.panels.close(false);
     this.connection = "disconnected";
     this.endConnection();
     this.attachmentProblem = null;
@@ -1555,6 +1611,9 @@ export class LiveWorkspace {
       <button type="button" data-live-scrollback-pill hidden
         aria-label="Jump to live" data-hint="${hints.RETURN_TO_LIVE_END}"
         class="absolute right-[18px] top-[10px] z-10 ${SECONDARY_SM_BUTTON} rounded-pill px-[10px]">Jump to live</button>
+      <button type="button" data-live-select-text hidden aria-pressed="false"
+        aria-label="Select text is on. Select to turn it off." data-hint="${hints.SELECT_TERMINAL_TEXT}"
+        class="absolute bottom-[10px] right-[18px] z-10 ${SECONDARY_SM_BUTTON} rounded-pill px-[10px]">Select text</button>
       <div data-live-terminal-overlay class="absolute inset-0"></div>
     `;
     pane.classList.add("relative", "overflow-hidden");
@@ -1562,9 +1621,13 @@ export class LiveWorkspace {
     const controllerID = this.controllerID;
     // The cell must be measured against the face the emulator will render
     // in, so the wait precedes the mount. A selection that supersedes the
-    // wait leaves the pane to whoever now owns the epoch.
+    // wait leaves the pane to whoever now owns the epoch, and so does
+    // anything that rewrote the pane meanwhile: the status poll asks for a
+    // mount every tick while no terminal exists, a cold face can outlast a
+    // tick, and recovery can take the pane back. Only the latest host mounts.
     await ensureMonoFontLoaded(host, terminalFontSize());
     if (this.disposed || epoch !== this.epoch) return;
+    if (pane.querySelector("[data-live-terminal]") !== host) return;
     let terminal: AgentTerminal;
     const current = () => epoch === this.epoch && this.terminal === terminal;
     terminal = new AgentTerminal(host, {
@@ -1716,15 +1779,26 @@ export class LiveWorkspace {
     // browser would add chrome the desktop layout does not have. The CSS
     // hides it there too, but an unmounted row also stays out of the a11y
     // tree.
-    this.dockSource = terminal.mounted;
+    this.dockSource = terminal;
     this.dockMode = "live";
     this.syncDock();
     pane.querySelector<HTMLElement>("[data-live-scrollback-pill]")
       ?.addEventListener("click", () => terminal.jumpToLive());
+    pane.querySelector<HTMLElement>("[data-live-select-text]")
+      ?.addEventListener("click", () => {
+        this.selectTextSessions.set(detail.id, false);
+        terminal.mounted.setSelectText(false);
+        this.paintSelectText(false);
+      });
     this.taskRefHover = new TaskRefHover(terminal.mounted.terminal, pane, {
       getTags: () => this.taskmasterModel?.tags ?? [],
     });
     terminal.attach(detail.id);
+    // The pane carries the session's select-text choice across mounts, and
+    // the chip says so for as long as it is on.
+    const selectText = this.selectTextSessions.get(detail.id) === true;
+    terminal.mounted.setSelectText(selectText);
+    this.paintSelectText(selectText);
     this.renderAttachmentState();
   }
 
@@ -1746,7 +1820,8 @@ export class LiveWorkspace {
     if (composeHost !== null) composeHost.innerHTML = "";
     this.dockMounted = wanted === "none" ? null : wanted;
     const dock = this.root.querySelector<HTMLElement>('[data-region="terminal-dock"]');
-    dock?.toggleAttribute("data-dock-mounted", wanted !== "none");
+    if (wanted === "none") dock?.removeAttribute("data-dock-mounted");
+    else dock?.setAttribute("data-dock-mounted", wanted);
     if (wanted === "none") return;
     if (wanted === "recovery") {
       // The key strip survives the reconnect as presentation: it is drawn
@@ -1761,40 +1836,62 @@ export class LiveWorkspace {
       this.setSoftKeysInert(true);
       return;
     }
-    const mounted = this.dockSource;
-    if (mounted === null) return;
+    const source = this.dockSource;
+    if (source === null) return;
     this.terminalSoftKeys = new MobileTerminalSoftKeys(
       region(this.root, "terminal-soft-keys"),
-      mounted,
+      source.mounted,
     );
-    this.mountMobileCompose(mounted);
+    this.mountMobileCompose(source);
     this.syncAttachmentInputs();
   }
 
-  // mountMobileCompose wires the narrow-viewport input row. It is a focus
+  // mountMobileCompose wires the buffered input row. It is a focus
   // target for the soft keyboard AND a real buffer — the one exception to
   // terminal-only input: text accumulates in the field so dictation apps
   // can edit it, and Send or Return pastes the draft then presses Enter.
   // Escape and the control keys stay with the key strip.
-  private mountMobileCompose(terminal: MountedTerminal): void {
+  // The draft is written and tracked through one terminal: a write counts
+  // only on the attachment that forwarded it.
+  private mountMobileCompose(terminal: AgentTerminal): void {
     const host = region(this.root, "terminal-compose");
     host.innerHTML = mobileComposeMarkup();
-    const compose = new MobileTerminalCompose(terminal);
+    const compose = new MobileTerminalCompose({
+      paste: (text) => terminal.mounted.paste(text),
+      sendInput: (data) => terminal.mounted.sendInput(data),
+      trackWrite: (send, done) => terminal.trackWrite(send, done),
+    });
     this.terminalCompose = compose;
     const input = host.querySelector<HTMLTextAreaElement>("[data-mobile-compose-input]")!;
     const form = host.querySelector<HTMLFormElement>("[data-mobile-compose-form]")!;
+    const sessionID = this.selectedSessionID;
+    if (sessionID !== null) input.value = this.composeDrafts.get(sessionID) ?? "";
+    input.addEventListener("input", () => {
+      if (sessionID !== null) this.composeDrafts.set(sessionID, input.value);
+    });
+    const send = (): void => {
+      if (this.connection !== "connected" || this.selectedSessionID !== sessionID || this.terminalCompose !== compose) return;
+      const snapshot = input.value;
+      const started = compose.flush(snapshot, (code) => {
+        if (this.disposed || this.selectedSessionID !== sessionID || this.terminalCompose !== compose) return;
+        if (code === "sent") {
+          if (input.value !== snapshot || sessionID === null || this.composeDrafts.get(sessionID) !== snapshot) return;
+          input.value = "";
+          this.composeDrafts.delete(sessionID);
+          return;
+        }
+        this.infoBar?.announce("The draft may have been partially sent. Inspect the terminal before retrying; your draft is still in the composer.");
+      });
+      if (!started) this.infoBar?.announce("Terminal input is not ready. Your draft is still in the composer.");
+    };
     input.addEventListener("beforeinput", (event) => {
       if (!isComposeSubmitIntent((event as InputEvent).inputType)) return;
       event.preventDefault();
-      if (this.connection !== "connected") return;
-      compose.flush(input.value);
-      input.value = "";
+      send();
     });
     form.addEventListener("submit", (event) => {
       event.preventDefault();
-      if (this.connection !== "connected") return;
-      compose.flush(input.value);
-      input.value = "";
+      send();
       input.focus();
     });
   }
@@ -2038,7 +2135,18 @@ export class LiveWorkspace {
     if (pill !== null) pill.hidden = !active;
   }
 
+  // paintSelectText shows the pane's select-text chip. The chip is the
+  // state made visible: while it is on screen, drags select in the browser
+  // instead of reaching the application, and clicking it turns that off.
+  private paintSelectText(active: boolean): void {
+    const chip = this.root.querySelector<HTMLElement>("[data-live-select-text]");
+    if (chip === null) return;
+    chip.hidden = !active;
+    chip.setAttribute("aria-pressed", active ? "true" : "false");
+  }
+
   private renderAttachmentState(): void {
+    this.conversationAcks?.observe();
     if (this.disposed) return;
     this.syncAttachmentInputs();
     const detail = this.statusModel?.session;
@@ -2252,8 +2360,14 @@ export class LiveWorkspace {
   // is on disk. It is a label here; the server, not this string, decides
   // what any request may reach.
   private mountFiles(projectID: string): void {
+    if (this.files !== null && this.filesModel !== null && this.filesProjectID === projectID) {
+      this.files.render();
+      return;
+    }
+    this.files?.dispose();
     const panel = region(this.root, "files-body");
     const project = this.project(projectID);
+    this.filesProjectID = projectID;
     this.filesModel = new FilesPanelModel(
       this.api,
       projectID,
@@ -2296,6 +2410,19 @@ export class LiveWorkspace {
       onClose: () => {
         this.panels.close();
         focusPanelTrigger(this.root, "live", "assets");
+      },
+      onOpen: (entry) => {
+        const filesModel = this.filesModel;
+        if (filesModel === null) return;
+        const selection = this.selectionEpoch;
+        const current = () => this.filesModel === filesModel && this.selectionEpoch === selection;
+        this.panels.set("files");
+        const opening = entry.kind === "dir"
+          ? filesModel.openDirectory(entry.path)
+          : filesModel.openFile(entry.path, current);
+        void opening.then(() => {
+          if (current()) this.files?.render();
+        });
       },
       modals: () => this.root.querySelector<HTMLElement>('[data-region="modals"]'),
       imageUrl: (path) => this.api.projectFileImageUrl(projectID, path),
@@ -2406,7 +2533,7 @@ export class LiveWorkspace {
     const copy = terminal.mounted.copyable();
     const popovers = region(this.root, "popovers");
     popovers.innerHTML = `<div class="absolute inset-0" data-popover-backdrop>${
-      terminalMenuHtml({ hasSelection: copy.fromSelection, loginLabel: this.loginActionLabel(this.statusModel?.session) })}</div>`;
+      terminalMenuHtml({ hasSelection: copy.fromSelection, selectText: this.selectTextSessions.get(this.selectedSessionID ?? "") === true, loginLabel: this.loginActionLabel(this.statusModel?.session) })}</div>`;
     const backdrop = popovers.querySelector<HTMLElement>("[data-popover-backdrop]")!;
     const menu = popovers.querySelector<HTMLElement>("[data-terminal-menu-popover]");
     if (menu === null) return;
@@ -2435,6 +2562,19 @@ export class LiveWorkspace {
         .catch((cause) => this.handleError("clipboard write failed", cause));
     });
     menu.querySelector("[data-harness-login]")?.addEventListener("click", () => { close(); this.openHarnessLogin(); });
+    menu.querySelector("[data-terminal-menu-select]")?.addEventListener("click", () => {
+      close();
+      const sessionID = this.selectedSessionID;
+      if (sessionID === null) return;
+      const next = !(this.selectTextSessions.get(sessionID) === true);
+      this.selectTextSessions.set(sessionID, next);
+      // The pane the menu was opened over is the pane the choice lands on;
+      // a selection that moved under the menu keeps its own session's state.
+      if (!this.disposed && this.terminal === terminal) {
+        terminal.mounted.setSelectText(next);
+        this.paintSelectText(next);
+      }
+    });
     menu.querySelector("[data-terminal-menu-paste]")?.addEventListener("click", () => {
       close();
       void navigator.clipboard.readText().then((text) => {
@@ -3182,6 +3322,7 @@ export class LiveWorkspace {
     this.files?.dispose();
     this.files = null;
     this.filesModel = null;
+    this.filesProjectID = null;
     this.emptyPanelsProject = null;
   }
 }

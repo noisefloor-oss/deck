@@ -106,7 +106,7 @@ preview = services.get("preview-tunnel")
 if preview is not None:
     if preview.get("network_mode") != "service:app" or preview.get("ports"):
         fail("preview connector must share the app namespace without publishing ports")
-    if preview.get("image") != "cloudflare/cloudflared@sha256:0aa26e284f05e6c77ae375b8c9c11d9eb6a448fb7bcd8d40f31cb6176189eb38":
+    if preview.get("image") != "cloudflare/cloudflared@sha256:faa8e0a1475f137c910be6025f43c8e4092fdd35461b31e19fd1390657a1ff39":
         fail("preview connector image is not pinned")
     if preview.get("read_only") is not True or preview.get("user") != "65532:65532" or "ALL" not in preview.get("cap_drop", []):
         fail("preview connector lacks its restricted runtime profile")

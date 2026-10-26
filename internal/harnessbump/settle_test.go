@@ -244,6 +244,43 @@ func TestSettleMergesOnlyAnApprovedGreenCleanHead(t *testing.T) {
 	}
 }
 
+func TestSettleHandsOffForeignHeadAndQueuesNext(t *testing.T) {
+	prs := []map[string]any{
+		prJSON(1, "harness-bump/codex-1.2.3", "foreign", "APPROVED", "foreign", "SUCCESS", "CLEAN"),
+		prJSON(2, "harness-bump/kimi-1.2.3", "job-made", "APPROVED", "job-made", "SUCCESS", "CLEAN"),
+	}
+	var calls []string
+	deterministic := func(_ context.Context, _ Harness, _, head string) (bool, error) {
+		return head == "job-made", nil
+	}
+	evidence := func(context.Context, Harness, string, string) (bool, error) { return true, nil }
+	decisions, err := Settle(context.Background(), fakeGH(prs, &calls), "o/r", "noise-review[bot]", 0, true, deterministic, evidence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(decisions) != 2 || decisions[0].Action != ActionHandOff || decisions[1].Action != ActionQueued {
+		t.Fatalf("decisions = %+v", decisions)
+	}
+	joined := strings.Join(calls, "\n")
+	if strings.Contains(joined, "id=PR-1 ") || !strings.Contains(joined, "id=PR-2 -f head=job-made") {
+		t.Fatalf("settlement did not queue only the second PR: %s", joined)
+	}
+}
+
+func TestSettlePreservesDeterministicOperationalErrors(t *testing.T) {
+	prs := []map[string]any{prJSON(1, "harness-bump/codex-1.2.3", "head", "APPROVED", "head", "SUCCESS", "CLEAN")}
+	want := errors.New("resolver unavailable")
+	deterministic := func(context.Context, Harness, string, string) (bool, error) { return false, want }
+	evidence := func(context.Context, Harness, string, string) (bool, error) { return true, nil }
+	var calls []string
+	if _, err := Settle(context.Background(), fakeGH(prs, &calls), "o/r", "noise-review[bot]", 0, true, deterministic, evidence); !errors.Is(err, want) {
+		t.Fatalf("err = %v, want %v", err, want)
+	}
+	if strings.Contains(strings.Join(calls, "\n"), "enqueuePullRequest") {
+		t.Fatal("an operational proof error queued a PR")
+	}
+}
+
 func TestSettleWithoutApplyOnlyDecides(t *testing.T) {
 	prs := []map[string]any{prJSON(1, "harness-bump/codex-1.2.3", "aaa", "APPROVED", "aaa", "SUCCESS", "CLEAN")}
 	var calls []string

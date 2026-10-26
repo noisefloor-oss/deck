@@ -346,6 +346,7 @@ func Up(ctx context.Context, cfg *config.Config, log zerolog.Logger, opts ...UpO
 	h.Server.Handle("GET /api/harness-login", loginHandler)
 	h.Server.Handle("POST /api/harness-login", loginHandler)
 	h.Server.Handle("GET /api/build", h.Auth.Require(server.BuildHandler(options.buildID)))
+	h.Server.Handle("GET /api/release-update", h.Auth.Require(server.NewReleaseNotice(options.buildID)))
 	h.Server.Handle("GET /api/doctor", h.Auth.Require(server.DoctorHandler(cfg, func() bool {
 		return h.Server.BoundAddr() != ""
 	})))
@@ -490,6 +491,7 @@ func Up(ctx context.Context, cfg *config.Config, log zerolog.Logger, opts ...UpO
 	// classification sees the durable loss marker rather than mistaking NULL
 	// identity for proof that the session was empty.
 	h.Server.Handle("POST /api/hooks/capture", hookCaptures.Handle())
+	h.Server.Handle("POST /api/hooks/conversation", hookCaptures.ConversationHandler())
 	go func() {
 		tick := time.NewTicker(time.Minute)
 		defer tick.Stop()

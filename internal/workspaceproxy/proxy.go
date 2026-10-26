@@ -142,7 +142,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Go and the backend must interpret exactly the same path. A browser
 	// grant never authorizes the internal stop hook or a security API bypass.
 	if !strings.HasPrefix(r.URL.Path, "/api/") || path.Clean(r.URL.Path) != r.URL.Path || r.URL.RawPath != "" || strings.Contains(r.URL.Path, "\\") ||
-		strings.HasPrefix(r.URL.Path, "/api/internal/") || strings.HasPrefix(r.URL.Path, "/api/security/") || r.URL.Path == "/api/hooks/capture" {
+		strings.HasPrefix(r.URL.Path, "/api/internal/") || strings.HasPrefix(r.URL.Path, "/api/security/") || strings.HasPrefix(r.URL.Path, "/api/hooks/") {
 		http.NotFound(w, r)
 		return
 	}

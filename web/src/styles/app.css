@@ -95,6 +95,15 @@
   --color-error-on-tint: var(--color-red-600);
   --color-text-on-error: #FFFFFF;
 
+  --color-git-added: var(--color-success);
+  --color-git-modified: var(--color-warning);
+  --color-git-deleted: var(--color-error);
+  --color-git-renamed: var(--color-mark-cerulean);
+  --color-git-copied: var(--color-mark-indigo);
+  --color-git-conflicted: var(--color-mark-orchid);
+  --color-git-untracked: var(--color-text-tertiary);
+  --opacity-git-ignored: 0.55;
+
   --color-wash-hover: rgba(14, 27, 44, 0.045);
   --color-wash-pressed: rgba(14, 27, 44, 0.085);
   --color-wash-selected: var(--color-accent-050);
@@ -489,6 +498,15 @@
   --color-error-tint: #432221;
   --color-error-on-tint: #E4736F;
 
+  --color-git-added: var(--color-success);
+  --color-git-modified: var(--color-warning);
+  --color-git-deleted: var(--color-error);
+  --color-git-renamed: var(--color-mark-cerulean);
+  --color-git-copied: var(--color-mark-indigo);
+  --color-git-conflicted: var(--color-mark-orchid);
+  --color-git-untracked: var(--color-text-tertiary);
+  --opacity-git-ignored: 0.55;
+
   --color-wash-hover: rgba(232, 237, 244, 0.06);
   --color-wash-pressed: rgba(232, 237, 244, 0.11);
 
@@ -566,6 +584,15 @@
   --color-warning-tint: rgba(217,164,65,.14);
   --color-error: #E4736F;
   --color-error-tint: rgba(228,115,111,.14);
+
+  --color-git-added: var(--color-success);
+  --color-git-modified: var(--color-warning);
+  --color-git-deleted: var(--color-error);
+  --color-git-renamed: var(--color-mark-cerulean);
+  --color-git-copied: var(--color-mark-indigo);
+  --color-git-conflicted: var(--color-mark-orchid);
+  --color-git-untracked: var(--color-text-tertiary);
+  --opacity-git-ignored: 0.55;
 
   /* on-tint over the alpha washes on ink */
   --color-accent-on-tint: #7290EC;
@@ -1142,6 +1169,19 @@
   }
 }
 
+/* Release notices share the existing strip. On phones the strip opens
+   only for a notice, with room for its dismiss control and the home indicator. */
+@media (width < 48rem) {
+  [data-region="info-bar"][data-shown="true"]:has([data-release-notice]:not([hidden])) {
+    display: flex;
+    min-height: calc(40px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  [data-region="info-bar"]:has([data-release-notice]:not([hidden])) [data-info-status] {
+    display: none;
+  }
+}
+
 @utility hairline {
   border: 1px solid var(--color-border);
 }
@@ -1214,6 +1254,17 @@
   pointer-events: auto;
   border-left-width: 1px;
 }
+
+/* The shared docked-panel resize boundary: an 8px strip on the panel's
+   left edge, keyboard-focusable, hidden wherever the panel itself is not
+   in its desktop shape. */
+[data-panel-resize] {
+  touch-action: none;
+}
+[data-panel-resize]:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -3px; }
+[data-panel-resizing="true"] { cursor: col-resize; user-select: none; }
+[data-panel-resizing="true"] * { cursor: col-resize !important; }
+@media (max-width: 47.999rem) { [data-panel-resize] { display: none; } }
 [data-region="files"][data-expanded="true"] {
   position: absolute;
   inset: 0;
@@ -5007,14 +5058,12 @@
   [data-header-context-actions] button { min-height: 44px; }
 }
 
-/* Assets panel (rows, the Blueprint choice box, the delete dialogs). A row
-   is one hit target; the box is drawn, not a native input, because the row
-   itself is the checkbox the keyboard and assistive tech reach. */
+/* Assets panel rows open through Files; only their checkbox selects for
+   deletion. The choice box is drawn to match the rest of the panel. */
 .asset-row { background: transparent; }
 .asset-row:hover { background: var(--color-wash-hover); }
 .asset-row[data-selected="true"] { background: var(--color-wash-selected); }
-.asset-row:focus-visible { outline: none; box-shadow: var(--focus-ring); }
-.asset-row[aria-disabled="true"] { cursor: default; }
+.asset-row:focus-within { box-shadow: var(--focus-ring); }
 .asset-check {
   display: grid;
   place-items: center;
@@ -5043,7 +5092,7 @@
      grabber, a close control and their actions stacked full-width. */
   [data-assets-header] {
     height: auto;
-    padding: 4px 6px 6px 20px;
+    padding: calc(4px + var(--workspace-safe-area-top, 0px)) max(6px, env(safe-area-inset-right)) 6px max(20px, env(safe-area-inset-left));
     gap: 2px;
     border-bottom: 1px solid var(--color-border);
   }
@@ -5060,7 +5109,7 @@
     min-height: 48px;
     padding: 2px 10px 2px 0;
   }
-  [data-asset-slot] { width: var(--touch-min); height: var(--touch-min); }
+  [data-asset-slot], [data-asset-select] { width: var(--touch-min); height: var(--touch-min); }
   [data-asset-thumb] { width: 44px; height: 33px; }
   [data-asset-thumb] > svg { width: 16px; height: 16px; }
   [data-assets-footer] {
@@ -5133,7 +5182,7 @@
 }
 [data-viewport="narrow"] [data-assets-header] {
   height: auto;
-  padding: 4px 6px 6px 20px;
+  padding: calc(4px + var(--workspace-safe-area-top, 0px)) max(6px, env(safe-area-inset-right)) 6px max(20px, env(safe-area-inset-left));
   gap: 2px;
   border-bottom: 1px solid var(--color-border);
 }
@@ -5220,3 +5269,18 @@
 [data-viewport="narrow"] .dialog[data-assets-dialog] [data-assets-outcome-word] { min-width: 0; }
 [data-viewport="narrow"] .dialog[data-assets-dialog] .assets-chip-row .font-mono { font-size: min(var(--type-mono-size), calc(var(--type-caption-size) * var(--type-mono-xh-ratio))); }
 [data-viewport="narrow"] [data-assets-header] button > svg { width: 18px; height: 18px; }
+
+.sidebar-resize {
+  position: absolute;
+  inset-block: 0;
+  left: calc(var(--sidebar-w) - 4px);
+  width: 8px;
+  z-index: 35;
+  cursor: col-resize;
+  touch-action: none;
+}
+.sidebar-resize[hidden] { display: none; }
+.sidebar-resize:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -3px; }
+[data-sidebar-resizing="true"] { cursor: col-resize; user-select: none; }
+[data-sidebar-resizing="true"] * { cursor: col-resize !important; }
+@media (max-width: 47.999rem) { .sidebar-resize { display: none; } }

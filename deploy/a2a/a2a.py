@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import calendar
 import hashlib
 import fcntl
 import json
@@ -1303,8 +1304,8 @@ def announce(state: str, **extra) -> dict:
 
 def _seconds_between(earlier: str | None, later: str | None) -> int:
     try:
-        a = time.mktime(time.strptime(earlier or "", "%Y-%m-%dT%H:%M:%SZ"))
-        b = time.mktime(time.strptime(later or "", "%Y-%m-%dT%H:%M:%SZ"))
+        a = calendar.timegm(time.strptime(earlier or "", "%Y-%m-%dT%H:%M:%SZ"))
+        b = calendar.timegm(time.strptime(later or "", "%Y-%m-%dT%H:%M:%SZ"))
     except ValueError:
         return 0
     return int(b - a)
@@ -1312,7 +1313,7 @@ def _seconds_between(earlier: str | None, later: str | None) -> int:
 
 def _age(event: dict) -> int:
     try:
-        seen = time.mktime(time.strptime(event["created_at"], "%Y-%m-%dT%H:%M:%SZ")) - time.timezone
+        seen = calendar.timegm(time.strptime(event["created_at"], "%Y-%m-%dT%H:%M:%SZ"))
     except (KeyError, ValueError):
         return 10**9
     return int(time.time() - seen)
@@ -3821,10 +3822,15 @@ def cmd_read(args) -> None:
     cid = resolve_chat(args.chat)
     events = chat_events(cid)
     st = chat_state(events)
-    for e in visible_history(events, st, me()):
+    visible = list(visible_history(events, st, me()))
+    for e in visible:
         print(human_event(e))
     for u in unreadable_events(cid):
         print(human_unreadable(u))
+    index = scope_index(visible)
+    mine = {ack_target(a, index) for a in list_events(room=ROOM_CHAT, correlation_id=cid, type="event.ack")
+            if a.get("from_agent") == me() and ack_vouched(a)}
+    _report_unacked(mark_read([e for e in addressed_to_me(visible, {cid: st}) if e["id"] not in mine]))
 
 
 def cmd_status(args) -> None:
@@ -4266,7 +4272,9 @@ def reminder_line(e: dict, delivered_at: float) -> str:
     one-line message that names the chat, never a replay of the body."""
     who, cid, tag = handle_text(e.get("from_agent")), handle_text(e.get("correlation_id")), inert(delivery_tag(e))
     ago = max(1, int((time.time() - delivered_at) / 60))
-    return f"[a2a{tag}] reminder: {who}'s message in {cid} is still unread {ago}m after delivery — history: `a2a read {cid}`; reply: `a2a reply {cid} \"...\"`"
+    return (f"[a2a{tag}] reminder: {who}'s message in {cid} had no read acknowledgement "
+            f"when checked {ago}m after delivery. This queued reminder may be stale; "
+            "check `a2a inbox` and ignore it if the message is already read or the chat is closed.")
 
 
 def recipient_read(item: dict, recipient: str) -> bool | None:
@@ -4284,6 +4292,20 @@ def recipient_read(item: dict, recipient: str) -> bool | None:
         if a.get("from_agent") == recipient and (_ack_fields(a) or {}).get("scope") == scope and ack_vouched(a):
             return True
     return False
+
+
+def reminder_event(item: dict, recipient: str) -> dict | None:
+    """Revalidate routing and read state immediately before native submission."""
+    history = chat_events(item["chat"])
+    current = chat_state(history)
+    event = next((e for e in history if scope_str(scope_of(e)) == scope_str(item.get("scope"))), None)
+    if (event is None or current.get("state") == "closed" or recipient in current["left"]
+            or recipient not in current["routes"].get(event["id"], [])):
+        return None
+    read = recipient_read(item, recipient)
+    if read is None:
+        raise LogstreamError("reminder read state is unavailable")
+    return None if read else event
 
 
 def delivery_settled(item: dict, recipient: str) -> bool | None:
@@ -4596,7 +4618,20 @@ def courier_once(state: dict, host: str, verbose: bool, persist=None) -> dict:
         item["nudge_attempts"] += 1
         item["nudge_inflight"] = True
         persist(state)  # settled before the side effect, like a first delivery
-        outcome = deliver(e, target, reminder_line(e, item["delivered_at"]))
+        # A read or closure can commit while the in-flight record is flushed.
+        # Native queues cannot retract an accepted reminder, so check again.
+        try:
+            current_event = reminder_event(item, recipient)
+        except LogstreamError:
+            item.pop("nudge_inflight", None)
+            item["nudge_attempts"] -= 1
+            persist(state)
+            continue
+        if current_event is None:
+            del nudgable[key]
+            persist(state)
+            continue
+        outcome = deliver(current_event, target, reminder_line(current_event, item["delivered_at"]))
         item.pop("nudge_inflight", None)
         if verbose:
             print(f"{item['event']}: reminder -> {recipient} via {outcome} (attempt {item['nudge_attempts']})", flush=True)
@@ -4864,11 +4899,11 @@ def build_parser() -> argparse.ArgumentParser:
     q.add_argument("--peek", action="store_true", help="show messages without marking them read")
     q.add_argument("--follow", action="store_true", help="stream one JSON line of unread mail per relay wake, forever; implies --peek semantics and needs --json")
     q = command("mark-read", "Acknowledge event IDs", "Mark the named message events read.", "a2a mark-read EVENT_ID", cmd_mark_read)
-    q.add_argument("event_id", nargs="+", metavar="EVENT_ID", help="one or more exact event IDs")
+    q.add_argument("event_id", nargs="+", metavar="ID", help="one or more exact event IDs")
     q = command("wait", "Wait for messages", "Wait for incoming messages, display them and acknowledge them. Ctrl+C stops waiting.", "a2a wait --timeout 60\na2a wait --chat CHAT_ID", cmd_wait)
     q.add_argument("--chat", metavar="ID", help="restrict to this chat ID")
     q.add_argument("--timeout", type=seconds_arg, default=540, metavar="SECONDS", help="maximum wait in seconds (default: 540)")
-    q = command("read", "Read chat history", "Show visible chat history without acknowledging unread messages. Omit CHAT only when one live chat exists.", "a2a read CHAT_ID\na2a read reviewer", cmd_read)
+    q = command("read", "Read chat history", "Show visible chat history and acknowledge the incoming messages displayed. Omit CHAT only when one live chat exists.", "a2a read CHAT_ID\na2a read reviewer", cmd_read)
     selector(q)
     q = command("status", "Show your active chats", "List your active chats, including invitations and pending closure.", "a2a status\na2a status --all", cmd_status)
     q.add_argument("--all", action="store_true", help="include closed, declined and left chats")

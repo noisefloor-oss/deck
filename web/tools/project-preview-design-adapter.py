@@ -160,7 +160,7 @@ def main():
     manifest = {"sourceArchive": str(args.source_zip.resolve()), "sourceSha256": SOURCE_SHA256,
                 "sourceComp": SOURCE_COMP, "sourceCompSha256": SOURCE_COMP_SHA256,
                 "purpose": "Complete dialog/menu comparisons from the uploaded design, with explicit semantic corrections. No implementation CSS, markup, or screenshots are reference inputs.",
-                "toolVersion": "0.14.0", "transforms": [], "dependencies": [], "preservedMembers": [], "states": []}
+                "toolVersion": "0.14.1", "transforms": [], "dependencies": [], "preservedMembers": [], "states": []}
     members = {}
     with zipfile.ZipFile(args.source_zip) as source:
         source_comp = source.read(SOURCE_COMP)

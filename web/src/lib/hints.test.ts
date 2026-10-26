@@ -20,6 +20,7 @@ const COMP_STATIC_HINTS: readonly string[] = [
   "Expand the project sidebar",
   "Give every project a distinct color in the sidebar",
   "Let new sessions skip permission prompts",
+  "Let a plain drag select text while the app tracks the mouse",
   "A path on this machine, or a repository to clone",
   "Open terminal, identity and account settings",
   "Open the task board parsed from the project's PRD",

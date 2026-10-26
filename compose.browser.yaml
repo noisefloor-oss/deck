@@ -17,13 +17,13 @@
 # anywhere the client can open a socket.
 services:
   chromium:
-    # The tag MUST match the resolved playwright version in web/pnpm-lock.yaml.
-    # The browser build target copies that frozen package installation into
+    # The tag names both the frozen Playwright client and patched Chromium.
+    # The browser build target copies the client from web/pnpm-lock.yaml into
     # the digest-pinned upstream image. Playwright refuses
     # to connect across a client/server mismatch, so a drifted tag is a
     # connect error at the moment someone needs a screenshot. Bump both
     # in the same commit; deploy/compose_test.go enforces it.
-    image: noise-browser:1.62.1
+    image: noise-browser:1.64.1-chromium-156.0.8078.47
     build:
       context: .
       target: browser

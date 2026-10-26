@@ -83,6 +83,46 @@ in the shared folders. Run Deck on a machine you control and share only the
 folders you mean to. Deck is experimental, so interfaces, file formats and
 behavior may change between releases.
 
+## Harness support
+
+These are the pins in the full Docker image. The slim image includes Claude
+Code and Codex. Crush is bundled as a CLI, but has no Deck conversation picker.
+
+<!-- harness-pins:start -->
+| Harness | Pinned version | Pinned on (UTC) | Agent chat | Login helper | Attention badges |
+| --- | --- | --- | --- | --- | --- |
+| `claude` | `2.1.310` | 2026-10-25 | Live | None | Unknown |
+| `codex` | `0.162.1` | 2026-10-10 | Live | Browser callback | Unknown |
+| `kimi` | `2.3.2` | 2026-10-25 | Next turn | None | Unknown |
+| `opencode` | `1.19.4` | 2026-10-23 | Live | None | Unknown |
+| `command-code` | `1.88.0` | 2026-10-23 | Manual | None | Unknown |
+| `cline` | `3.0.73` | 2026-10-17 | Manual | None | Unknown |
+| `kilo` | `7.8.17` | 2026-10-23 | Manual | None | Unknown |
+| `qwen` | `0.26.1` | 2026-10-25 | Manual | None | Unknown |
+| `mimo` | `0.1.15` | 2026-09-22 | Manual | None | Unknown |
+| `qoder` | `1.1.78` | 2026-10-23 | Manual | None | Unknown |
+| `cursor-agent` | `2026.10.22-27dcf5f` | 2026-10-23 | Manual | None | Unknown |
+| `devin` | `3000.11.205` | 2026-10-23 | Manual | None | Unknown |
+| `grok` | `1.0.70` | 2026-10-25 | Manual | None | Unknown |
+| `omp` | `18.12.6` | 2026-10-22 | Live | None | Unknown |
+| `pi` | `1.4.0` | 2026-10-22 | Live | ChatGPT, Anthropic | Input, ended turn |
+| `crush` | `0.98.2` | 2026-10-23 | Manual | None | Unknown |
+<!-- harness-pins:end -->
+
+Pinned on records when Deck adopted that version, not its upstream release
+date or the last README edit. Pin refreshes update the version and date together;
+re-adopting an older pin also records a new date.
+
+For [agent chat](docs/a2a-chat.md), Live means a native delivery path can wake
+an idle agent; Next turn means delivery waits for a native hook. Manual means
+the agent checks its inbox. The login helper
+handles the listed remote login flows; None means use the CLI’s native flow.
+[Attention badges](docs/settings.md#conversation-attention) use qualified native
+events. Unknown means Deck does not infer that harness’s input or turn state.
+
+Agent chat requires the Docker setup; the native macOS source procedure does
+not include it. Native accounts, approvals and model access stay with each CLI.
+
 ## More
 
 - [Settings](docs/settings.md), [authentication](docs/authentication.md)

@@ -74,13 +74,18 @@ func (c *Controller) Lock(ctx context.Context, id string, prepare func(context.C
 	checkCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer cancel()
 	op.State, err = c.observe(checkCtx)
-	if nativeErr == nil && err == nil && op.State.Locked && digest == c.configDigest() {
+	if errors.Is(nativeErr, ErrLockRefused) {
+		op.Status, op.Stage, op.Code = "failed", "complete", "lock-preparation-refused"
+	} else if nativeErr == nil && err == nil && op.State.Locked && digest == c.configDigest() {
 		op.Status, op.Stage = "succeeded", "complete"
 	} else {
 		op.Status, op.Code = "uncertain", "lock-result-unconfirmed"
 	}
 	if _, err := c.db.ExecContext(checkCtx, `UPDATE operations SET status=?,stage=?,code=? WHERE id=?`, op.Status, op.Stage, op.Code, id); err != nil {
 		return op, ErrJournal
+	}
+	if op.Status == "failed" {
+		return op, ErrLockRefused
 	}
 	if op.Status != "succeeded" {
 		return op, ErrUncertain

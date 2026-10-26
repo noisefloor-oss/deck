@@ -48,15 +48,17 @@ esac
 
 tmp_stat=$(stat -c '%u:%g %a' "$tmp_source")
 tmp_owner=${tmp_stat%% *}
-tmp_mode=${tmp_stat#* }
-test "$tmp_owner" = "$runtime_uid:$runtime_gid" || {
-  echo "production-compose: production /tmp source owner $tmp_owner does not match runtime $runtime_uid:$runtime_gid" >&2
+tmp_mode=$((0${tmp_stat#* }))
+tmp_owner_uid=${tmp_owner%%:*}
+tmp_owner_gid=${tmp_owner#*:}
+if [ "$runtime_uid" = "$tmp_owner_uid" ]; then
+  access_mask=0700
+elif [ "$runtime_gid" = "$tmp_owner_gid" ]; then
+  access_mask=070
+else
+  access_mask=07
+fi
+if [ $((tmp_mode & access_mask)) -ne $((access_mask)) ]; then
+  echo "production-compose: production /tmp source must grant runtime $runtime_uid:$runtime_gid rwx permissions (1777 is recommended)" >&2
   exit 1
-}
-case "$tmp_mode" in
-  17[0-7][0-7]|7[0-7][0-7]) ;;
-  *)
-    echo "production-compose: production /tmp source owner must have rwx permissions (1777 is recommended)" >&2
-    exit 1
-    ;;
-esac
+fi

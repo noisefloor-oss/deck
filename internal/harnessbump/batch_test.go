@@ -68,6 +68,7 @@ func TestBatchFailsBeforeMutationWhenAnUpstreamIsUnavailable(t *testing.T) {
 
 func TestBatchReconstructionRejectsExtraEditsWithRealGit(t *testing.T) {
 	root, resolver := batchFixture(t)
+	readmeFixture(t, root)
 	git := func(args ...string) string {
 		t.Helper()
 		cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
@@ -88,6 +89,8 @@ func TestBatchReconstructionRejectsExtraEditsWithRealGit(t *testing.T) {
 		t.Fatal(err)
 	}
 	git("add", ".")
+	recordHistoricalFixtureDates(t, root, "omp", "crush")
+	git("add", "README.md")
 	git("commit", "-m", "batch")
 	head := git("rev-parse", "HEAD")
 	git("checkout", "main")
@@ -249,6 +252,7 @@ func TestDropReturnsOneHarnessToItsPreBatchPin(t *testing.T) {
 // surviving harness from the merge base and the trees compare equal.
 func TestReducedBatchReconstructsWithRealGit(t *testing.T) {
 	root, resolver := batchFixture(t)
+	readmeFixture(t, root)
 	git := func(args ...string) string {
 		t.Helper()
 		cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
@@ -272,6 +276,8 @@ func TestReducedBatchReconstructsWithRealGit(t *testing.T) {
 		t.Fatal(err)
 	}
 	git("add", ".")
+	recordHistoricalFixtureDates(t, root, "omp")
+	git("add", "README.md")
 	git("commit", "-m", "batch")
 	head := git("rev-parse", "HEAD")
 	git("checkout", "main")

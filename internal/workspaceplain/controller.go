@@ -249,7 +249,7 @@ func (c *Controller) operation(ctx context.Context, id string) (Operation, error
 		}
 		op.Status, op.Stage, op.Code = "succeeded", "complete", ""
 	}
-	if err == nil && op.Status == "uncertain" && op.Stage == "dispatched" && op.State.Configured && op.State.Runtime == "stopped" {
+	if err == nil && (op.Status == "uncertain" || op.Status == "running") && op.Stage == "dispatched" && op.State.Configured && op.State.Runtime == "stopped" {
 		if _, e := c.db.ExecContext(ctx, `UPDATE operations SET status='failed',stage='complete' WHERE id=?`, id); e != nil {
 			return op, ErrJournal
 		}

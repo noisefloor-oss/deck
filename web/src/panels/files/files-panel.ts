@@ -531,6 +531,19 @@ export class FilesPanelModel {
     this.subscribeEvents();
   }
 
+  // openFile resolves a project-relative path through the current listing,
+  // so preview uses the server's entry and its size, age, and git facts.
+  async openFile(path: string, canActivate: () => boolean = () => true): Promise<void> {
+    const resetSeq = this.resetSeq;
+    const confined = confine(path);
+    const cut = confined.lastIndexOf("/");
+    const parent = cut < 0 ? "" : confined.slice(0, cut);
+    await this.openDirectory(parent);
+    if (resetSeq !== this.resetSeq || !canActivate()) return;
+    const entry = this.entries().find((candidate) => !candidate.dir && candidate.path === confined);
+    if (entry !== undefined) await this.activate(entry);
+  }
+
   async activate(entry: FileEntry): Promise<void> {
     if (entry.dir) {
       await this.openDirectory(entry.path);

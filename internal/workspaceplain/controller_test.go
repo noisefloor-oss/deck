@@ -274,6 +274,41 @@ func TestStartingIsNotReady(t *testing.T) {
 	}
 }
 
+func TestStoppedStartSettlesWithoutControllerRestart(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	f.health = "starting"
+	op, err := f.c.Start(ctx, "starting")
+	if err != nil || op.Status != "running" {
+		t.Fatalf("start: %+v %v", op, err)
+	}
+	f.app = false
+	f.rootful = true
+	if _, err := f.c.Operation(ctx, "starting"); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("unknown observation settled start: %v", err)
+	}
+	if _, err := f.c.Start(ctx, "fresh"); !errors.Is(err, ErrUncertain) {
+		t.Fatalf("unknown observation allowed another start: %v", err)
+	}
+	f.rootful = false
+	op, err = f.c.Operation(ctx, "starting")
+	if err != nil || op.Status != "failed" || op.Stage != "complete" {
+		t.Fatalf("stopped start did not settle: %+v %v", op, err)
+	}
+	if f.launches() != 1 {
+		t.Fatal("observation replayed dispatch")
+	}
+	f.health = "healthy"
+	op, err = f.c.Start(ctx, "fresh")
+	if err != nil || op.Status != "succeeded" || f.launches() != 2 {
+		t.Fatalf("fresh start: %+v %v", op, err)
+	}
+	op, err = f.c.Operation(ctx, "starting")
+	if err != nil || op.Status != "failed" || f.launches() != 2 {
+		t.Fatalf("terminal receipt changed: %+v %v", op, err)
+	}
+}
+
 func TestInterruptedStartObservedStoppedAllowsFreshStart(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()

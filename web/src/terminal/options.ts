@@ -13,6 +13,11 @@ export const baseTerminalOptions = {
   // means Option+click is no longer reported to the application as an alt-
   // modified mouse event.
   macOptionClickForcesSelection: true,
+  // xterm selects the word under a right-click on macOS by default, which
+  // replaces the user's selection before the terminal menu opens and turns
+  // its Copy into a one-word copy. A right-click must leave the selection,
+  // or its absence, as the user left it.
+  rightClickSelectsWord: false,
 } satisfies ITerminalOptions;
 
 export function composeTerminalOptions(
