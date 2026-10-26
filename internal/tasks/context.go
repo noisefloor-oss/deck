@@ -176,12 +176,9 @@ func resolveEngineProjectContextRaw(parent context.Context, executable, projectP
 	return &result, nil
 }
 
-// validateEngineContextBlocked accepts the one schema-4 blocked state: the
-// engine found its migration-recovery journal, proving a store migration
-// began but SQLite publication never completed. The schema-3 era carried
-// migration-unsettled and migration-invalid for the retired JSON live store;
-// those reasons no longer exist, so a context carrying one is an unsupported
-// contract, not a state to act on.
+// validateEngineContextBlocked accepts only the pinned engine's migration and
+// adoption recovery states. Either means publication did not complete, so
+// callers must wait for engine recovery rather than choose task authority.
 func validateEngineContextBlocked(c *engineProjectContext) error {
 	if !c.Blocked {
 		if c.BlockedReason != "" {
@@ -190,7 +187,7 @@ func validateEngineContextBlocked(c *engineProjectContext) error {
 		return nil
 	}
 	switch c.BlockedReason {
-	case "migration-recovery-required":
+	case "migration-recovery-required", "adoption-recovery-required":
 		return nil
 	default:
 		return errors.New("taskmaster: task context returned an unsupported blocked reason")

@@ -8,8 +8,8 @@ import (
 )
 
 const (
-	pinnedTasksRef     = "5961c31a5854670f96a64c83a5d8f917bb0889b7"
-	pinnedTasksVersion = "2.9.1"
+	pinnedTasksRef     = "a03efe15d6bfcd68fa3cc812d612c63306736149"
+	pinnedTasksVersion = "2.10.1"
 )
 
 func TestRepositoryCarriesNoTaskStateProjection(t *testing.T) {
@@ -87,15 +87,15 @@ func TestDockerfilePackagesCanonicalTaskCommands(t *testing.T) {
 		"COPY --from=noise-tasks-build --chmod=0555 /out/usr/local/lib/noise/payload/noise-tasks /usr/local/libexec/noise/noise-tasks",
 		"noise tasks version",
 		"noise tasks context --json",
-		`c.schemaVersion!==5 || c.storeOwnerBoundary!=="" || c.storeSchemaVersion!==0 || c.engineSchemaVersion!==5`,
+		`c.schemaVersion!==5 || c.storeOwnerBoundary!=="" || c.storeSchemaVersion!==0 || c.engineSchemaVersion!==6`,
 		"install -d -m 0700 /out",
 		`c.storePath!=="/.tasks/tasks.sqlite"`,
 		`c.preferencesPath!==".tasks/preferences.json"`,
 		"noise tasks live feed --help",
 		"noise tasks milestone list --help",
 		"noise tasks set-milestone --help",
-		"Usage of milestone list:",
-		"Usage of set-milestone:",
+		"usage: noise-tasks milestone list",
+		"usage: noise-tasks set-milestone",
 		"removal is gated by the published migration plan",
 		"noise: plugin not installed: planted",
 	} {
@@ -185,5 +185,12 @@ func TestDevelopmentTaskPackageTracksReleasedModule(t *testing.T) {
 	}
 	if strings.Contains(body, "github.com/noisefloor-research/noisetask/internal/") {
 		t.Fatal("Makefile retains the pre-release Tasks linker module")
+	}
+}
+
+func TestPublicImageChecksCurrentTaskEngineSchema(t *testing.T) {
+	body := string(readWorkflow(t, "public-image.yaml"))
+	if !strings.Contains(body, "context.schemaVersion !== 5 || context.engineSchemaVersion !== 6") {
+		t.Fatal("public image smoke must check context schema 5 and Tasks engine schema 6")
 	}
 }

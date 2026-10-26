@@ -323,6 +323,9 @@ print(json.dumps(eval(expression,{"__builtins__":{}},{"repo":repo,"visibility":v
 						t.Fatal(err)
 					}
 					var want any = []any{"self-hosted", "Linux", arch}
+					if file == "ci-fast.yaml" && nativeLinuxJob(name) {
+						want = []any{"self-hosted", "Linux", "native-linux"}
+					}
 					if row["arch"] == "amd64" {
 						want = []any{"self-hosted", "Linux", "X64", "ubuntu-24.04"}
 					}

@@ -273,6 +273,10 @@ try {
     assert.equal(request.method(), "POST");
     assertMutation(request);
     logoutRequest = { method: request.method() };
+    // Logout is real for the reloaded page too: the session check after
+    // the post-logout navigation must answer expired, or the smoke would
+    // pass with a still-authenticated reload.
+    authExpired = true;
     await route.fulfill({ status: 204, body: "" });
   });
   await page.route(`${origin}/auth/session`, async (route) => {
@@ -1979,10 +1983,13 @@ try {
   await pendingRow.waitFor();
   assert.equal(await pendingRow.evaluate((row) => Array.from(row.parentElement.children).indexOf(row)), 0,
     "the pending launch occupies the server's newest-first slot");
+  providersSuccessGate = createGate();
   resolveCreate();
   const createdRow = page.locator('[data-session="session-created"]');
   await createdRow.waitFor();
-  await pendingRow.waitFor({ state: "detached" });
+  await pendingRow.waitFor({ state: "detached", timeout: 5000 });
+  providersSuccessGate.release();
+  providersSuccessGate = null;
   assert.equal(await createdRow.evaluate((row) => Array.from(row.parentElement.children).indexOf(row)), 0,
     "the authoritative row replaces its placeholder without moving");
   assert.equal(await sessionRows.count(), summaries.length, "the refresh retains every existing sibling");
@@ -2037,7 +2044,12 @@ try {
   const logout = page.locator("[data-more-popover] [data-live-logout]");
   await page.locator("[data-live-more]").click();
   await logout.waitFor();
-  await logout.click();
+  // Sign-out hard-navigates: wait for the reload, then the reloaded page
+  // answers its session check expired and shows the sign-in surface.
+  await Promise.all([
+    page.waitForNavigation({ waitUntil: "domcontentloaded" }),
+    logout.click(),
+  ]);
   await page.getByRole("link", { name: "Sign in with Google" }).waitFor();
   assert.equal(await page.locator("[data-region]").count(), 0, "logout removes all application chrome");
   await waitForCondition(() => logoutRequest !== null, "logout request");
@@ -2048,6 +2060,9 @@ try {
   // already-authenticated WebSocket before showing the login action.
   projectRemoved = false;
   registered = true;
+  // The logout mock above expired the session for the post-logout reload;
+  // the fresh login this reload stands in for is authenticated again.
+  authExpired = false;
   // The "Show info bar" preference persists across boots: with it off, a
   // fresh boot reads data-shown=false and the strip leaves the layout.
   await page.evaluate(() => localStorage.setItem("noisedeck-show-info-bar", "off"));

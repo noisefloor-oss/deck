@@ -135,3 +135,46 @@ write-only jobs require a version-tag push. The public image workflow builds
 without registry credentials, and release acceptance retains its native runtime,
 Chromium and image-variant checks. Other opted-in mirrors retain tag-only release builds and their existing
 runner routing. Private workflows remain self-hosted.
+
+### Browser probe balance
+
+UI probes use deterministic longest-duration-first assignment from the
+versioned `web/tools/probe-durations.json` baseline. Modes have separate names;
+every inventory entry runs exactly once across the three shards, in inventory
+order within each shard. New probes receive a 10-second estimate until measured.
+Gateway and preview lanes remain separate. `probe-timings` artifacts retain
+per-probe elapsed seconds and verdicts without fixture output. Refresh weights
+from comparable successful runs and verify actual shard wall time; historical
+predictions do not establish a speedup. Reverting the weights argument to
+`selectShard` restores round-robin scheduling without changing coverage.
+
+### Job timing reports
+
+After Fast checks or Release acceptance completes, CI timings reads the
+GitHub jobs API for that exact run attempt. Its summary and 30-day JSON
+artifact separate pending, setup/cache, execution, cleanup/artifact, unknown
+step and unattributed time. Pending is job creation to start and excludes dependency
+wait before job creation; it is not solely runner wait. Step phases follow names, so a combined build/test
+step remains one execution interval. Nested Go test times are not added.
+
+The collector checks out default-branch code, never the triggering branch,
+and reads job metadata only; it does not download or execute artifacts.
+For a historical run, use `.github/scripts/job_timings.py --repo OWNER/REPO
+--run RUN --attempt ATTEMPT --output report.json`. Compare the same workload
+and platform before attributing a duration change to a CI optimization.
+
+### Native Linux scheduling
+
+The private scope, documentation, lint and final aggregate jobs
+use `self-hosted`, `Linux`, `native-linux`. This admits native ARM64 and X64
+workers without admitting the emulated X64 worker. Their tool setup and cache
+keys remain architecture-aware. Jobs that install Ubuntu packages, run browser
+fixtures or certify a specific architecture keep their existing platform lanes.
+Public jobs continue to use GitHub-hosted runners. Fork restrictions remain
+unchanged. Remove a worker's `native-linux` label if it stops meeting this
+contract; do not put that label on an emulated worker.
+
+Parallel Go remains ARM64: full qualification on the Fedora X64 worker found
+failures in task-workload-latch, boot identity capture and githubconnect process
+tests. Those fixtures need native-host compatibility qualification before
+widening that suite. A native architecture label alone is insufficient.

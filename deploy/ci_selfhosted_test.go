@@ -12,6 +12,14 @@ const privateCIRunner = `${{ github.repository == 'noisefloor-oss/deck' && githu
 const privateCIAdmission = "github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository"
 const privateCIGate = "always()"
 
+func nativeLinuxJob(name string) bool {
+	switch name {
+	case "scope", "documentation", "lint", "fast-checks":
+		return true
+	}
+	return false
+}
+
 func TestPrivateCIRouting(t *testing.T) {
 	var workflow struct {
 		Jobs map[string]struct {
@@ -20,6 +28,7 @@ func TestPrivateCIRouting(t *testing.T) {
 			Steps  []struct {
 				If   string
 				Uses string
+				Run  string
 				With map[string]string
 			}
 		}
@@ -30,6 +39,14 @@ func TestPrivateCIRouting(t *testing.T) {
 	}
 	for name, job := range workflow.Jobs {
 		want := privateCIRunner
+		if nativeLinuxJob(name) {
+			want = strings.Replace(privateCIRunner, `"ARM64"`, `"native-linux"`, 1)
+			for _, step := range job.Steps {
+				if strings.Contains(step.Run, "apt-get") || strings.Contains(step.Run, "linux-arm64") || strings.Contains(step.Run, "linux-amd64") {
+					t.Errorf("%s requires a platform-specific lane", name)
+				}
+			}
+		}
 		if fmt.Sprint(job.RunsOn) != want {
 			t.Errorf("%s must use %s", name, want)
 		}

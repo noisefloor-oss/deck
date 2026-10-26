@@ -72,6 +72,7 @@ export interface FilesPanelShellCallbacks {
   // onClose is the panel's own ✕: the shell does not own the docked
   // frame's visibility, the workspace does.
   onClose?: () => void;
+  onExpandedChange?: () => void;
 }
 
 export class FilesPanel {
@@ -206,7 +207,11 @@ export class FilesPanel {
     const focusKey = this.activeFocusKey();
     if (focusKey !== null) this.lastFocusKey = focusKey;
     const panel = this.container.closest<HTMLElement>('[data-region="files"]') ?? this.container;
-    panel.dataset.expanded = m.expanded ? "true" : "false";
+    const expanded = m.expanded ? "true" : "false";
+    if (panel.dataset.expanded !== expanded) {
+      panel.dataset.expanded = expanded;
+      this.cb.onExpandedChange?.();
+    }
     // On the phone the list stays visible when a file is merely selected;
     // the viewer appears only once its content
     // has been requested, so selection without a view keeps the list on

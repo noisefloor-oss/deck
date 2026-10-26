@@ -82,7 +82,7 @@ jobs:
                 process.stdin.on("data", chunk => input += chunk);
                 process.stdin.on("end", () => {
                   const context = JSON.parse(input);
-                  if (context.schemaVersion !== 5 || context.engineSchemaVersion !== 5) process.exit(1);
+                  if (context.schemaVersion !== 5 || context.engineSchemaVersion !== 6) process.exit(1);
                 });
               '\''
             '

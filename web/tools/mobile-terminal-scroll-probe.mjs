@@ -66,6 +66,7 @@ async function runWidth(width, mobile, options = {}) {
     viewport: { width, height: 720 },
     hasTouch: mobile,
     isMobile: mobile,
+    permissions: ["clipboard-read", "clipboard-write"],
   });
   const page = await context.newPage();
   const errors = [];
@@ -677,6 +678,8 @@ async function runWidth(width, mobile, options = {}) {
     false,
     "mouse-tracking upward drag leaked a scroll frame",
   );
+  await assertTouchSelection(page, screen, socket, frames, true);
+
   // Turning tracking off hands the drag back to the copy-mode route.
   socket.send(JSON.stringify({
     type: "output",
@@ -697,6 +700,8 @@ async function runWidth(width, mobile, options = {}) {
   );
   socket.send(JSON.stringify({ type: "scroll_status", active: false }));
   await liveButton.waitFor({ state: "hidden" });
+
+  await assertTouchSelection(page, screen, socket, frames, false);
 
   // Exercise the production xterm reset callback and reconnect chrome: a
   // preserved alternate view remains visible across a refused handshake,
@@ -844,6 +849,92 @@ async function runWidth(width, mobile, options = {}) {
     "the old draft leaked into the newly selected session");
   await oldForm.dispose();
   await context.close();
+}
+
+async function assertTouchSelection(page, screen, socket, frames, tracking) {
+  const text = "touch-select-0123456789";
+  const nextLine = "second-touch-line";
+  socket.send(JSON.stringify({ type: "output", data: Buffer.from(`\x1b[2J\x1b[H${text}\r\n${nextLine}`).toString("base64") }));
+  await page.waitForFunction((text) => document.querySelector(".xterm-rows")?.textContent?.includes(text), text);
+  const menu = page.locator("[data-terminal-menu-popover]");
+  // Long press is the touch-only entry to the terminal actions menu.
+  await holdTouch(page, screen, 800);
+  await menu.waitFor();
+  await tapTouch(page, menu.locator("[data-terminal-menu-select]"));
+  await menu.waitFor({ state: "detached" });
+  const chip = page.locator("[data-live-select-text]");
+  assert.equal(await chip.getAttribute("aria-pressed"), "true");
+  const firstRow = screen.locator(".xterm-rows > div").first();
+  const rowBox = await firstRow.boundingBox();
+  assert.notEqual(rowBox, null);
+  const cellWidth = await firstRow.evaluate((row) => {
+    const range = document.createRange();
+    range.selectNodeContents(row.firstChild);
+    return range.getBoundingClientRect().width / row.firstChild.textContent.length;
+  });
+  const start = { x: rowBox.x + cellWidth * 1.5, y: rowBox.y + rowBox.height / 2 };
+  const end = { x: rowBox.x + cellWidth * 6.5, y: start.y };
+  for (const cancel of ["cancel", "multitouch"]) {
+    const before = frames.length;
+    const client = await page.context().newCDPSession(page);
+    await client.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ ...start, id: 0 }] });
+    if (cancel === "multitouch") {
+      await client.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ ...start, id: 0 }, { ...end, id: 1 }] });
+      await client.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ ...end, id: 0 }, { ...start, id: 1 }] });
+    }
+    await client.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] });
+    await client.detach();
+    assert.equal(await menu.count(), 0, `${cancel} opened a selection menu`);
+    assert.deepEqual(frames.slice(before).filter((frame) => ["input", "reply", "scroll"].includes(frame.type)), [],
+      `${cancel} selection sent input to the application`);
+  }
+  const nextRow = { ...end, y: end.y + rowBox.height };
+  for (const [from, to, expected] of [
+    [start, end, text.slice(1, 7)],
+    [end, start, text.slice(1, 7)],
+    [start, nextRow, `${text.slice(1)}\n${nextLine.slice(0, 7)}`],
+    [nextRow, start, `${text.slice(1)}\n${nextLine.slice(0, 7)}`],
+  ]) {
+    await page.evaluate(() => navigator.clipboard.writeText("before-touch-copy"));
+    const before = frames.length;
+    const client = await page.context().newCDPSession(page);
+    await client.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [from] });
+    await client.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [to] });
+    await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await client.detach();
+    await menu.waitFor();
+    assert.equal(await menu.locator("[data-terminal-menu-copy]").innerText(), "Copy");
+    await tapTouch(page, menu.locator("[data-terminal-menu-copy]"));
+    await page.waitForFunction(() => navigator.clipboard.readText().then((value) => value !== "before-touch-copy"));
+    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), expected,
+      `touch selection copied wrong cells (tracking=${tracking})`);
+    assert.deepEqual(frames.slice(before).filter((frame) => ["input", "reply", "scroll"].includes(frame.type)), [],
+      "Select text sent the touch drag to the application");
+  }
+  const beforeToggle = frames.length;
+  const toggleClient = await page.context().newCDPSession(page);
+  await toggleClient.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [start] });
+  await chip.click();
+  await toggleClient.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [end] });
+  await toggleClient.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await toggleClient.detach();
+  assert.equal(await menu.count(), 0, "disabling Select text mid-gesture opened its menu");
+  assert.deepEqual(frames.slice(beforeToggle).filter((frame) => ["input", "reply", "scroll"].includes(frame.type)), [],
+    "disabling Select text mid-gesture sent input to the application");
+  // Preserve the existing rule that an active selection blocks scrolling.
+  // Reset the terminal fixture, then check the toggle restored its route.
+  const reset = "\x1bc\x1b[?1049h" + (tracking ? "\x1b[?1000h\x1b[?1006h" : "");
+  socket.send(JSON.stringify({ type: "output", data: Buffer.from(`${reset}touch-scroll-restored`).toString("base64") }));
+  await page.waitForFunction(() => document.querySelector(".xterm-rows")?.textContent?.includes("touch-scroll-restored"));
+  const before = frames.length;
+  await swipe(page, screen, "down");
+  await waitFor(() => frames.slice(before).some((frame) => tracking
+    ? frame.type === "reply" && Buffer.from(frame.data, "base64").toString().includes("\x1b[<64;")
+    : frame.type === "scroll" && frame.direction === "up"), "scroll route after Select text is disabled");
+  if (!tracking) {
+    await swipe(page, screen, "up");
+    await page.getByRole("button", { name: "Jump to live", exact: true }).waitFor({ state: "hidden" });
+  }
 }
 
 async function assertSoftKeyInput(page, socket, frames) {

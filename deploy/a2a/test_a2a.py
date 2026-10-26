@@ -3071,7 +3071,8 @@ class A2ATest(A2ACase):
         pane = self.scan_codex_pane(["codex", "resume", thread], include_process_details=True)
         payload = json.dumps({"session_id": thread, "cwd": "/pane"})
         with mock.patch.object(a2a, "scan_panes", return_value=[pane]) as scan, \
-                mock.patch.object(a2a, "harness_of_pid", return_value="codex") as harness:
+                mock.patch.object(a2a, "harness_of_pid", return_value="codex") as harness, \
+                mock.patch.object(a2a, "process_start_time", return_value="1000"):
             self.assertEqual(self.run_kimi_hook("daemon-handle", "session-start", payload, harness="codex")[1:], ("", 0))
             self.assertEqual(self.run_kimi_hook("daemon-handle", "stop", payload, harness="codex"), ("", "", 0))
         scan.assert_called_once_with(include_process_details=True)
@@ -3080,6 +3081,7 @@ class A2ATest(A2ACase):
         cached = json.loads(next(a2a.STATE_DIR.glob("codex-owner-*.json")).read_text())
         self.assertNotIn("cmdline", cached["owner"])
         self.assertNotIn("cwd", cached["owner"])
+        self.assertEqual(cached["owner"]["start"], "1000")
 
     def test_codex_hook_rescans_expired_dead_or_replaced_owners(self):
         thread = "01a074a4-1111-4222-8333-000000000003"
@@ -3089,24 +3091,57 @@ class A2ATest(A2ACase):
         for age, harness in ((a2a.CODEX_OWNER_TTL_S, "codex"), (1, None), (1, "claude")):
             with self.subTest(age=age, harness=harness), \
                     mock.patch.object(a2a.time, "time", return_value=now), \
+                    mock.patch.object(a2a, "process_start_time", return_value="1000"), \
                     mock.patch.object(a2a, "scan_panes", return_value=[pane]):
                 a2a.cached_codex_hook_owner(payload)
                 replacement = {**pane, "pid": 124}
                 with mock.patch.object(a2a.time, "time", return_value=now + age), \
                         mock.patch.object(a2a, "harness_of_pid", return_value=harness), \
+                        mock.patch.object(a2a, "process_start_time", return_value="1000"), \
                         mock.patch.object(a2a, "scan_panes", return_value=[replacement]) as scan:
                     self.assertEqual(a2a.cached_codex_hook_owner(payload)["pid"], 124)
                     self.assertEqual(a2a.cached_codex_hook_owner(payload)["pid"], 124)
                 self.assertEqual(scan.call_count, 1 if harness == "codex" else 2)
 
+    def test_codex_hook_rescans_when_a_pid_has_a_new_start_time(self):
+        thread = "01a074a4-1111-4222-8333-000000000003"
+        pane = self.scan_codex_pane(["codex", "resume", thread], include_process_details=True)
+        payload = {"session_id": thread}
+        with mock.patch.object(a2a, "scan_panes", return_value=[pane]), \
+                mock.patch.object(a2a, "harness_of_pid", return_value="codex"), \
+                mock.patch.object(a2a, "process_start_time", return_value="1000"):
+            self.assertEqual(a2a.cached_codex_hook_owner(payload)["pid"], 123)
+        replacement = {**pane, "pid": 124}
+        with mock.patch.object(a2a, "scan_panes", return_value=[replacement]) as scan, \
+                mock.patch.object(a2a, "harness_of_pid", return_value="codex"), \
+                mock.patch.object(a2a, "process_start_time", side_effect=["2000", "3000"]):
+            self.assertEqual(a2a.cached_codex_hook_owner(payload)["pid"], 124)
+        scan.assert_called_once_with(include_process_details=True)
+
+    def test_process_start_time_ignores_spaces_in_the_process_name(self):
+        stat = "123 (codex worker) " + " ".join(str(field) for field in range(3, 24))
+        with mock.patch.object(a2a.Path, "read_text", return_value=stat):
+            self.assertEqual(a2a.process_start_time(123), "22")
+        with mock.patch.object(a2a.Path, "read_text", return_value="not a stat record"):
+            self.assertIsNone(a2a.process_start_time(123))
+
     def test_codex_hook_cache_is_keyed_by_thread(self):
         thread = "01a074a4-1111-4222-8333-000000000003"
         pane = self.scan_codex_pane(["codex", "resume", thread], include_process_details=True)
         with mock.patch.object(a2a, "scan_panes", return_value=[pane]) as scan, \
-                mock.patch.object(a2a, "harness_of_pid", return_value="codex"):
+                mock.patch.object(a2a, "harness_of_pid", return_value="codex"), \
+                mock.patch.object(a2a, "process_start_time", return_value="1000"):
             self.assertIsNotNone(a2a.cached_codex_hook_owner({"session_id": thread, "cwd": "/pane"}))
             self.assertIsNone(a2a.cached_codex_hook_owner({"session_id": "foreign-thread", "cwd": "/pane"}))
         self.assertEqual(scan.call_count, 2)
+
+    def test_codex_hook_cache_skips_misses_and_rejects_non_string_ids(self):
+        with mock.patch.object(a2a, "scan_panes", return_value=[]) as scan:
+            self.assertIsNone(a2a.cached_codex_hook_owner({"session_id": "missing"}))
+            self.assertIsNone(a2a.cached_codex_hook_owner({"session_id": "missing"}))
+            self.assertIsNone(a2a.cached_codex_hook_owner({"session_id": {"not": "a thread"}}))
+        self.assertEqual(scan.call_count, 3)
+        self.assertEqual(list(a2a.STATE_DIR.glob("codex-owner-*.json")), [])
 
     def test_codex_hook_cache_write_failure_does_not_fail_the_hook(self):
         pane = self.scan_codex_pane(["codex"], include_process_details=True)
@@ -3426,7 +3461,16 @@ class A2ATest(A2ACase):
         calls = []
         snapshots = []
         persist = lambda st: snapshots.append(json.loads(json.dumps(st)))
-        with mock.patch.object(a2a, "_codex_queue", side_effect=lambda thread, text: calls.append(text) or "codex-queue"), \
+
+        def accepted_reminder(thread, text):
+            if "reminder" in text:
+                latest = snapshots[-1]
+                self.assertTrue(any(n.get("nudge_inflight") for n in latest.get("nudgable", {}).values()),
+                                "delivery starts only after the in-flight reminder is persisted")
+            calls.append(text)
+            return "codex-queue"
+
+        with mock.patch.object(a2a, "_codex_queue", side_effect=accepted_reminder), \
                 mock.patch.object(a2a, "_age", return_value=1):
             state = a2a.courier_once({}, "hostA", verbose=False, persist=persist)
             item = next(iter(state["nudgable"].values()))
@@ -3439,7 +3483,8 @@ class A2ATest(A2ACase):
         inflight = [snap for snap in snapshots
                     if any(n.get("nudge_inflight") for n in snap.get("nudgable", {}).values())]
         self.assertTrue(inflight, "the in-flight reminder was persisted before the side effect")
-        with mock.patch.object(a2a, "_codex_queue", side_effect=lambda thread, text: calls.append(text) or "codex-queue"), \
+
+        with mock.patch.object(a2a, "_codex_queue", side_effect=accepted_reminder), \
                 mock.patch.object(a2a, "_age", return_value=1):
             restored = a2a.courier_once(inflight[-1], "hostA", verbose=False)
             a2a.courier_once(restored, "hostA", verbose=False)
@@ -3476,17 +3521,27 @@ class A2ATest(A2ACase):
             state = a2a.courier_once({}, "hostA", verbose=False)
             self.run_cli("carol", "reply", a2a.chat_events()[0]["correlation_id"], "carol here")
             state = a2a.courier_once(state, "hostA", verbose=False)
-        reply = next(e for e in self.ls.events if e["type"] == "chat.message")
+        reply = next(e for e in self.ls.events if e["type"] == "chat.message" and e["from_agent"] == "carol")
         watch = next(n for n in state["nudgable"].values() if n["to"] == "bob" and n["event"] == reply["id"])
-        # The reply's sender can no longer be placed (a departure or its
-        # presence replicated late): the fold routes the event nowhere, and
-        # the watch for it must die rather than remind anyone of a message
-        # their history omits.
-        reply["from_agent"] = "mallory"
-        watch["delivered_at"] -= a2a.NUDGE_AFTER_S + 1
-        with mock.patch.object(a2a, "_codex_queue", side_effect=lambda thread, text: calls.append(text) or "codex-queue"), \
-                mock.patch.object(a2a, "_age", return_value=1):
-            state = a2a.courier_once(state, "hostA", verbose=False)
+        # A departure replicated before the reply leaves a valid event whose
+        # route is empty. This exercises route invalidation, not open_inner's
+        # rejection of an outsider's event.
+        self.run_cli("carol", "leave", reply["correlation_id"], "done")
+        departure = [event for event in self.ls.events if event["type"] == "chat.leave"][-1]
+        verified = a2a.chat_events()
+        self.assertIn(reply["id"], [event["id"] for event in verified])
+        ordered = [verified[0], departure, reply]
+        with mock.patch.object(a2a, "chat_events", return_value=ordered):
+            history = a2a.chat_state(ordered)
+            self.assertEqual(history["routes"][reply["id"]], [])
+            selected = next(event for event in a2a.chat_events(watch["chat"])
+                            if a2a.scope_str(a2a.scope_of(event)) == a2a.scope_str(watch["scope"]))
+            self.assertEqual(selected["id"], reply["id"])
+            self.assertNotIn(watch["to"], history["routes"][selected["id"]])
+            watch["delivered_at"] -= a2a.NUDGE_AFTER_S + 1
+            with mock.patch.object(a2a, "_codex_queue", side_effect=lambda thread, text: calls.append(text) or "codex-queue"), \
+                    mock.patch.object(a2a, "_age", return_value=1):
+                state = a2a.courier_once(state, "hostA", verbose=False)
         self.assertEqual([text for text in calls if "reminder" in text], [],
                          "no reminder for an event that routes nowhere")
         self.assertNotIn(reply["id"], [n["event"] for n in state["nudgable"].values()])

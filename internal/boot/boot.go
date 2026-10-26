@@ -318,6 +318,10 @@ func Up(ctx context.Context, cfg *config.Config, log zerolog.Logger, opts ...UpO
 		authCfg.PasswordPinned = options.passwordPinned
 		authCfg.AllowedOrigins = cfg.Server.AllowedOrigins
 	}
+	// Logout epochs persist with the console settings so a logout outlives
+	// the process that served it: an in-flight session renewal from before
+	// the logout must verify stale after a restart too.
+	authCfg.EpochStore = consoleSettings
 	h.Auth, err = auth.New(authCfg, log)
 	if err != nil {
 		return nil, fmt.Errorf("boot: %w", err)

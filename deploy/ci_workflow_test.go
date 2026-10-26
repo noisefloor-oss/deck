@@ -39,7 +39,11 @@ func TestFastChecksWorkflowContract(t *testing.T) {
 		if !ok {
 			t.Fatalf("fast checks workflow has no %s job", jobName)
 		}
-		assertRunnerName(t, jobName, job, privateCIRunner)
+		wantRunner := privateCIRunner
+		if nativeLinuxJob(jobName) {
+			wantRunner = strings.Replace(wantRunner, `"ARM64"`, `"native-linux"`, 1)
+		}
+		assertRunnerName(t, jobName, job, wantRunner)
 		assertJobHasStep(t, jobName, job, "Check out source")
 	}
 	gate, ok := jobs["fast-checks"].(map[string]any)

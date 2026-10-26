@@ -15,8 +15,8 @@ GOLANGCI_LINT        ?= $(TOOLS_BIN)/golangci-lint
 # explicit because the Tasks repository may be checked out under any name.
 # NOISETASK_SRC remains a migration-plan-gated compatibility input for automation.
 NOISE_TASKS_SRC          ?= $(if $(NOISETASK_SRC),$(NOISETASK_SRC),/workspace/tasks)
-override NOISE_TASKS_REF := 5961c31a5854670f96a64c83a5d8f917bb0889b7
-NOISE_TASKS_VERSION      ?= 2.9.1
+override NOISE_TASKS_REF := a03efe15d6bfcd68fa3cc812d612c63306736149
+NOISE_TASKS_VERSION      ?= 2.10.1
 NOISE_TASKS_PACKAGE_ROOT ?= /srv/noisedeck/noise-tasks-root
 NOISETASK_BIN            ?= $(TOOLS_BIN)/noisetask
 # The compatibility shim and plugin are built as one installation. The

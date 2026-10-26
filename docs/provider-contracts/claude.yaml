@@ -156,6 +156,20 @@ modal_prompts:
   # release has to be an explicit user gesture.
   input_during_modal: silently-discarded
   input_during_modal_verified: true
+  # Per-command approval modals, measured 2026-10-26 on 2.1.310 in
+  # --permission-mode default (manual): a file write asks "Do you want to
+  # create <name>?" with a one-shot Yes and a switch-to-accept-edits choice;
+  # a bash write-class command asks "Do you want to proceed?" offering a
+  # one-shot Yes, "always allow access to <dir> from this project", and a
+  # switch to auto mode. Safe read-only commands (echo) do not ask at all.
+  # The classic per-command-prefix "don't ask again for <cmd>" option did
+  # not appear, and after answering the always-allow choice twice with
+  # graceful exits, projects["<cwd>"].allowedTools stayed empty - the
+  # choice's persistence is NOT the documented allowlist. Where that
+  # answer lands is unmeasured; nothing may seed per-command approvals
+  # until it is.
+  approval_modals_measured_version: "2.1.310"
+  approval_prefix_persistence: unmeasured
 
 interrupt:
   # Escape cancels the in-flight turn. The process stays alive and the session

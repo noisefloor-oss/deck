@@ -133,6 +133,8 @@ export async function readClipboard(clipboard: ClipboardLike | undefined): Promi
 // while an application tracks the mouse: Option on macOS, and only behind
 // the macOptionClickForcesSelection option Deck enables; Shift everywhere
 // else. A press marked with this modifier selects instead of being reported.
-export function forceSelectionModifier(macPlatform: boolean): "altKey" | "shiftKey" {
-  return macPlatform ? "altKey" : "shiftKey";
+export function forceSelectionModifier(platform: string): "altKey" | "shiftKey" {
+  // xterm reads navigator.platform, not the broader Apple clipboard rule.
+  // iPhone and mobile-UA iPad use Shift; marking Alt would reach the app.
+  return ["Macintosh", "MacIntel", "MacPPC", "Mac68K"].includes(platform) ? "altKey" : "shiftKey";
 }

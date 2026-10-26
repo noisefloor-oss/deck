@@ -107,6 +107,28 @@ try {
   assert.equal(await trigger.getAttribute("data-unseen"), "false", "opening the panel is what makes rows seen");
   assert.equal(await page.locator('[data-session="sess-1"] [data-meta-chat]').getAttribute("data-meta-chat"), "live",
     "the active session's own sidebar mark clears in the same tick, from the same seen state");
+
+  // The Chats panel rides the shared docked-panel resizing. Its default
+  // width sits at the family minimum, so the drag widens: moving the left
+  // boundary left grows the panel by exactly the drag, and Enter returns
+  // the stylesheet's 400px family width.
+  const chatsHandle = page.locator('[data-panel-resize="chats"]');
+  await chatsHandle.waitFor();
+  const chatsSaved = () => page.evaluate(() => localStorage.getItem("noisedeck.preview.panel.chats.width"));
+  assert.equal(await chatsSaved(), null, "no Chats width is saved before the user resizes");
+  const beforeChatsDrag = await box(panel);
+  await page.mouse.move(beforeChatsDrag.x + 4, beforeChatsDrag.y + 100);
+  await page.mouse.down();
+  await page.mouse.move(beforeChatsDrag.x + 4 - 80, beforeChatsDrag.y + 100, { steps: 6 });
+  await page.mouse.up();
+  const widenedChats = await box(panel);
+  near(widenedChats.width, beforeChatsDrag.width + 80, "an 80px left drag widens the Chats panel 80px");
+  assert.equal(await chatsSaved(), String(Math.round(beforeChatsDrag.width + 80)), "the drag commits the Chats width");
+  await chatsHandle.focus();
+  await page.keyboard.press("Enter");
+  const resetChats = await box(panel);
+  near(resetChats.width, beforeChatsDrag.width, "Enter returns the Chats panel's family width");
+  assert.equal(await chatsSaved(), null, "Enter clears the saved Chats width");
   assert.equal(await page.locator('[data-session="sess-2"] [data-meta-chat]').getAttribute("data-meta-chat"), "unseen",
     "another member's mark is that session's own fact and stays");
 
@@ -138,6 +160,25 @@ try {
   assert.deepEqual((await room.locator("[data-chat-stamp]").allTextContents()).map((t) => t.trim()), ["14:22"], "time is one stamp; the rows are under a minute apart");
   assert.equal(await room.locator("[data-chat-row-time]").count(), 0);
   assert.equal(await room.locator("[data-chat-detail]").count(), 0, "the chat id line waits for Details");
+
+  // The stress room from the 2026-09-23 audit (chat-f0486445: 17 members,
+  // 41 rows): every row renders its real text - no filler rows - the
+  // member line folds from its crowd, and the newest row is the last
+  // thing in the ledger.
+  const stressRoom = panel.locator('[data-chat="chat-f0486445"]');
+  await stressRoom.waitFor();
+  assert.equal(await stressRoom.getAttribute("data-chat-state"), "open");
+  assert.equal(await stressRoom.locator("[data-chat-row]").count(), 41, "all 41 stress rows render");
+  // The word element is the delivery word and is quiet by design; the
+  // filler-row guard reads the message text off the rows themselves.
+  const stressTexts = await stressRoom.locator("[data-chat-row]").allTextContents();
+  assert.equal(stressTexts.length, 41);
+  assert.ok(stressTexts.every((text) => /stress message \d+:/.test(text)), "no filler or empty rows in the stress room");
+  assert.match(stressTexts.at(-1) ?? "", /stress message 40/, "the newest row is the ledger's last");
+  const stressLine = stressRoom.locator("button[data-chats-members]");
+  await stressLine.waitFor();
+  assert.equal(await stressLine.getAttribute("aria-expanded"), "false", "the 17-member line stays folded");
+  assert.match((await stressLine.locator("[data-chats-members-folded] span").last().textContent()) ?? "", /^\+16$/, "the folded count names the other sixteen members");
 
   // Details: the time on every row, the chat id under the header, the stamps go.
   const details = panel.locator("[data-chats-details]");

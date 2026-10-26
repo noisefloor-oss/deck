@@ -296,6 +296,42 @@ try {
   assert.equal(await focusedOn("data-project-clone-dest"), true, "clone into: focus stays in the destination");
   assert.equal(await field(page).getAttribute("placeholder"), "/workspace/my-project", "the folder example still arrives");
 
+  await page.goto(`${origin}/preview.html?dialog=open-project&project-refresh-delay=4000`, { waitUntil: "networkidle" });
+  await page.locator("[data-project-form]").waitFor();
+  await page.locator('.dialog-head [data-project-source="choose"]').click();
+  await page.locator('[data-project-source="url"]').click();
+  await type(page, "fable/delayed-refresh");
+  await primary(page).click();
+  await page.locator("[data-clone-percent]").waitFor();
+  await page.locator("[data-clone-background]").click();
+  await page.locator("[data-project-form]").waitFor({ state: "detached" });
+  await page.locator("html[data-preview-project-refresh-pending]").waitFor({ timeout: 15000 });
+  await page.locator('[data-project-toggle="proj-4"]').click();
+  const delayedRow = page.locator("[data-clone-row]");
+  await delayedRow.waitFor();
+  assert.equal(await delayedRow.getAttribute("data-hint"), "Import complete — refreshing projects");
+  assert.equal(await delayedRow.locator(".text-warning").count(), 0, "completion does not draw a stopped warning");
+  assert.equal(await delayedRow.locator(".text-accent").count(), 1, "completion draws the accent check");
+  assert.equal(await page.locator('[data-project-toggle="proj-7"]').count(), 0,
+    "the project is still absent while its refreshed list is delayed");
+  await page.setViewportSize({ width: 390, height: 844 });
+  const projectFilter = page.locator("[data-sheet-filter]");
+  await delayedRow.focus();
+  await projectFilter.evaluate((input) => {
+    input.value = "delayed";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  assert.match(await page.evaluate(() => document.activeElement?.outerHTML ?? ""), /data-clone-row="clone-1"/,
+    "a redraw keeps focus on the import until its replacement is rendered");
+  await page.locator('[data-project-toggle="proj-7"]').waitFor({ timeout: 10000 });
+  await delayedRow.waitFor({ state: "detached" });
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("data-project-toggle")), "proj-7",
+    "focus moves to the project only when its row replaces the import");
+  await projectFilter.fill("no matching project");
+  assert.equal(await page.locator("[data-clone-row]").count(), 0,
+    "a search that excludes the project cannot resurrect its completed import");
+  await projectFilter.fill("");
+
   console.log("add-project probe: all assertions passed");
 } finally {
   await browser.close();

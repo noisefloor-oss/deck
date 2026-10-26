@@ -156,6 +156,10 @@ test("the clipboard helpers fail quietly in every shape and report what happened
 // Option on macOS (behind the macOptionClickForcesSelection option Deck
 // enables) and Shift everywhere else.
 test("the force-selection modifier is Option on macOS and Shift elsewhere", () => {
-  assert.equal(forceSelectionModifier(true), "altKey");
-  assert.equal(forceSelectionModifier(false), "shiftKey");
+  for (const platform of ["Macintosh", "MacIntel", "MacPPC", "Mac68K"]) {
+    assert.equal(forceSelectionModifier(platform), "altKey", platform);
+  }
+  for (const platform of ["Win32", "Linux x86_64", "iPhone", "iPad", "iPod", ""]) {
+    assert.equal(forceSelectionModifier(platform), "shiftKey", platform);
+  }
 });

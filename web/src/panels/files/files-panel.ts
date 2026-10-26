@@ -640,7 +640,7 @@ export class FilesPanelModel {
       this.subscribeEvents();
     } else if (selectedPath !== undefined && selectedMTime !== this.selected?.mtime) {
       const entry = this.selected;
-      if (entry !== null) await this.loadView(entry, true);
+      if (entry !== null && !isImageName(entry.name)) await this.loadView(entry, true);
     }
     this.cb.onChange?.();
   }
@@ -701,7 +701,7 @@ export class FilesPanelModel {
   // past the cap; a refusal or removal shown for the old generation says
   // nothing about the new one either.
   private reconcileSelectedImage(previous: FileEntry, next: FileEntry): void {
-    if (this.view?.kind !== "image") return;
+    if (this.view?.kind !== "image" && !(this.view?.kind === "error" && isImageName(next.name))) return;
     if (previous.mtime === next.mtime && previous.size === next.size) return;
     ++this.viewSeq;
     this.loadImage(next, true);

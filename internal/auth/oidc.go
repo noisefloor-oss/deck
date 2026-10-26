@@ -58,6 +58,13 @@ type Config struct {
 	PasswordHash      []byte
 	SecureCookies     bool
 
+	// EpochStore persists per-login logout epochs. Logout bumps the epoch
+	// so a session renewal that was already in flight when logout landed
+	// verifies as stale afterwards, instead of rewriting a still-valid
+	// cookie into the browser after the logout response. Nil disables
+	// persistence: the epoch then lives for this process only.
+	EpochStore EpochStore
+
 	// Trusted proxy.
 	ProxyAddresses []string
 	IdentityHeader string
@@ -71,20 +78,31 @@ type Config struct {
 	Now      func() time.Time
 }
 
+// EpochStore persists the per-login logout epochs the session verifier
+// consults, so a logout outlives the process that served it. Implementations
+// key by login ID ("" for legacy sessions without one).
+type EpochStore interface {
+	LoadLogoutEpochs(ctx context.Context) (map[string]uint64, error)
+	SaveLogoutEpoch(ctx context.Context, loginID string, epoch uint64) error
+}
+
 // Handler owns the login ceremony and the request-authentication
 // middleware.
 type Handler struct {
-	cfg             Config
-	log             zerolog.Logger
-	txns            *txnStore
-	verifier        *oidc.IDTokenVerifier
-	client          *http.Client
-	now             func() time.Time
-	proxies         []trustedPeer
-	password        *passwordGate
-	credentialMu    sync.RWMutex
-	credentials     BootstrapState
-	sessionMu       sync.RWMutex
+	cfg          Config
+	log          zerolog.Logger
+	txns         *txnStore
+	verifier     *oidc.IDTokenVerifier
+	client       *http.Client
+	now          func() time.Time
+	proxies      []trustedPeer
+	password     *passwordGate
+	credentialMu sync.RWMutex
+	credentials  BootstrapState
+	sessionMu    sync.RWMutex
+	// logoutEpochs carries the per-login logout generation. sessionMu guards
+	// it with the secret: both are read on the session verify path.
+	logoutEpochs    map[string]uint64
 	onLogout        func(string)
 	onBrowserLogout func(Login)
 }
@@ -124,11 +142,23 @@ func New(cfg Config, log zerolog.Logger) (*Handler, error) {
 	}
 
 	h := &Handler{
-		cfg:    cfg,
-		log:    log,
-		txns:   newTxnStore(cfg.Now),
-		client: cfg.Client,
-		now:    cfg.Now,
+		cfg:          cfg,
+		log:          log,
+		txns:         newTxnStore(cfg.Now),
+		client:       cfg.Client,
+		now:          cfg.Now,
+		logoutEpochs: map[string]uint64{},
+	}
+	if cfg.EpochStore != nil {
+		epochs, err := cfg.EpochStore.LoadLogoutEpochs(context.Background())
+		if err != nil {
+			// An unreadable epoch store is the status quo this mechanism
+			// upgrades: sessions verify by signature and expiry, and the
+			// first logout of this process re-establishes its epoch.
+			log.Warn().Err(err).Msg("auth: logout epochs could not be loaded; pre-restart logouts do not bind this process")
+		} else if epochs != nil {
+			h.logoutEpochs = epochs
+		}
 	}
 
 	switch cfg.Mode {
@@ -380,6 +410,15 @@ func (h *Handler) handleLogout(w http.ResponseWriter, r *http.Request) {
 	}
 	if h.onBrowserLogout != nil && hasLogin {
 		h.onBrowserLogout(login)
+	}
+	// The epoch bump is what makes this logout final: a session renewal
+	// already in flight when this response left carries the pre-logout
+	// epoch, and its cookie verifies stale no matter when the browser
+	// applies it. Legacy sessions share the "" epoch key.
+	if hasLogin {
+		h.bumpLogoutEpoch(login.ID)
+	} else {
+		h.bumpLogoutEpoch("")
 	}
 	h.clearSessionCookies(w)
 	w.WriteHeader(http.StatusNoContent)

@@ -81,6 +81,7 @@ import {
   type PendingSession,
   projectRowHtml,
   emptyRailNewSessionHtml,
+  cloneJobStaysListed,
   cloneRowHtml,
   newProjectRowHtml,
   pendingSessionRowHtml,
@@ -276,6 +277,7 @@ export class Sidebar {
   private addProjectHidden = false;
   private clonePollTimer: ReturnType<typeof setTimeout> | null = null;
   private cloneJobs: CloneJob[] = [];
+  private cloneCompletionsAwaitingProject = new Set<string>();
   private pickTarget: "add" | "dest" = "add";
   private newProjectProfileID = "";
   private identitySettingsOpen = false;
@@ -1136,7 +1138,7 @@ export class Sidebar {
     // database whose state nobody read, so the error banner
     // stands alone.
     const noProjects = m.groups.length === 0;
-    const importing = this.cloneJobs.some((j) => j.status !== "done");
+    const importing = this.cloneJobs.some((j) => cloneJobStaysListed(j, this.cloneCompletionsAwaitingProject, m.groups));
     // Until the first read answers, an empty rail is not an empty
     // registry: flat bands at row height
     // hold the list's shape so nothing jumps when the rows arrive.
@@ -1296,7 +1298,7 @@ export class Sidebar {
   private listRowsHtml(groups: readonly { project: { id: string; name: string } }[]): string {
     const rows = [
       ...groups.map((g) => ({ id: g.project.id, name: g.project.name, html: () => this.renderGroup(g.project.id) })),
-      ...this.cloneJobs.filter((j) => j.status !== "done")
+      ...this.cloneJobs.filter((j) => cloneJobStaysListed(j, this.cloneCompletionsAwaitingProject, this.model.groups))
         .map((j) => ({ id: j.id, name: j.name, html: () => cloneRowHtml(j) })),
     ];
     return presentedRowOrder(rows, this.projectOrder).map((row) => row.html()).join("");
@@ -1788,7 +1790,10 @@ export class Sidebar {
     if (this.focusedListRow?.kind === "clone") {
       const id = this.focusedListRow.id;
       const job = this.cloneJobs.find((j) => j.id === id);
-      if (job?.status === "done" && job.project_id !== undefined) this.focusedListRow = { kind: "project", id: job.project_id };
+      if (job?.status === "done" && job.project_id !== undefined &&
+          this.filteredGroups().some((group) => group.project.id === job.project_id)) {
+        this.focusedListRow = { kind: "project", id: job.project_id };
+      }
     }
     if (this.focusedListRow !== null) {
       const attribute = { project: "data-project-toggle", session: "data-session", clone: "data-clone-row" }[this.focusedListRow.kind];
@@ -2808,7 +2813,13 @@ export class Sidebar {
         // arrives in, so the project list is read before drawing.
         const was = new Map(this.cloneJobs.map((j) => [j.id, j.status]));
         if (this.addProjectJob !== null) was.set(this.addProjectJob.id, this.addProjectJob.status);
-        const finished = jobs.some((j) => j.status === "done" && was.has(j.id) && was.get(j.id) !== "done");
+        let finished = false;
+        for (const job of jobs) {
+          if (job.status === "done" && was.has(job.id) && was.get(job.id) !== "done") {
+            this.cloneCompletionsAwaitingProject.add(job.id);
+            finished = true;
+          }
+        }
         this.cloneJobs = jobs;
         if (this.addProjectJob !== null) {
           const bound = jobs.find((j) => j.id === this.addProjectJob?.id);

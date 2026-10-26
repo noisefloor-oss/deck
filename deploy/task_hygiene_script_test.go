@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // hygieneRepo stages a real git repository for scripts/task-hygiene.sh with
@@ -88,6 +89,22 @@ func stageHygieneRepo(t *testing.T) hygieneRepo {
 	}
 	mergedTip := git("rev-parse", "merged")
 	taskTip := git("rev-parse", "tasks/master/5")
+	git("init", "--bare", "-q", filepath.Join(root, "origin.git"))
+	git("remote", "add", "origin", filepath.Join(root, "origin.git"))
+	for _, branch := range []string{"remote-no-pr", "remote-closed", "remote-open", "remote-merged", "remote-error"} {
+		git("branch", branch)
+		git("push", "-q", "origin", branch)
+		git("branch", "-D", branch)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "residue.txt"), []byte("tracked\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git("add", "residue.txt")
+	git("commit", "-q", "-m", "tracked residue fixture")
+	if err := os.WriteFile(filepath.Join(repo, "residue.txt"), []byte("stashed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git("stash", "push", "-m", "residue", "--", "residue.txt")
 
 	// gh: a merged pull request exists for "merged" and for tasks/master/5.
 	gh := `#!/bin/sh
@@ -95,11 +112,17 @@ case "$*" in
   "auth status") exit 0 ;;
   *"--head merged --state merged"*) printf '%s\n' "` + mergedTip + `" ;;
   *"--head tasks/master/5 --state merged"*) printf '%s\n' "` + taskTip + `" ;;
+  *"--head remote-merged --state all"*) printf '%s\n' 'MERGED' ;;
+  *"--head remote-open --state all"*) printf '%s\n' 'OPEN' ;;
+  *"--head remote-closed --state all"*) printf '%s\n' 'CLOSED' ;;
+  *"--head remote-no-pr --state all"*) printf '' ;;
+  *"--head remote-error --state all"*) exit 1 ;;
   *"--state merged"*) printf '' ;;
   *"--state open"*) printf '' ;;
   *) echo "gh stub: unexpected $*" >&2; exit 1 ;;
 esac
 `
+	recent := time.Now().UTC().Add(-time.Hour).Format(time.RFC3339)
 	noise := `#!/bin/sh
 echo "$*" >>"$HYGIENE_LOG"
 case "$*" in
@@ -115,6 +138,9 @@ case "$*" in
   "tasks show -json -tag master 5") printf '%s\n' '{"id":"5","status":"done","revision":3}' ;;
   "tasks show -json -tag master 6") printf '%s\n' '{"id":"6","status":"in-progress","revision":1}' ;;
   "tasks show -json -tag master 7") printf '%s\n' '{"id":"7","status":"done","revision":1}' ;;
+  "tasks milestone list -json") printf '%s\n' '{"milestones":[{"name":"finished","status":"open"},{"name":"active","status":"open"}]}' ;;
+  "tasks list -json")
+    python3 -c 'import json; d=json.loads("""{"tasks":[{"id":"1","milestone":"finished","status":"done","updatedAt":"2026-01-01T00:00:00Z"},{"id":"2","milestone":"finished","status":"cancelled","updatedAt":"2026-01-01T00:00:00Z"},{"id":"3","milestone":"active","status":"in-progress","updatedAt":"2026-01-01T00:00:00Z"},{"id":"4","milestone":"","status":"deferred","updatedAt":"2020-01-01T00:00:00Z"},{"id":"5","milestone":"","status":"blocked","updatedAt":"` + recent + `"}]}"""); d["tasks"] += [{"id":f"f{i}","status":"done","details":"x"*200} for i in range(1000)]; print(json.dumps(d))' ;;
   "tasks worktree list -json")
     status=cleanup-required
     [ ! -f "$RECOVERED_FILE" ] || status=removed
@@ -209,7 +235,7 @@ func TestTaskHygieneApplyActsOnlyOnProvablySafeResidue(t *testing.T) {
 		"NEEDS A PERSON: saga 79 has operation provision",
 		"did remove worktree master-5 (task 5 done, branch merged)",
 		"did delete local branch merged (merged pull request head)",
-		"skip remote pruning: no origin remote",
+		"did prune remote-tracking branches",
 		"did garbage-collect the repository",
 	} {
 		if !strings.Contains(out, want) {
@@ -234,6 +260,38 @@ func TestTaskHygieneApplyActsOnlyOnProvablySafeResidue(t *testing.T) {
 	slices.Sort(branches)
 	if !slices.Equal(branches, []string{"main", "tasks/master/6", "tasks/master/7", "unmerged"}) {
 		t.Errorf("unexpected branches after --apply: %q", branches)
+	}
+}
+
+func TestTaskHygieneReportsRemoteAndTaskResidueWithoutApplyingIt(t *testing.T) {
+	h := stageHygieneRepo(t)
+	out := h.run(t, "--apply")
+	for _, want := range []string{
+		"NEEDS A PERSON: remote branch origin/remote-no-pr has no pull request",
+		"NEEDS A PERSON: remote branch origin/remote-closed has a closed, unmerged pull request",
+		"keep remote branch origin/remote-open: pull request open",
+		"NEEDS A PERSON: remote branch origin/remote-merged is merged; delete it",
+		"NEEDS A PERSON: remote branch origin/remote-error pull request lookup failed",
+		"NEEDS A PERSON: 1 stash(es) remain",
+		"NEEDS A PERSON: milestone finished is open although every task is terminal",
+		"NEEDS A PERSON: task 4 has been deferred since 2020-01-01T00:00:00Z",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("hygiene report lacks %q:\n%s", want, out)
+		}
+	}
+	for _, unwanted := range []string{"milestone active is open", "task 5 has been blocked", "remote-error has no pull request"} {
+		if strings.Contains(out, unwanted) {
+			t.Errorf("active residue was incorrectly reported as finished or stale:\n%s", out)
+		}
+	}
+	for _, branch := range []string{"remote-no-pr", "remote-closed", "remote-open", "remote-merged", "remote-error"} {
+		if got := h.gitOut(t, "rev-parse", "refs/remotes/origin/"+branch); got == "" {
+			t.Errorf("--apply deleted remote branch %s", branch)
+		}
+	}
+	if got := strings.TrimSpace(h.gitOut(t, "stash", "list")); !strings.Contains(got, "residue") {
+		t.Errorf("--apply removed the stash: %s", got)
 	}
 }
 

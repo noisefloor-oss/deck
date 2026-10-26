@@ -198,9 +198,19 @@ export class HttpApiClient implements ApiClient, FileApiClient, LaneApiClient {
   private cookie: () => string;
   workspaceSecurity: "v1" | null = null;
   onAuthorizationLost?: () => void;
+  // Aborted the moment logout begins, so no in-flight request - above all a
+  // session renewal whose response would set a fresh cookie - can outlive
+  // the logout. A failed logout re-arms it: the session may still be live
+  // and ordinary requests must go on working.
+  private logoutAbort = new AbortController();
 
   private request(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-    return fetchWithAuthorization(input, init, this.onAuthorizationLost);
+    // Every request rides the logout signal; a caller's own signal is
+    // composed with it so EITHER one cancels the request.
+    const caller = init?.signal;
+    const signal = caller === undefined || caller === null ? this.logoutAbort.signal
+      : AbortSignal.any([caller, this.logoutAbort.signal]);
+    return fetchWithAuthorization(input, { ...init, signal }, this.onAuthorizationLost);
   }
 
   constructor(cookie: () => string = () =>
@@ -339,14 +349,24 @@ export class HttpApiClient implements ApiClient, FileApiClient, LaneApiClient {
   }
 
   async logout(): Promise<void> {
-    await readJSON<void>(
-      await this.request("/auth/logout", {
+    // Abort every other in-flight request BEFORE the logout POST leaves: a
+    // session renewal answering after this would set a still-valid cookie
+    // over the cleared jar - the server's logout epoch is the authority
+    // that rejects it, and this makes the browser stop racing it. The POST
+    // itself is exempt (it carries the CSRF token that makes logout real).
+    this.logoutAbort.abort();
+    try {
+      await fetchWithAuthorization("/auth/logout", {
         method: "POST",
         headers: this.mutationHeaders(),
         credentials: "same-origin",
         cache: "no-store",
-      }),
-    );
+      }, this.onAuthorizationLost).then(readJSON<void>);
+    } catch (cause) {
+      // The session may still be live: re-arm so ordinary requests work.
+      this.logoutAbort = new AbortController();
+      throw cause;
+    }
   }
 
   async listProjects(): Promise<Project[]> {

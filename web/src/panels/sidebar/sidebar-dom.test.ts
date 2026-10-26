@@ -8,6 +8,7 @@ import test from "node:test";
 import {
   emptyRailNewSessionHtml,
   pendingSessionRowHtml,
+  cloneJobStaysListed,
   cloneRowHtml,
   projectRowHtml,
   projectChevronHtml,
@@ -770,6 +771,32 @@ test("a stopped import keeps the row and swaps the ring for a warning", () => {
   assert.ok(row.includes("text-warning"), "the slot carries the warning glyph");
   assert.ok(!row.includes("data-clone-ring"), "no ring once the import has stopped");
   assert.ok(cloneRowHtml(cloneJob({ status: "failed" })).includes("text-warning"), "a failed import reads the same");
+});
+
+test("a completed import awaiting its project reads complete, not stopped", () => {
+  const row = cloneRowHtml(cloneJob({ status: "done", percent: 100, project_id: "proj-7" }));
+  assert.ok(row.includes('data-hint="Import complete — refreshing projects"'));
+  assert.ok(row.includes('<span class="sr-only">Import complete</span>'));
+  assert.ok(row.includes("text-accent"), "completion uses the accent check, not a warning");
+  assert.ok(!row.includes("text-warning"));
+  assert.ok(!row.includes("Import stopped part-way"));
+});
+
+test("only a newly completed import waits for its project, and removal cannot resurrect it", () => {
+  const job = cloneJob({ status: "done", percent: 100, project_id: "proj-7" });
+  const awaiting = new Set<string>();
+  const absent: { project: { id: string } }[] = [];
+  const present = [{ project: { id: "proj-7" } }];
+  assert.equal(cloneJobStaysListed(job, awaiting, absent), false,
+    "a fresh sidebar does not resurrect a retained completed job whose project is absent");
+  awaiting.add(job.id);
+  assert.equal(cloneJobStaysListed(job, awaiting, absent), true,
+    "a completion observed by this sidebar waits for its project");
+  assert.equal(cloneJobStaysListed(job, awaiting, present), false,
+    "the project replaces the import");
+  assert.equal(awaiting.has(job.id), false, "the first project observation settles the completion");
+  assert.equal(cloneJobStaysListed(job, awaiting, absent), false,
+    "removing that project does not bring the completed import back");
 });
 
 test("the import ring clamps and rounds the server's percent", () => {

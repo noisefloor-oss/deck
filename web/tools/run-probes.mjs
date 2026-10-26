@@ -8,6 +8,7 @@
 //
 // live-smoke.mjs is deliberately absent: it is a long local smoke, not run in CI.
 // mvp-shots.mjs produces screenshots, not verdicts.
+import { readFileSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -82,6 +83,7 @@ const PROBE_TIMEOUT_MS = 5 * 60 * 1000;
 
 function run(entry) {
   const [probe, script, env] = Array.isArray(entry) ? entry : [entry, entry, {}];
+  const started = performance.now();
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [join(here, script)], {
       stdio: ["ignore", "pipe", "pipe"],
@@ -92,17 +94,18 @@ function run(entry) {
     child.stderr.on("data", (chunk) => { output += chunk; });
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
-      resolve({ probe, verdict: "hung", output });
+      resolve({ probe, verdict: "hung", output, seconds: (performance.now() - started) / 1000 });
     }, PROBE_TIMEOUT_MS);
     child.on("close", (code) => {
       clearTimeout(timer);
-      resolve({ probe, verdict: code === 0 ? "pass" : "fail", output });
+      resolve({ probe, verdict: code === 0 ? "pass" : "fail", output, seconds: (performance.now() - started) / 1000 });
     });
   });
 }
 
 const results = [];
-const selected = selectShard(PROBES, process.env.NOISEDECK_PROBE_SHARD);
+const durations = JSON.parse(readFileSync(new URL("./probe-durations.json", import.meta.url), "utf8"));
+const selected = selectShard(PROBES, process.env.NOISEDECK_PROBE_SHARD, durations.seconds);
 for (const entry of selected) {
   const probe = Array.isArray(entry) ? entry[0] : entry;
   process.stdout.write(`==> ${probe}\n`);
@@ -113,7 +116,19 @@ for (const entry of selected) {
     // after that line never executed.
     process.stdout.write(result.output);
   }
-  process.stdout.write(`<== ${probe}: ${result.verdict}\n`);
+  process.stdout.write(`<== ${probe}: ${result.verdict} (${result.seconds.toFixed(3)}s)\n`);
+}
+
+if (process.env.NOISEDECK_PROBE_METRICS) {
+  writeFileSync(process.env.NOISEDECK_PROBE_METRICS, JSON.stringify({
+    version: 1,
+    sha: process.env.GITHUB_SHA ?? null,
+    run: process.env.GITHUB_RUN_ID ?? null,
+    attempt: process.env.GITHUB_RUN_ATTEMPT ?? null,
+    shard: process.env.NOISEDECK_PROBE_SHARD ?? "all",
+    platform: `${process.platform}/${process.arch}`,
+    results: results.map(({ probe, verdict, seconds }) => ({ probe, verdict, seconds })),
+  }) + "\n");
 }
 
 const failed = results.filter((r) => r.verdict !== "pass");

@@ -44,12 +44,23 @@ func trustHome(t *testing.T) TrustHomes {
 	if err := os.WriteFile(filepath.Join(trustDir, KimiWorkspaceTrustFileName("/workspace/deck")), record, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	devinDir := filepath.Join(home, ".local", "share", "devin", "cli")
+	if err := os.MkdirAll(devinDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	devin, err := json.Marshal(map[string]any{"trusted_paths": []string{"/workspace/deck"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(devinDir, "trusted_workspaces.json"), devin, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	return TrustHomes{Home: home}
 }
 
 func TestWorkspaceTrustReadsEachProvidersOwnRecord(t *testing.T) {
 	homes := trustHome(t)
-	for _, name := range []Name{Claude, Codex, Kimi} {
+	for _, name := range []Name{Claude, Codex, Kimi, Devin} {
 		if got := homes.WorkspaceTrust(name, "/workspace/deck"); got.State != WorkspaceTrustPrepared {
 			t.Errorf("%s: prepared project read state %d (%s)", name, got.State, got.Reason)
 		}
@@ -60,6 +71,45 @@ func TestWorkspaceTrustReadsEachProvidersOwnRecord(t *testing.T) {
 		}
 		if got := homes.WorkspaceTrust(name, "/workspace/deck"); got.RecordPath == "" {
 			t.Errorf("%s: a result with no record path names nothing a user can act on", name)
+		}
+	}
+}
+
+// Devin inherits: a subdirectory of a listed path is covered, which is
+// what a launch there measured (no modal, straight into the REPL on
+// 3000.11.205). Kimi does not, so the same probe distinguishes them.
+func TestDevinTrustCarriesToSubdirectories(t *testing.T) {
+	homes := trustHome(t)
+	if got := homes.WorkspaceTrust(Devin, "/workspace/deck/internal"); got.State != WorkspaceTrustPrepared {
+		t.Errorf("devin subdirectory of a trusted path read %d (%s), want prepared", got.State, got.Reason)
+	}
+	if got := homes.WorkspaceTrust(Kimi, "/workspace/deck/internal"); got.State != WorkspaceTrustAbsent {
+		t.Errorf("kimi subdirectory of a trusted path read %d (%s), want absent", got.State, got.Reason)
+	}
+	if got := homes.WorkspaceTrust(Devin, "/workspace/deckevil"); got.State != WorkspaceTrustAbsent {
+		t.Errorf("a path sharing a prefix but not an ancestor read %d (%s), want absent", got.State, got.Reason)
+	}
+}
+
+// A record listing the root covers every path, as the inheritance rule
+// already says: excluding it would let a seeded "/" read back absent.
+func TestDevinTrustRootCoversEveryPath(t *testing.T) {
+	home := t.TempDir()
+	dir := filepath.Join(home, ".local", "share", "devin", "cli")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(map[string]any{"trusted_paths": []string{"/"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "trusted_workspaces.json"), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	homes := TrustHomes{Home: home}
+	for _, path := range []string{"/workspace/deck", "/home/x/y"} {
+		if got := homes.WorkspaceTrust(Devin, path); got.State != WorkspaceTrustPrepared {
+			t.Errorf("root-listed record read %d for %s (%s)", got.State, path, got.Reason)
 		}
 	}
 }
@@ -122,7 +172,7 @@ func TestWorkspaceTrustIsUnknownRatherThanAGuess(t *testing.T) {
 	if got := empty.WorkspaceTrust(Kimi, "/workspace/deck"); got.State != WorkspaceTrustUnknown {
 		t.Errorf("kimi: a missing home read state %d", got.State)
 	}
-	for _, name := range []Name{Devin, Opencode, Shell, Mimo} {
+	for _, name := range []Name{Opencode, Shell, Mimo} {
 		if got := trustHome(t).WorkspaceTrust(name, "/workspace/fresh"); got.State != WorkspaceTrustUnknown {
 			t.Errorf("%s has no measured gate but read state %d", name, got.State)
 		}

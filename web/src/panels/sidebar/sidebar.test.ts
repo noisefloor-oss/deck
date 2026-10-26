@@ -625,6 +625,21 @@ test("create reports and refreshes from the server", async () => {
   assert.equal(m.groups.length, 2); // refreshed
 });
 
+test("create finishes session reconciliation without waiting for provider inventory", async () => {
+  let releaseProviders!: (providers: readonly string[]) => void;
+  const providers = new Promise<readonly string[]>((resolve) => { releaseProviders = resolve; });
+  const m = new SidebarModel(fakeApi({ listProviders: () => providers }));
+  let settled = false;
+  const creation = m.create("p1", "claude").then((result) => {
+    settled = true;
+    return result;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(settled, true, "the created row is ready while the provider request is still pending");
+  releaseProviders(["claude"]);
+  assert.equal(await creation, "created");
+});
+
 test("create does not select a session before the backend verifies it running", async () => {
   const selected: string[] = [];
   const m = new SidebarModel(fakeApi({

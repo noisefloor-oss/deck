@@ -22,6 +22,36 @@ function message(id: string, tag: string, from: string, text: string, sent: stri
   return { id, tag, kind: "message", from, member: null, text, at: sent, to };
 }
 
+// The stress room from the 2026-09-23 audit's reference (chat-f0486445:
+// 17 members, 41 rows), regenerated deterministically: every row carries
+// real text, so a rendering that produces filler or empty rows fails the
+// probe that counts words.
+const STRESS_MEMBERS = [CLAUDE, ...Array.from({ length: 16 }, (_, i) => `agent-${String(i + 1).padStart(4, "0")}`)];
+const stressRows: ChatRow[] = Array.from({ length: 41 }, (unused, i) => message(
+  `evt_s${i}`, `a2a#s${String(i).padStart(2, "0")}`, STRESS_MEMBERS[i % STRESS_MEMBERS.length]!,
+  `stress message ${i}: the pin holds on all three probes`, at(`15:${String(Math.floor(i / 2)).padStart(2, "0")}:${String((i * 7) % 60).padStart(2, "0")}`),
+  { [CODEX]: "read", [KIMI]: i % 3 === 0 ? "uncertain" : "delivered" },
+));
+
+const stress: Chat = {
+  id: "chat-f0486445",
+  state: "open",
+  waiting_s: null,
+  forced: false,
+  opened_by: CLAUDE,
+  opened_at: at("15:00:00"),
+  last: stressRows.at(-1)!.at,
+  members: STRESS_MEMBERS,
+  left: [],
+  remaining: STRESS_MEMBERS,
+  harnesses: { [CLAUDE]: "claude" },
+  close_requested_by: null,
+  closed_by: null,
+  messages: 41,
+  rows: stressRows,
+  handshake: [],
+};
+
 const room: Chat = {
   id: "chat-a1b2c3d4",
   state: "open",
@@ -160,7 +190,7 @@ const continuing: Chat = {
   ],
 };
 
-const ALL: Chat[] = [room, invitation, closed, declined, legacyQuorum, departed, continuing];
+const ALL: Chat[] = [room, stress, invitation, closed, declined, legacyQuorum, departed, continuing];
 
 const HANDLES: Record<string, string> = {
   "sess-1": CLAUDE,

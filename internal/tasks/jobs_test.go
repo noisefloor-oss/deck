@@ -134,7 +134,7 @@ func writeStub(t *testing.T, body string) string {
   if [ -f "$project/.tasks/tasks.sqlite" ]; then
     initialized=true
   fi
-  printf '{"schemaVersion":5,"start":"%s","projectBoundary":"%s","storePath":"%s/.tasks/tasks.sqlite","storeOwnerBoundary":"","storeSchemaVersion":0,"engineSchemaVersion":5,"docsPath":".tasks/docs/PRD.md","preferencesPath":".tasks/preferences.json","initialized":%s,"writable":true,"blocked":false,"blockedReason":""}\n' "$project" "$project" "$project" "$initialized"
+  printf '{"schemaVersion":5,"start":"%s","projectBoundary":"%s","storePath":"%s/.tasks/tasks.sqlite","storeOwnerBoundary":"","storeSchemaVersion":0,"engineSchemaVersion":6,"docsPath":".tasks/docs/PRD.md","preferencesPath":".tasks/preferences.json","initialized":%s,"writable":true,"blocked":false,"blockedReason":""}\n' "$project" "$project" "$project" "$initialized"
   exit 0
 fi
 `

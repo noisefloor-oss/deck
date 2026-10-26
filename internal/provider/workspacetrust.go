@@ -220,6 +220,8 @@ func (h TrustHomes) WorkspaceTrust(name Name, projectPath string) WorkspaceTrust
 		return h.codexTrust(projectPath)
 	case Kimi:
 		return h.kimiTrust(projectPath)
+	case Devin:
+		return h.devinTrust(projectPath)
 	default:
 		return WorkspaceTrustResult{Reason: fmt.Sprintf("%s has no measured workspace-trust gate", name)}
 	}
@@ -342,6 +344,60 @@ func (h TrustHomes) kimiTrust(projectPath string) WorkspaceTrustResult {
 		return WorkspaceTrustResult{State: WorkspaceTrustAbsent, RecordPath: path}
 	}
 	return WorkspaceTrustResult{State: WorkspaceTrustPrepared, RecordPath: path}
+}
+
+// devinTrust reads the one central list Devin keeps: trusted_paths in
+// <home>/.local/share/devin/cli/trusted_workspaces.json. Unlike Kimi there
+// is no per-directory file and no load-bearing name, and unlike both Kimi
+// and a bare exact-match reading, Devin INHERITS: a launch in a
+// subdirectory of a listed path starts with no modal (measured on
+// 3000.11.205 — a child of a trusted directory opened straight into the
+// REPL), so any ancestor in the list covers the project.
+func (h TrustHomes) devinTrust(projectPath string) WorkspaceTrustResult {
+	home, reason := h.providerHome("", "")
+	if reason != "" {
+		return WorkspaceTrustResult{Reason: reason}
+	}
+	dir := filepath.Join(home, ".local", "share", "devin", "cli")
+	path := filepath.Join(dir, "trusted_workspaces.json")
+	raw, err := os.ReadFile(filepath.Clean(path))
+	if errors.Is(err, fs.ErrNotExist) {
+		// A missing devin home is an installation nothing was measured on;
+		// a present home without the file means Devin has never trusted
+		// anything, which is an answer, not an uncertainty.
+		if _, statErr := os.Stat(dir); statErr != nil {
+			return WorkspaceTrustResult{RecordPath: path, Reason: "devin has no home yet"}
+		}
+		return WorkspaceTrustResult{State: WorkspaceTrustAbsent, RecordPath: path}
+	}
+	if err != nil {
+		return unreadable(path, err)
+	}
+	var record struct {
+		TrustedPaths []string `json:"trusted_paths"`
+	}
+	if err := json.Unmarshal(raw, &record); err != nil {
+		return WorkspaceTrustResult{RecordPath: path, Reason: "devin trust record is not the measured shape: " + err.Error()}
+	}
+	for _, trusted := range record.TrustedPaths {
+		if trusted == projectPath || isAncestorDirectory(trusted, projectPath) {
+			return WorkspaceTrustResult{State: WorkspaceTrustPrepared, RecordPath: path}
+		}
+	}
+	return WorkspaceTrustResult{State: WorkspaceTrustAbsent, RecordPath: path}
+}
+
+// isAncestorDirectory reports whether parent is a directory strictly above
+// child on the cleaned path — the inheritance Devin and the CLIs that carry
+// a decision downward consult. The root is an ancestor like any other: a
+// record that lists "/" covers every path, which is the same total trust
+// answering the modal in "/" itself would record.
+func isAncestorDirectory(parent, child string) bool {
+	if parent == "" {
+		return false
+	}
+	rel, err := filepath.Rel(parent, child)
+	return err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // KimiWorkspaceTrustFileName is the exact name Kimi files a directory's trust

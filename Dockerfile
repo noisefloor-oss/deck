@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e
 
-ARG NOISE_TASKS_REF=5961c31a5854670f96a64c83a5d8f917bb0889b7
-ARG NOISE_TASKS_VERSION=2.9.1
+ARG NOISE_TASKS_REF=a03efe15d6bfcd68fa3cc812d612c63306736149
+ARG NOISE_TASKS_VERSION=2.10.1
 ARG NOISE_VISUAL_DIFF_REF=9b5b0348791991f37e2cb5a4078f17ae55b7c644
 ARG NOISE_VISUAL_DIFF_VERSION=0.14.1
 ARG NOISE_SDLC_REF=abadbafa9f8a8fd3f41013efeb57e8ae55ecc9e2
@@ -415,19 +415,19 @@ RUN set -eu; \
     test "$(cat /tmp/noisetask.stderr)" = "warning: noisetask is deprecated; use noise tasks (or noise-tasks); removal is gated by the published migration plan"; \
     test "$(wc -l </tmp/noisetask.stderr)" -eq 1; \
     noise tasks context --json >/tmp/noise-context.json; \
-    node -e 'const c=JSON.parse(require("fs").readFileSync("/tmp/noise-context.json","utf8")); if(c.schemaVersion!==5 || c.storeOwnerBoundary!=="" || c.storeSchemaVersion!==0 || c.engineSchemaVersion!==5 || c.projectBoundary!=="/" || c.storePath!=="/.tasks/tasks.sqlite" || c.docsPath!==".tasks/docs/PRD.md" || c.preferencesPath!==".tasks/preferences.json" || c.initialized!==false || c.blocked!==false || c.blockedReason!=="") process.exit(1)'; \
+    node -e 'const c=JSON.parse(require("fs").readFileSync("/tmp/noise-context.json","utf8")); if(c.schemaVersion!==5 || c.storeOwnerBoundary!=="" || c.storeSchemaVersion!==0 || c.engineSchemaVersion!==6 || c.projectBoundary!=="/" || c.storePath!=="/.tasks/tasks.sqlite" || c.docsPath!==".tasks/docs/PRD.md" || c.preferencesPath!==".tasks/preferences.json" || c.initialized!==false || c.blocked!==false || c.blockedReason!=="") process.exit(1)'; \
     noise tasks live feed --help >/tmp/feed.stdout 2>/tmp/feed.stderr; \
-    test ! -s /tmp/feed.stdout; \
-    grep -q -- '-since' /tmp/feed.stderr; \
+    test ! -s /tmp/feed.stderr; \
+    grep -q -- '-since' /tmp/feed.stdout; \
     code=0; noise tasks migrate >/tmp/migrate.stdout 2>/tmp/migrate.stderr || code=$?; \
     test "$code" -eq 2; \
     test ! -s /tmp/migrate.stdout; \
     noise tasks milestone list --help >/tmp/milestone.stdout 2>/tmp/milestone.stderr; \
-    test ! -s /tmp/milestone.stdout; \
-    grep -q -- 'Usage of milestone list:' /tmp/milestone.stderr; \
+    test ! -s /tmp/milestone.stderr; \
+    grep -q -- 'usage: noise-tasks milestone list' /tmp/milestone.stdout; \
     noise tasks set-milestone --help >/tmp/set-milestone.stdout 2>/tmp/set-milestone.stderr; \
-    test ! -s /tmp/set-milestone.stdout; \
-    grep -q -- 'Usage of set-milestone:' /tmp/set-milestone.stderr; \
+    test ! -s /tmp/set-milestone.stderr; \
+    grep -q -- 'usage: noise-tasks set-milestone' /tmp/set-milestone.stdout; \
     printf '#!/bin/sh\necho unsafe\n' >/tmp/noise-planted; \
     chmod 0755 /tmp/noise-planted; \
     code=0; PATH="/tmp:/usr/local/bin:/usr/bin:/bin" NOISE_LIBEXEC_ROOT=/tmp noise planted >/tmp/planted.stdout 2>/tmp/planted.stderr || code=$?; \
@@ -435,6 +435,7 @@ RUN set -eu; \
     test ! -s /tmp/planted.stdout; \
     test "$(cat /tmp/planted.stderr)" = "noise: plugin not installed: planted"; \
     rm -f /tmp/noisetask.stdout /tmp/noisetask.stderr /tmp/noise-context.json \
+      /tmp/milestone.stdout /tmp/milestone.stderr /tmp/set-milestone.stdout /tmp/set-milestone.stderr \
       /tmp/feed.stdout /tmp/feed.stderr /tmp/migrate.stdout /tmp/migrate.stderr /tmp/noise-planted /tmp/planted.stdout /tmp/planted.stderr
 
 # The gh CLI ships in the image so sessions can run a full

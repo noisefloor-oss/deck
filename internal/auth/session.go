@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -52,6 +53,41 @@ func (h *Handler) sessionSecret() []byte {
 	return h.cfg.SessionSecret
 }
 
+// currentLogoutEpoch is the logout generation a session for loginID must
+// carry to verify. Sessions without a login (v1, v2) share the "" key.
+func (h *Handler) currentLogoutEpoch(loginID string) uint64 {
+	h.sessionMu.RLock()
+	defer h.sessionMu.RUnlock()
+	return h.logoutEpochs[loginID]
+}
+
+// bumpLogoutEpoch makes every outstanding session of this login stale:
+// the next verify of any of them - including a renewal that was already
+// in flight when logout landed - fails. Persistence is best effort; the
+// in-process epoch binds immediately.
+func (h *Handler) bumpLogoutEpoch(loginID string) {
+	h.sessionMu.Lock()
+	h.logoutEpochs[loginID]++
+	epoch := h.logoutEpochs[loginID]
+	h.sessionMu.Unlock()
+	if h.cfg.EpochStore != nil {
+		if err := h.cfg.EpochStore.SaveLogoutEpoch(context.Background(), loginID, epoch); err != nil {
+			h.log.Warn().Err(err).Str("login", loginID).Msg("auth: logout epoch not persisted; it binds this process only")
+		}
+	}
+}
+
+// payloadLogoutEpoch reads the epoch a verified payload carries. v3 and
+// earlier predate the field and count as zero.
+func payloadLogoutEpoch(parts []string) uint64 {
+	if len(parts) == 8 && parts[0] == "v4" {
+		if epoch, err := strconv.ParseUint(parts[7], 10, 64); err == nil {
+			return epoch
+		}
+	}
+	return 0
+}
+
 func (h *Handler) issueSessionValueAt(authTime, now time.Time) (string, error) {
 	return h.issueLoginSession(authTime, now, Login{})
 }
@@ -64,11 +100,28 @@ func (h *Handler) issueLoginSession(authTime, now time.Time, login Login) (strin
 		}
 		login.ID = hex.EncodeToString(id[:])
 	}
-	fields := []string{"v3", strconv.FormatInt(authTime.Unix(), 10),
+	// A fresh session carries its login's CURRENT epoch, read only after
+	// the login has its ID: reading before would key on the empty legacy
+	// ID, and a legacy logout's bump would then land on a fresh login that
+	// its own logout could never exceed.
+	return h.issueLoginSessionEpoch(authTime, now, login, h.currentLogoutEpoch(login.ID))
+}
+
+// issueLoginSessionEpoch issues a login session carrying a NAMED logout
+// epoch. The renewal path names the epoch of the cookie it renews, so a
+// logout landing between the caller's verify and this issue leaves the
+// replacement exactly as stale as the original; a fresh issue names the
+// login's current epoch.
+func (h *Handler) issueLoginSessionEpoch(authTime, now time.Time, login Login, epoch uint64) (string, error) {
+	if login.ID == "" {
+		return "", errBadSession
+	}
+	fields := []string{"v4", strconv.FormatInt(authTime.Unix(), 10),
 		strconv.FormatInt(sessionExpiry(authTime, now).Unix(), 10), login.ID}
 	for _, value := range []string{login.Issuer, login.Subject, login.Email} {
 		fields = append(fields, base64.RawURLEncoding.EncodeToString([]byte(value)))
 	}
+	fields = append(fields, strconv.FormatUint(epoch, 10))
 	payload := strings.Join(fields, ":")
 	if _, ok := loginFromPayload(payload); !ok {
 		return "", errBadSession
@@ -129,11 +182,33 @@ func (h *Handler) verifySessionValue(token string, now time.Time) (string, error
 	var expField string
 	switch {
 	case len(parts) == 3 && parts[0] == "v1":
+		if h.currentLogoutEpoch("") > 0 {
+			return "", errBadSession
+		}
 		expField = parts[1]
 	case len(parts) == 4 && parts[0] == "v2":
+		if h.currentLogoutEpoch("") > 0 {
+			return "", errBadSession
+		}
 		expField = parts[2]
-	case len(parts) == 7 && parts[0] == "v3":
-		if _, ok := loginFromPayload(string(rawPayload)); !ok {
+	case (len(parts) == 7 && parts[0] == "v3") || (len(parts) == 8 && parts[0] == "v4"):
+		login, ok := loginFromPayload(string(rawPayload))
+		if !ok {
+			return "", errBadSession
+		}
+		// A session from before its login's latest logout is dead, whatever
+		// its expiry says: this is the check that makes logout final when a
+		// renewal was already in flight. v3 predates epochs and counts as
+		// epoch zero, so a logout binds it too.
+		epoch := uint64(0)
+		if parts[0] == "v4" {
+			parsed, err := strconv.ParseUint(parts[7], 10, 64)
+			if err != nil {
+				return "", errBadSession
+			}
+			epoch = parsed
+		}
+		if epoch < h.currentLogoutEpoch(login.ID) {
 			return "", errBadSession
 		}
 		auth, err := strconv.ParseInt(parts[1], 10, 64)
@@ -167,7 +242,7 @@ func (h *Handler) sessionRenewal(payload string, now time.Time) (value, renewed 
 	switch {
 	case len(parts) == 3 && parts[0] == "v1":
 		exp, _ = strconv.ParseInt(parts[1], 10, 64)
-	case (len(parts) == 4 && parts[0] == "v2") || (len(parts) == 7 && parts[0] == "v3"):
+	case (len(parts) == 4 && parts[0] == "v2") || (len(parts) == 7 && parts[0] == "v3") || (len(parts) == 8 && parts[0] == "v4"):
 		at, _ := strconv.ParseInt(parts[1], 10, 64)
 		authTime = time.Unix(at, 0)
 		exp, _ = strconv.ParseInt(parts[2], 10, 64)
@@ -191,7 +266,12 @@ func (h *Handler) sessionRenewal(payload string, now time.Time) (value, renewed 
 	var v string
 	var issueErr error
 	if login, ok := loginFromPayload(payload); ok {
-		v, issueErr = h.issueLoginSession(authTime, now, login)
+		// The renewal inherits the EPOCH OF THE COOKIE IT RENEWS, not a
+		// fresh read: a logout that lands between the caller's verify and
+		// this issue must leave the replacement just as stale as the
+		// original. v3 predates epochs and renews at zero, which the same
+		// rule makes stale the moment its login logs out.
+		v, issueErr = h.issueLoginSessionEpoch(authTime, now, login, payloadLogoutEpoch(parts))
 	} else {
 		v, issueErr = h.issueLegacySession(authTime, now)
 	}

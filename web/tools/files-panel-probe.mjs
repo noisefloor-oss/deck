@@ -1387,7 +1387,37 @@ try {
   // ---- expand and minimize ----
   await page.getByRole("button", { name: "README.md" }).and(page.locator("[data-files-row]")).click();
   await text.waitFor();
-  await panel.getByRole("button", { name: "Expand" }).click();
+  await handle.focus();
+  await page.keyboard.press("ArrowRight");
+  const dockedWidth = (await box(panel)).width;
+  const savedDockedWidth = await savedWidth();
+  assert.notEqual(savedDockedWidth, null, "a docked width is saved before expanding");
+  // Expansion while dragging must roll back the unsaved movement before
+  // the eventual pointerup can commit it.
+  const dragBox = await box(panel);
+  await page.mouse.move(dragBox.x + 4, dragBox.y + 100);
+  await page.mouse.down();
+  await page.mouse.move(dragBox.x + 52, dragBox.y + 100, { steps: 4 });
+  assert.equal(await panel.getAttribute("data-panel-resizing"), "true");
+  await panel.getByRole("button", { name: "Expand" }).focus();
+  await page.keyboard.press("Space");
+  await page.mouse.up();
+  assert.equal(await panel.getAttribute("data-panel-resizing"), null, "expanding cancels the drag");
+  assert.equal(await handle.isVisible(), false, "the expanded viewer hides its resize boundary");
+  assert.equal(await handle.getAttribute("tabindex"), "-1", "the hidden boundary is outside the tab order");
+  await handle.evaluate((element) => {
+    element.focus();
+    for (const key of ["ArrowLeft", "Home", "End", "Enter"]) {
+      element.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+    }
+    element.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    element.dispatchEvent(new PointerEvent("pointerdown", { button: 0, isPrimary: true, pointerId: 91, clientX: 600, bubbles: true }));
+    window.dispatchEvent(new PointerEvent("pointermove", { pointerId: 91, clientX: 500 }));
+    window.dispatchEvent(new PointerEvent("pointerup", { pointerId: 91 }));
+  });
+  assert.equal(await handle.evaluate((element) => document.activeElement === element), false,
+    "the hidden boundary cannot receive focus");
+  assert.equal(await savedWidth(), savedDockedWidth, "expanded resize and reset attempts preserve the saved docked width");
   const expandedBox = await box(panel);
   near(expandedBox.x, contentBox.x, "expanded, the viewer starts at the sidebar's edge");
   near(expandedBox.width, contentBox.width, "expanded, it fills the content row");
@@ -1408,7 +1438,15 @@ try {
   );
   await panel.getByRole("button", { name: "Close files" }).waitFor();
   await panel.getByRole("button", { name: "Collapse" }).click();
-  near((await box(panel)).width, expectedWidth, "minimizing restores the docked width");
+  near((await box(panel)).width, dockedWidth, "minimizing restores the saved docked width");
+  assert.equal(await handle.isVisible(), true, "collapse restores the resize boundary");
+  assert.equal(await handle.getAttribute("tabindex"), "0");
+  await handle.focus();
+  await page.keyboard.press("ArrowLeft");
+  near((await box(panel)).width, dockedWidth + 16, "resizing works again after collapse");
+  await handle.dblclick();
+  assert.equal(await savedWidth(), null, "double-click reset works again after collapse");
+  near((await box(panel)).width, expectedWidth, "reset restores the default docked width");
   await page.getByRole("button", { name: "README.md" }).and(page.locator("[data-files-row]")).waitFor();
 
   // ---- closing resets ----

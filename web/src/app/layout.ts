@@ -82,10 +82,12 @@ export function workspaceLayout(): string {
               aria-label="Resize Project tasks panel" hidden class="absolute left-0 top-0 z-10 h-full w-2 cursor-col-resize"></div><div data-region="tasks-body" class="flex min-h-0 flex-1 flex-col overflow-hidden"></div></aside>
           <aside data-region="chats" aria-label="Chats" aria-hidden="true" inert
             class="flex h-full flex-none flex-col overflow-hidden border-l border-border-strong bg-surface"
-            data-open="false"><div data-region="chats-body" class="flex min-h-0 flex-1 flex-col overflow-hidden"></div></aside>
+            data-open="false"><div data-panel-resize="chats" role="separator" tabindex="-1" aria-orientation="vertical"
+              aria-label="Resize Chats panel" hidden class="absolute left-0 top-0 z-10 h-full w-2 cursor-col-resize"></div><div data-region="chats-body" class="flex min-h-0 flex-1 flex-col overflow-hidden"></div></aside>
           <aside data-region="assets" aria-label="Assets" aria-hidden="true" inert
             class="flex h-full flex-none flex-col overflow-hidden border-l border-border-strong bg-surface"
-            data-open="false"><div data-region="assets-body" class="flex min-h-0 flex-1 flex-col overflow-hidden"></div></aside>
+            data-open="false"><div data-panel-resize="assets" role="separator" tabindex="-1" aria-orientation="vertical"
+              aria-label="Resize Assets panel" hidden class="absolute left-0 top-0 z-10 h-full w-2 cursor-col-resize"></div><div data-region="assets-body" class="flex min-h-0 flex-1 flex-col overflow-hidden"></div></aside>
           <aside data-region="tutorial" aria-label="Tutorial" aria-hidden="true" inert data-open="false"></aside>
           <div data-region="tutorial-bar" hidden></div>
           <div data-region="tutorial-notice" role="status" hidden class="absolute bottom-2 left-2 z-50 max-w-sm rounded-control border border-border bg-surface p-3 text-text-primary"></div>

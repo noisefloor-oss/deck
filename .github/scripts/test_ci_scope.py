@@ -201,11 +201,24 @@ class GitDiffTests(unittest.TestCase):
         self.assertEqual(selected["mode"], "full")
         self.assertEqual(selected["jobs"], list(ci_scope.SUITES))
 
-    def test_jev_may_still_narrow_an_ordinary_path(self):
+    def test_jev_cannot_narrow_an_ordinary_code_path(self):
+        # The advisor once read a help-screen and PTY-fixture change as
+        # docs-only and the affected code suites never ran; the
+        # deterministic classification of every changed path is now the
+        # floor, so a docs-only plan cannot drop the suites the diff's own
+        # paths demand. Jev still selects - it can only add.
         docs_only = {"mode": "selective", "jobs": ["documentation"], "probe_shards": [1, 2, 3]}
         selected = self.merge_group_plan("web/src/app/widget.ts", docs_only)
         self.assertEqual(selected["selector"], "jev")
-        self.assertEqual(selected["jobs"], ["documentation"])
+        self.assertEqual(selected["jobs"], ["documentation", "frontend", "probes"])
+        Path("web/src/app/widget.ts").unlink()
+        go_docs_only = {"mode": "selective", "jobs": ["documentation"], "probe_shards": [1, 2, 3]}
+        selected = self.merge_group_plan("internal/tmux/help.go", go_docs_only)
+        self.assertEqual(set(selected["jobs"]), ci_scope.GO | {"documentation"})
+        Path("internal/tmux/help.go").unlink()
+        docs_change = {"mode": "selective", "jobs": ["documentation"], "probe_shards": [1, 2, 3]}
+        selected = self.merge_group_plan("docs/guide.md", docs_change)
+        self.assertEqual(selected["jobs"], ["documentation"], "a docs-only diff keeps the docs-only plan")
 
     def test_deletion_modes_symlinks_and_missing_commits(self):
         Path("README.md").unlink()

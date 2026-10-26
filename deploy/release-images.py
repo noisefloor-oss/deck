@@ -231,6 +231,17 @@ def can_promote(repository, sha, previous_sha=None):
     return True
 
 
+def publication_receipt(args, document):
+    destination = getattr(args, "receipt", "")
+    if not destination:
+        return
+    record = {"version": 1, "repository": os.environ["GITHUB_REPOSITORY"],
+              "run": os.environ["GITHUB_RUN_ID"], "attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "sha": args.sha, "image_set": document}
+    with open(destination, "x") as output:
+        output.write(json.dumps(record, sort_keys=True) + "\n")
+
+
 def publish(args):
     if any(type(value) is not int or not 0 < value < 2**31 for value in (args.uid, args.gid)):
         raise ValueError("Invalid runtime identity")
@@ -272,6 +283,7 @@ def publish(args):
         previous = catalog(reg, args.prefix, "previous")
         prune_registry([old[0]] + ([previous[0]] if previous else []),
                        [old[1]] + ([previous[1]] if previous else []), reg, args.prefix)
+        publication_receipt(args, old[0])
         print("Exact verified release set already published: " + args.sha, flush=True)
         return
     env = dict(os.environ, NOISEDECK_BUILD_VERSION=args.sha,
@@ -325,6 +337,7 @@ def publish(args):
         documents = [doc] + ([previous[0]] if previous else [])
         catalogs = [catalog_ref] + ([previous[1]] if previous else [])
         prune_registry(documents, catalogs, reg, args.prefix)
+    publication_receipt(args, doc)
     print("Published and verified release set " + args.sha, flush=True)
 
 
@@ -450,6 +463,7 @@ def main():
         cmd.add_argument("--prefix", default="deck-deploy")
         if action == "publish":
             cmd.add_argument("--sha", required=True)
+            cmd.add_argument("--receipt", default="")
             cmd.add_argument("--uid", required=True, type=int)
             cmd.add_argument("--gid", required=True, type=int)
             cmd.add_argument("--font-context", default="")

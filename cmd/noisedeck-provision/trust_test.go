@@ -34,7 +34,7 @@ func TestTrustSeedsEveryMeasuredHarness(t *testing.T) {
 	if err := runTrust(home, []string{"trust", project}, &out); err != nil {
 		t.Fatalf("runTrust: %v", err)
 	}
-	for _, name := range []provider.Name{provider.Claude, provider.Codex, provider.Kimi} {
+	for _, name := range []provider.Name{provider.Claude, provider.Codex, provider.Kimi, provider.Devin} {
 		if got := readTrust(t, home, project, name); got != provider.WorkspaceTrustPrepared {
 			t.Errorf("%s reads state %d after seeding", name, got)
 		}
@@ -61,6 +61,7 @@ func TestTrustIsIdempotent(t *testing.T) {
 		filepath.Join(home, ".claude.json"),
 		filepath.Join(home, ".codex", "config.toml"),
 		filepath.Join(home, ".kimi-code", "workspace-trust", provider.KimiWorkspaceTrustFileName(project)),
+		filepath.Join(home, ".local", "share", "devin", "cli", "trusted_workspaces.json"),
 	} {
 		raw, err := os.ReadFile(path)
 		if err != nil {

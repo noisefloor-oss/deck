@@ -60,7 +60,15 @@ identity:
     provider_check_disabled: true
     authority: "the explicit Deck project/provider launch gesture and Deck's outer project policy"
     enforcement_role: none
-    reason: "SessionStart is emitted only after Devin's trust prompt, while exact-resume candidates remain provisional and unattachable"
+    measured_record:
+      version: "3000.11.205"
+      modal: "Do you trust the authors of this directory?"
+      modal_default: "1 Yes, trust"
+      refusal: "2 No, exit"
+      record: "~/.local/share/devin/cli/trusted_workspaces.json"
+      shape: '{"trusted_paths": ["<absolute path>", ...]}'
+      inheritance: "a launch in a subdirectory of a listed path opens with no modal (measured: parent trusted, child straight into the REPL)"
+      seeding: "appending the path before a launch is equivalent to answering the modal (measured end to end); a path sharing a prefix but not an ancestor is not covered"
 
 injection:
   bracket_paste: true

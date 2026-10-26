@@ -176,6 +176,20 @@ export function emptyRailNewSessionHtml(
       class="flex w-full cursor-pointer items-center gap-2 rounded-control px-2 py-1.5 text-left text-body leading-5 text-text-tertiary transition-colors hover:bg-wash-hover hover:text-text-primary focus-visible:bg-wash-hover max-md:min-h-11"><span aria-hidden="true" class="flex w-4 flex-none justify-center font-mono text-[min(var(--type-mono-size),calc(var(--type-body-size)*var(--type-mono-xh-ratio)))]">+</span><span class="min-w-0 flex-1">New session</span></button></li>`;
 }
 
+export function cloneJobStaysListed(
+  job: CloneJob,
+  awaitingProject: Set<string>,
+  groups: readonly { project: { id: string } }[],
+): boolean {
+  if (job.status !== "done") return true;
+  if (!awaitingProject.has(job.id)) return false;
+  if (job.project_id !== undefined && groups.some((group) => group.project.id === job.project_id)) {
+    awaitingProject.delete(job.id);
+    return false;
+  }
+  return true;
+}
+
 // An import in flight is a project that exists but cannot be opened yet.
 // It sits in the rail from the moment the clone starts, drawn as the
 // collapsed project row it will become, with progress where the row's
@@ -183,17 +197,20 @@ export function emptyRailNewSessionHtml(
 // Clicking reopens the dialog.
 export function cloneRowHtml(job: CloneJob): string {
   const running = job.status === "running";
+  const done = job.status === "done";
   const percent = Math.max(0, Math.min(100, Math.round(job.percent)));
   const hint = running
     ? `Importing ${escapeHtml(job.url.replace(/^https?:\/\//, ""))} — ${percent}%`
-    : "Import stopped part-way — click to resume";
+    : done ? "Import complete — refreshing projects" : "Import stopped part-way — click to resume";
   const progress = running
     ? `<span class="sr-only">Importing, ${percent}%</span>
           <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke-width="2">
             <circle cx="8" cy="8" r="6" class="stroke-wash-pressed"/>
             <circle data-clone-ring cx="8" cy="8" r="6" pathLength="100" stroke-dasharray="${percent} 100" transform="rotate(-90 8 8)" class="stroke-accent"/>
           </svg>`
-    : `<span class="sr-only">Import stopped part-way</span><span aria-hidden="true" class="inline-flex text-warning">${lucideIcon("triangle-alert", 14)}</span>`;
+    : done
+      ? `<span class="sr-only">Import complete</span><span aria-hidden="true" class="inline-flex text-accent">${lucideIcon("check", 14)}</span>`
+      : `<span class="sr-only">Import stopped part-way</span><span aria-hidden="true" class="inline-flex text-warning">${lucideIcon("triangle-alert", 14)}</span>`;
   return `<li class="rounded-control"><div class="relative flex items-center">
       <button type="button" data-clone-row="${escapeHtml(job.id)}" data-list-row role="option" tabindex="-1" data-hint="${hint}"
         class="${PROJECT_ROW_BUTTON} hover:bg-wash-hover active:bg-wash-pressed focus-visible:bg-wash-hover">

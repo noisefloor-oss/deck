@@ -407,11 +407,19 @@ export class LiveWorkspace {
     // The docked panels carry the shared resizing controller, one per
     // panel: each owns its saved width, drag boundary and keyboard values,
     // and their lifetime is the workspace's.
-    for (const [region, key] of [["files", "noisedeck.panel.files.width"], ["tasks", "noisedeck.panel.tasks.width"]] as const) {
+    for (const [region, key] of [
+      ["files", "noisedeck.panel.files.width"],
+      ["tasks", "noisedeck.panel.tasks.width"],
+      ["chats", "noisedeck.panel.chats.width"],
+      ["assets", "noisedeck.panel.assets.width"],
+    ] as const) {
       const host = this.root.querySelector<HTMLElement>(`[data-region="${region}"]`);
       const handle = this.root.querySelector<HTMLElement>(`[data-panel-resize="${region}"]`);
       if (host === null || handle === null) continue;
-      this.panelSizes.push(new PanelSize(host, handle, { key, min: 400, max: 1000, reserve: 360 }));
+      this.panelSizes.push(new PanelSize(host, handle, {
+        key, min: 400, max: 1000, reserve: 360,
+        isEnabled: () => host.dataset.expanded !== "true",
+      }));
     }
     this.starter = new TutorialStarterModel(api, api, tutorialStarterBundle, {
       onChange: () => this.starterChanged(),
@@ -2383,6 +2391,7 @@ export class LiveWorkspace {
       },
     );
     this.files = new FilesPanel(panel, this.filesModel, {
+      onExpandedChange: () => { for (const size of this.panelSizes) size.refresh(); },
       onClose: () => {
         this.panels.close();
         focusPanelTrigger(this.root, "live", "files");
@@ -3176,7 +3185,11 @@ export class LiveWorkspace {
     button.disabled = true;
     try {
       await this.api.logout();
-      if (!this.disposed) this.requireAuthentication();
+      // A hard navigation, not an in-app swap: the reload drops the current
+      // page state and the fresh load answers from the server's session
+      // check - where the logout epoch rejects any cookie a straggler
+      // renewal response managed to set after the logout cleared the jar.
+      window.location.replace(window.location.pathname);
     } catch (cause) {
       if (this.disposed) return;
       const message = cause instanceof Error ? cause.message : String(cause);

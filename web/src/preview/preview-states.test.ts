@@ -103,6 +103,13 @@ test("mount-delay parses a millisecond hold and rejects anything else", () => {
   assert.throws(() => parsePreviewParams(new URLSearchParams({ "mount-delay": "90000" })), /invalid mount-delay/);
 });
 
+test("project-refresh-delay parses a millisecond hold and rejects anything else", () => {
+  assert.equal(parsePreviewParams(new URLSearchParams()).projectRefreshDelayMS, null);
+  assert.equal(parsePreviewParams(new URLSearchParams({ "project-refresh-delay": "800" })).projectRefreshDelayMS, 800);
+  assert.throws(() => parsePreviewParams(new URLSearchParams({ "project-refresh-delay": "soon" })), /invalid project-refresh-delay/);
+  assert.throws(() => parsePreviewParams(new URLSearchParams({ "project-refresh-delay": "90000" })), /invalid project-refresh-delay/);
+});
+
 test("the files axes parse and are reported by describeState", () => {
   const params = parsePreviewParams(new URLSearchParams({
     panel: "files",

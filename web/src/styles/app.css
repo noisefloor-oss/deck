@@ -1261,6 +1261,7 @@
 [data-panel-resize] {
   touch-action: none;
 }
+[data-panel-resize][hidden] { display: none; }
 [data-panel-resize]:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -3px; }
 [data-panel-resizing="true"] { cursor: col-resize; user-select: none; }
 [data-panel-resizing="true"] * { cursor: col-resize !important; }

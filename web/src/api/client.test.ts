@@ -1212,12 +1212,21 @@ test("getTutorial maps a missing record to null", async () => {
 test("getTutorial returns the stored document with its scope and the caller's signal", async () => {
   const record = { version: 1, dismissed: true, lesson: "navigation", step: 2, done: ["welcome"], scope: "installation" };
   const controller = new AbortController();
+  let seen: AbortSignal | undefined;
   const stub = stubFetch((_url, init) => {
-    assert.equal(init?.signal, controller.signal);
+    seen = init?.signal ?? undefined;
     return json(200, record);
   });
   try {
-    assert.deepEqual(await new HttpApiClient().getTutorial(controller.signal), record);
+    const api = new HttpApiClient();
+    assert.deepEqual(await api.getTutorial(controller.signal), record);
+    // The caller's signal no longer passes through by identity: every
+    // request is composed with the logout signal, so EITHER aborting must
+    // cancel the request.
+    assert.ok(seen instanceof AbortSignal, "the request carries a signal");
+    assert.equal(seen.aborted, false, "an open caller signal and an open logout signal compose open");
+    controller.abort();
+    assert.equal(seen.aborted, true, "the caller's abort cancels the composed signal");
   } finally {
     stub.restore();
   }
@@ -1274,4 +1283,56 @@ test("generateTasks sends an optional harness and preserves omitted fields", asy
     ]);
     assert.ok(stub.calls.every((call) => call.url === "/api/projects/p%2F1/taskmaster/generate" && call.init?.method === "POST"));
   } finally { stub.restore(); }
+});
+
+test("logout aborts in-flight requests before its own POST leaves", async () => {
+  const calls: string[] = [];
+  let releaseRenewal: (value: Response) => void = () => {};
+  const renewal = new Promise<Response>((resolve) => { releaseRenewal = resolve; });
+  const original = globalThis.fetch;
+  // A signal-honoring fetch: it resolves when the handler says, and rejects
+  // the moment the request's signal aborts, which is the real fetch's
+  // contract the logout race depends on.
+  globalThis.fetch = ((_url: string | URL | Request, init?: RequestInit) => {
+    calls.push(init?.signal?.aborted === true ? "aborted" : "open");
+    const body = calls.length === 1 ? renewal
+      : Promise.resolve(new Response(null, { status: 204 }));
+    return new Promise<Response>((resolve, reject) => {
+      const abort = (): void => reject(new DOMException("aborted", "AbortError"));
+      if (init?.signal?.aborted) { abort(); return; }
+      init?.signal?.addEventListener("abort", abort, { once: true });
+      body.then((value: Response) => { init?.signal?.removeEventListener("abort", abort); resolve(value); }, reject);
+    });
+  }) as typeof fetch;
+  try {
+    const api = new HttpApiClient();
+    const inflight = api.listProjects();
+    await api.logout();
+    // The straggler's response would set a cookie after logout; the abort
+    // means the fetch never applies it, whatever the network did.
+    releaseRenewal(new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } }));
+    await assert.rejects(inflight, (cause: unknown) => cause instanceof Error && cause.name === "AbortError");
+    assert.deepEqual(calls, ["open", "open"], "the logout POST itself is not aborted");
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("a failed logout re-arms the client instead of bricking every request", async () => {
+  const original = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = ((_url: string | URL | Request, _init?: RequestInit) => {
+    calls += 1;
+    if (calls === 1) return Promise.reject(new Error("network down"));
+    return Promise.resolve(new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } }));
+  }) as typeof fetch;
+  try {
+    const api = new HttpApiClient();
+    await assert.rejects(api.logout(), /network down/);
+    // The session may still be live: the next ordinary request must work,
+    // not reject with the abort from the failed logout attempt.
+    assert.deepEqual(await api.listProjects(), []);
+  } finally {
+    globalThis.fetch = original;
+  }
 });

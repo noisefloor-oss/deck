@@ -139,7 +139,14 @@ def plan(event_name, event):
         result = classify(paths)
         result["path_count"] = len(paths)
         if result["mode"] != "full":
-            result["floor"] = classify([p for p in paths if p.startswith(SECURITY)] or ["README.md"])
+            # The floor beneath Jev is the deterministic classification of
+            # every changed path, not only the security ones: the advisor
+            # once read a help-screen and PTY-fixture change as docs-only
+            # and the affected code suites never ran. Jev may add suites it
+            # is confident about; it may never drop a suite the diff's own
+            # paths demand.
+            result["floor"] = {"mode": result["mode"], "jobs": result["jobs"],
+                               "probe_shards": result["probe_shards"], "reason": result["reason"]}
         return result
     except (KeyError, TypeError, ValueError, UnicodeError, OSError,
             subprocess.SubprocessError):

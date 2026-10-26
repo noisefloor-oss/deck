@@ -34,7 +34,7 @@ type taskBinaries struct {
 	shim       string
 }
 
-const tasksIntegrationVersion = "2.9.1"
+const tasksIntegrationVersion = "2.10.1"
 
 // buildTaskBinaries compiles a complete fixed-libexec installation. Go's
 // build cache makes repeat builds within a test run cheap.
@@ -438,7 +438,7 @@ func TestTaskBinaryContextIsReadOnly(t *testing.T) {
 			}
 			if got.SchemaVersion != 5 || got.Start != project || got.ProjectBoundary != project ||
 				got.StorePath != storePath || got.StoreOwnerBoundary != "" ||
-				got.StoreSchemaVersion != 0 || got.EngineSchemaVersion != 5 ||
+				got.StoreSchemaVersion != 0 || got.EngineSchemaVersion != 6 ||
 				got.DocsPath != ".tasks/docs/PRD.md" ||
 				got.PreferencesPath != ".tasks/preferences.json" ||
 				got.Initialized || got.Blocked || got.BlockedReason != "" {
@@ -452,7 +452,15 @@ func TestTaskBinaryContextIsReadOnly(t *testing.T) {
 		})
 	}
 
-	// The retired-layout migration command is gone from the cutover release.
+	// Subcommand help follows the same successful stdout contract as root help.
+	for _, args := range [][]string{{"tasks", "live", "feed", "--help"}, {"tasks", "milestone", "list", "--help"}, {"tasks", "set-milestone", "--help"}} {
+		stdout, stderr, exit := engineRun(t, binaries.noise, args...)
+		if exit != 0 || stderr != "" || !strings.HasPrefix(stdout, "usage: noise-tasks ") {
+			t.Fatalf("help %v: exit=%d stdout=%q stderr=%q", args, exit, stdout, stderr)
+		}
+	}
+
+	// A migration invocation without its required operation is a usage error.
 	stdout, stderr, exit := engineRun(t, binaries.noise, "tasks", "migrate")
 	if exit != 2 || stdout != "" {
 		t.Fatalf("retired migrate: exit=%d stdout=%q stderr=%q", exit, stdout, stderr)

@@ -55,7 +55,7 @@ test("the ledger folds into live and earlier, the news sentence, and unseen", as
   await model.refresh();
   assert.equal(model.state, "ready");
   assert.equal(model.agent, "claude-sess");
-  assert.deepEqual(model.live.map((c) => c.id), ["chat-a1b2c3d4", "chat-e5f6a7b8", "chat-another-member-left"]);
+  assert.deepEqual(model.live.map((c) => c.id), ["chat-a1b2c3d4", "chat-f0486445", "chat-e5f6a7b8", "chat-another-member-left"]);
   assert.deepEqual(model.earlier.map((c) => c.state), ["closed", "declined", "closed", "left"]);
   assert.equal(model.news, "claude-sess is in a chat with codex-sess, kimi-sess · a2a#3ff6c0 written, no echo seen");
   assert.equal(model.unseen, true, "nothing has been in front of the user yet");
@@ -99,7 +99,7 @@ test("a failed read after data keeps the data; before data it is unavailable; no
   fail = new Error("flap");
   await model.refresh();
   assert.equal(model.state, "ready", "a flapping read never blanks the ledger");
-  assert.equal(model.chats.length, 7);
+  assert.equal(model.chats.length, 8);
   assert.equal(model.error, "flap");
   fail = new ApiError(404, "no_agent_handle", "no handle");
   await model.refresh();

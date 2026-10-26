@@ -32,7 +32,7 @@ func SessionExpires(ctx context.Context) (time.Time, bool) {
 
 func withSessionExpiry(ctx context.Context, payload string) context.Context {
 	parts := strings.SplitN(payload, ":", 4)
-	if len(parts) != 4 || parts[0] != "v3" {
+	if len(parts) != 4 || (parts[0] != "v3" && parts[0] != "v4") {
 		return ctx
 	}
 	seconds, err := strconv.ParseInt(parts[2], 10, 64)
@@ -51,7 +51,10 @@ func CurrentLogin(ctx context.Context) (Login, bool) {
 
 func loginFromPayload(payload string) (Login, bool) {
 	parts := strings.Split(payload, ":")
-	if len(parts) != 7 || parts[0] != "v3" {
+	// v3 carries the login identity; v4 adds the logout epoch as an eighth
+	// field, so both lengths parse here and the epoch is read where it is
+	// checked.
+	if (len(parts) != 7 && len(parts) != 8) || (parts[0] != "v3" && parts[0] != "v4") {
 		return Login{}, false
 	}
 	id, err := hex.DecodeString(parts[3])

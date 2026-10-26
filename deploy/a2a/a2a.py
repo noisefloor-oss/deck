@@ -3875,8 +3875,17 @@ def codex_hook_owner(panes: list[dict], payload: dict) -> dict | None:
     return matches[0] if len(matches) == 1 else None
 
 
+def process_start_time(pid: int) -> str | None:
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text()
+        return stat[stat.rfind(")") + 1:].split()[19]
+    except (OSError, IndexError):
+        return None
+
+
 def cached_codex_hook_owner(payload: dict) -> dict | None:
-    native = payload.get("session_id") or payload.get("thread_id")
+    candidate = payload.get("session_id") or payload.get("thread_id")
+    native = candidate if isinstance(candidate, str) and candidate else None
     filename = f"codex-owner-{hashlib.sha256(native.encode()).hexdigest()}.json" if native else None
     cached = read_state(filename) if filename else {}
     owner = cached.get("owner")
@@ -3884,12 +3893,15 @@ def cached_codex_hook_owner(payload: dict) -> dict | None:
     if (isinstance(owner, dict) and isinstance(at, (int, float))
             and 0 <= time.time() - at < CODEX_OWNER_TTL_S
             and isinstance(owner.get("pid"), int) and owner["pid"] > 0
-            and harness_of_pid(owner["pid"]) == "codex"):
+            and isinstance(owner.get("start"), str)
+            and harness_of_pid(owner["pid"]) == "codex"
+            and owner["start"] == process_start_time(owner["pid"])):
         return owner
     owner = codex_hook_owner(scan_panes(include_process_details=True), payload)
-    if filename:
+    if filename and owner is not None:
         # Process arguments may contain prompts; cache only presence metadata.
-        owner = {k: v for k, v in owner.items() if k not in ("cmdline", "cwd")} if owner else None
+        owner = {k: v for k, v in owner.items() if k not in ("cmdline", "cwd")}
+        owner["start"] = process_start_time(owner["pid"])
         try:
             write_state(filename, {"owner": owner, "at": time.time()})
         except OSError:

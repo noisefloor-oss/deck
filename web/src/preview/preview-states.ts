@@ -150,6 +150,7 @@ export interface PreviewParams {
   // mountDelayMS holds the mount listing's answer back that long, so a probe
   // can land it while you type in the Add project dialog.
   mountDelayMS: number | null;
+  projectRefreshDelayMS: number | null;
   // projectPath pre-fills the New project dialog's path, so Browse opens the
   // picker straight at a directory the way a returning user reaches it —
   // without the mount listing ever having been read.
@@ -257,6 +258,15 @@ export function parsePreviewParams(search: URLSearchParams): PreviewParams {
     mountDelayMS = Number(mountDelayRaw);
   }
 
+  let projectRefreshDelayMS: number | null = null;
+  const projectRefreshDelayRaw = search.get("project-refresh-delay");
+  if (projectRefreshDelayRaw !== null) {
+    if (!/^\d+$/.test(projectRefreshDelayRaw) || Number(projectRefreshDelayRaw) > 60_000) {
+      throw new Error(`invalid project-refresh-delay: ${JSON.stringify(projectRefreshDelayRaw)}`);
+    }
+    projectRefreshDelayMS = Number(projectRefreshDelayRaw);
+  }
+
   return {
     projectPreview: parseEnum("project-preview", search.get("project-preview"), PROJECT_PREVIEW_STATES),
     projectPreviewDetails: search.get("project-preview-details") === "1",
@@ -286,6 +296,7 @@ export function parsePreviewParams(search: URLSearchParams): PreviewParams {
     sidebar,
     roots: parseEnum("roots", search.get("roots"), ["2"] as const) === "2" ? 2 : 1,
     mountDelayMS,
+    projectRefreshDelayMS,
     projectPath,
     identities: parseEnum("identities", search.get("identities"), ["none"] as const) === "none" ? "none" : "some",
   };

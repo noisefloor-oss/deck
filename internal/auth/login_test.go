@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/rs/zerolog"
 	"time"
 )
 
@@ -242,5 +244,178 @@ func TestMalformedBrowserLoginCookiesAreRefused(t *testing.T) {
 				t.Fatal("malformed signed browser identity accepted")
 			}
 		})
+	}
+}
+
+// epochStoreSpy records what logout persistence saw, and can fail, so the
+// tests can hold both halves of the best-effort contract.
+type epochStoreSpy struct {
+	loaded  map[string]uint64
+	saved   map[string]uint64
+	loadErr error
+	saveErr error
+}
+
+func (s *epochStoreSpy) LoadLogoutEpochs(context.Context) (map[string]uint64, error) {
+	if s.loadErr != nil {
+		return nil, s.loadErr
+	}
+	return s.loaded, nil
+}
+
+func (s *epochStoreSpy) SaveLogoutEpoch(_ context.Context, loginID string, epoch uint64) error {
+	if s.saveErr != nil {
+		return s.saveErr
+	}
+	if s.saved == nil {
+		s.saved = map[string]uint64{}
+	}
+	s.saved[loginID] = epoch
+	return nil
+}
+
+// The logout/renewal race: a renewal response generated before logout
+// carries the pre-logout epoch, and once logout has bumped it, that cookie
+// verifies stale no matter when the browser applies it.
+func TestLogoutMakesInFlightRenewalsStale(t *testing.T) {
+	h := builtinForMiddleware(t)
+	first, csrf := h.mintSession(t)
+	// The renewal that was already in flight: issued before logout, so its
+	// epoch is the pre-logout one. Minting a second token for the SAME
+	// login is exactly what a renewal is.
+	renewed := renewForLogin(t, h, first.Value)
+	other, _ := h.mintSession(t)
+	r := httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
+	r.AddCookie(first)
+	r.Header.Set(CSRFHeader, csrf)
+	h.handleLogout(httptest.NewRecorder(), r)
+	for name, token := range map[string]string{"the logged-out login": renewed, "its original cookie": first.Value} {
+		if _, err := h.verifySessionValue(token, h.now()); err == nil {
+			t.Fatalf("%s still verifies after logout", name)
+		}
+	}
+	if _, err := h.verifySessionValue(other.Value, h.now()); err != nil {
+		t.Fatal("another browser's login was invalidated by this logout")
+	}
+}
+
+// A persisted epoch binds a restarted process: the store loads at New and
+// the logout's write is best effort with the in-memory epoch immediate.
+func TestLogoutEpochPersistence(t *testing.T) {
+	store := &epochStoreSpy{}
+	h, err := New(Config{
+		Mode:          "builtin",
+		ClientID:      "client-id",
+		ClientSecret:  "s",
+		RedirectURL:   "http://127.0.0.1:8837/auth/callback",
+		AllowedEmail:  "operator@example.com",
+		SessionSecret: []byte("0123456789abcdef0123456789abcdef"),
+		JWKSURL:       "http://127.0.0.1:1/certs",
+		EpochStore:    store,
+	}, zerolog.Nop())
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, csrf := h.mintSession(t)
+	r := httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
+	r.AddCookie(token)
+	r.Header.Set(CSRFHeader, csrf)
+	h.handleLogout(httptest.NewRecorder(), r)
+	if len(store.saved) != 1 {
+		t.Fatalf("logout persisted %d epochs, want the logging-in browser's one", len(store.saved))
+	}
+	// A process restarted on the same store rejects the pre-logout cookie.
+	restarted, err := New(Config{
+		Mode:          "builtin",
+		ClientID:      "client-id",
+		ClientSecret:  "s",
+		RedirectURL:   "http://127.0.0.1:8837/auth/callback",
+		AllowedEmail:  "operator@example.com",
+		SessionSecret: h.cfg.SessionSecret,
+		JWKSURL:       "http://127.0.0.1:1/certs",
+		EpochStore:    &epochStoreSpy{loaded: store.saved},
+	}, zerolog.Nop())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := restarted.verifySessionValue(token.Value, restarted.now()); err == nil {
+		t.Fatal("a persisted logout epoch did not bind the restarted process")
+	}
+}
+
+// renewForLogin mints a fresh token for the same login identity as value,
+// which is byte-for-byte what a renewal in flight produced.
+func renewForLogin(t *testing.T, h *Handler, value string) string {
+	t.Helper()
+	payload, err := h.verifySessionValue(value, h.now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	login, ok := loginFromPayload(payload)
+	if !ok {
+		t.Fatal("fixture cookie carries no login")
+	}
+	renewed, err := h.issueLoginSession(h.now(), h.now(), login)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return renewed
+}
+
+// The verify/logout/issue ordering: Require verifies an aged cookie, and a
+// logout can land between that verify and the renewal the same request
+// issues. The renewal must inherit the cookie's pre-logout epoch and fail
+// its own verification, never revive the login with the post-logout
+// generation.
+func TestRenewalAfterLogoutCannotReviveTheLogin(t *testing.T) {
+	h := builtinForMiddleware(t)
+	token, csrf := h.mintSession(t)
+	// Age the cookie past the renewal threshold: only an aged session
+	// renews, so this is the shape the race actually rides.
+	later := NewLater(t, h, 2*time.Hour)
+	payload, err := later.verifySessionValue(token.Value, later.now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value, _, renewErr := later.sessionRenewal(payload, later.now()); renewErr != nil || value == "" {
+		t.Fatal("fixture must be old enough to renew before the logout")
+	}
+	// Logout lands between verify and renewal.
+	r := httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
+	r.AddCookie(token)
+	r.Header.Set(CSRFHeader, csrf)
+	later.handleLogout(httptest.NewRecorder(), r)
+	value, _, renewErr := later.sessionRenewal(payload, later.now())
+	if renewErr == nil && value != "" {
+		if _, err := later.verifySessionValue(value, later.now()); err == nil {
+			t.Fatal("renewal minted after logout revived the logged-out login")
+		}
+	}
+	if _, err := later.verifySessionValue(token.Value, later.now()); err == nil {
+		t.Fatal("the original cookie still verifies after logout")
+	}
+}
+
+// A legacy (v1/v2) logout bumps the empty-ID epoch. A fresh login after it
+// gets its own new ID and epoch zero, so its own logout must leave its
+// cookie stale - reading the empty-ID epoch at issue would stamp 1 under
+// the new ID, and that login's first logout (0 -> 1) could never reject it.
+func TestLegacyLogoutDoesNotPoisonFreshLogins(t *testing.T) {
+	h := builtinForMiddleware(t)
+	// A legacy (v1/v2) browser has no login identity, so its logout bumps
+	// the empty-ID epoch; bumping it directly is that logout's whole effect
+	// on the epoch store.
+	h.bumpLogoutEpoch("")
+	// A fresh login after the legacy logout.
+	fresh, freshCsrf := h.mintSession(t)
+	if _, err := h.verifySessionValue(fresh.Value, h.now()); err != nil {
+		t.Fatalf("fresh login does not verify after a legacy logout: %v", err)
+	}
+	r2 := httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
+	r2.AddCookie(fresh)
+	r2.Header.Set(CSRFHeader, freshCsrf)
+	h.handleLogout(httptest.NewRecorder(), r2)
+	if _, err := h.verifySessionValue(fresh.Value, h.now()); err == nil {
+		t.Fatal("the fresh login's own logout did not stale its cookie")
 	}
 }

@@ -2013,6 +2013,25 @@ test("a late failure for a file the user left does not paint over the new one", 
   assert.equal(m.view?.kind, "text");
 });
 
+test("a background change retries an image whose status check failed", async () => {
+  let current = entry("home.png", false, 412_000, IMAGE_MTIME);
+  const { api, calls } = fakeFileApi({
+    listProjectFiles: async (_id: string, path: string): Promise<FileListing> => ({
+      path, at_root: true, entries: [current],
+    }),
+    checkProjectFileImage: async () => { throw new ApiError(500, "unknown", "Internal Server Error"); },
+  });
+  const m = model(api);
+  await m.open();
+  await m.activate(m.entries()[0]!);
+  await m.imageFailed(imageSrcOf(m));
+  assert.deepEqual(m.view, { kind: "error", message: "Internal Server Error" });
+  current = entry("home.png", false, 412_000, "2026-08-02T11:05:00Z");
+  calls.notify?.();
+  await eventuallyTrue(() => m.view?.kind === "image" && m.view.image.state === "loading");
+  assert.ok(imageSrcOf(m).endsWith(`v=${encodeURIComponent(`${current.mtime}:412000`)}`));
+});
+
 test("a removed image hides every download and offers Refresh list", async () => {
   const { api } = fakeFileApi({
     checkProjectFileImage: async () => { throw new ApiError(404, "unknown", "Not Found"); },
@@ -2043,12 +2062,18 @@ test("Refresh list reads the folder again and reopens a file it still names", as
   assert.equal(m.view?.kind === "image" && m.view.image.state, "loading", "the listed file is opened again");
 });
 
-test("a background change re-requests a shown image under a new source and keeps its size until it decodes", async () => {
+test("a background change constructs one new image source and keeps its size until it decodes", async () => {
   let mtime = IMAGE_MTIME;
+  let sources = 0;
   const { api, calls } = fakeFileApi({
     listProjectFiles: async (_id: string, path: string): Promise<FileListing> => ({
       path, at_root: true, entries: [entry("home.png", false, 412_000, mtime)],
     }),
+    projectFileImageUrl: (id: string, path: string, version?: string): string => {
+      ++sources;
+      return `/api/projects/${encodeURIComponent(id)}/files/image?path=${encodeURIComponent(path)}` +
+        (version === undefined ? "" : `&v=${encodeURIComponent(version)}`);
+    },
   });
   const m = model(api);
   await m.open();
@@ -2062,6 +2087,7 @@ test("a background change re-requests a shown image under a new source and keeps
   assert.ok(view?.kind === "image" && view.image.state === "shown");
   assert.ok(view.image.src.endsWith(`v=${encodeURIComponent(`${mtime}:412000`)}`));
   assert.equal(view.image.width, 1440);
+  assert.equal(sources, 2, "the change event builds only the initial and replacement sources");
 });
 
 test("a shown image draws Fit by default, its edge, and a checkerboard only behind alpha", async () => {

@@ -71,26 +71,35 @@ const LINES = Array.from({ length: 24 }, (_, i) => `line-${String(i).padStart(2,
 let browser;
 try {
   ({ browser } = await getBrowser());
-  await run("windows");
-  await run("mac");
+  for (const platform of ["windows", "mac", "linux", "iphone", "ipad", "disagreeing-platforms"]) {
+    await run(platform);
+  }
   console.log("terminal menu probe: all assertions passed");
 } finally {
   await browser?.close();
   await new Promise((closed) => server.close(closed));
 }
 
-// The mac pass stops after the right-click menu: xterm reads the platform at
-// load, and on macOS it would select the word under a right-click unless
-// told not to. The keyboard chords that follow are Windows chords.
+// Selection is checked across xterm's platform split, including mobile Apple
+// platform strings and a conflicting userAgentData hint. The keyboard chords
+// that follow are Windows-only; touch gestures have their own probe.
 async function run(platform) {
   const context = await browser.newContext({
     viewport: { width: 1280, height: 800 },
     permissions: ["clipboard-read", "clipboard-write"],
   });
-  await context.addInitScript((mac) => {
-    Object.defineProperty(navigator, "userAgentData", { value: { platform: mac ? "macOS" : "Windows" } });
-    Object.defineProperty(navigator, "platform", { value: mac ? "MacIntel" : "Win32" });
-  }, platform === "mac");
+  const platforms = {
+    windows: ["Win32", "Windows"],
+    mac: ["MacIntel", "macOS"],
+    linux: ["Linux x86_64", "Linux"],
+    iphone: ["iPhone", null],
+    ipad: ["iPad", null],
+    "disagreeing-platforms": ["Linux x86_64", "macOS"],
+  };
+  await context.addInitScript(([nativePlatform, hint]) => {
+    Object.defineProperty(navigator, "userAgentData", { value: hint === null ? undefined : { platform: hint } });
+    Object.defineProperty(navigator, "platform", { value: nativePlatform });
+  }, platforms[platform]);
   await context.addCookies([{ name: "noisedeck_csrf", value: "cookie-csrf", url: origin }]);
   const page = await context.newPage();
   const loginRequests = [];
@@ -360,7 +369,8 @@ async function run(platform) {
   emitOutput("\u001b[?1000l\u001b[?1006l");
   await new Promise((resolve) => setTimeout(resolve, 500));
   await dragOverFirstLine();
-  if (platform === "mac") {
+  if (platform !== "windows") {
+    assert.deepEqual(errors, [], `page errors: ${errors.join("; ")}`);
     await context.close();
     return;
   }

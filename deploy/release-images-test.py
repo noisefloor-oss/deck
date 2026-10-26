@@ -52,7 +52,8 @@ class ReleaseImagesTest(unittest.TestCase):
                  patch.object(module, 'catalog', side_effect=[old, None]), patch.object(module, 'probe'), \
                  patch.object(module.subprocess, 'run'), patch.object(module, 'run', side_effect=command) as run, \
                  patch.object(module, 'push', side_effect=push) as pushed, patch.object(module, 'prune_registry') as prune, \
-                 patch.object(module, 'can_promote', return_value=allowed) as promote:
+                 patch.object(module, 'can_promote', return_value=allowed) as promote, \
+                 patch.object(module, 'publication_receipt') as receipt:
                 module.publish(args)
                 promote.assert_called_once_with(repo, SHA, old[0]['sha'])
                 tags = [call.args[-1] for call in run.call_args_list if call.args[:2] == ('docker', 'tag')]
@@ -61,6 +62,18 @@ class ReleaseImagesTest(unittest.TestCase):
                 self.assertEqual(tags, expected)
                 self.assertEqual(pointers, expected)
                 self.assertEqual(prune.called, allowed)
+                self.assertEqual(receipt.called, allowed)
+
+    def test_publication_receipt_binds_actual_source_and_attempt(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, GITHUB_REPOSITORY='example/deck', GITHUB_RUN_ID='42', GITHUB_RUN_ATTEMPT='2'):
+            path = pathlib.Path(directory) / 'receipt.json'
+            args = argparse.Namespace(receipt=str(path), sha=SHA)
+            module.publication_receipt(args, document())
+            record = json.loads(path.read_text())
+            self.assertEqual(record['sha'], SHA)
+            self.assertEqual(record['image_set'], document())
+            self.assertEqual((record['run'], record['attempt']), ('42', '2'))
+            with self.assertRaises(FileExistsError): module.publication_receipt(args, document())
 
     def test_completed_accepted_build_survives_main_advancing(self):
         repo = 'example/deck'

@@ -6,6 +6,7 @@ import { Terminal } from "@xterm/xterm";
 import type { ITheme } from "@xterm/xterm";
 export type { ITheme };
 import { isSafeUrl } from "../lib/url.ts";
+import { touchSelectionCell, touchSelectionRange } from "./touch-selection.ts";
 import { isWindowsClient } from "../lib/platform.ts";
 import { forceSelectionModifier, nativeClipboardKey, planClipboardKey, readClipboard, viewportText, writeClipboard, type ClipboardLike } from "./copy.ts";
 import { joinWrappedSelection, WrappedUrlLinkProvider } from "./links.ts";
@@ -57,12 +58,9 @@ export interface MountedTerminal {
   // applies bracketed paste and the line-ending transforms the application
   // expects; sendInput would deliver the raw bytes instead.
   paste: (text: string) => void;
-  // setSelectText routes a plain drag to the browser while the application
-  // has asked for mouse reports: while on, the press that would have been
-  // reported to the application starts a native selection instead — the
-  // same path Shift+drag already takes. Wheel and keyboard are untouched,
-  // and the normal buffer behaves as it always did. Returns the state
-  // applied.
+  // Select text uses xterm's selection for touch drags and forces its
+  // native mouse-selection path while the application tracks the mouse.
+  // Wheel and keyboard input stay unchanged. Returns the applied state.
   setSelectText: (on: boolean) => boolean;
   jumpToLive: () => void;
   resetScrollback: () => void;
@@ -315,6 +313,26 @@ export function createTerminal(
   const alternateTouchPlanner = new AlternateTouchGesturePlanner();
   const touchMedia = window.matchMedia("(pointer: coarse) and (max-width: 48rem)");
   let touchID: number | null = null;
+  let selectText = false;
+  let touchMenuTimer: ReturnType<typeof setTimeout> | null = null;
+  let touchMenuOpen = false;
+  const cancelTouchMenu = () => {
+    if (touchMenuTimer !== null) clearTimeout(touchMenuTimer);
+    touchMenuTimer = null;
+  };
+  const openTouchMenu = (point: { clientX: number; clientY: number }) => {
+    terminal.element?.dispatchEvent(new MouseEvent("contextmenu", {
+      bubbles: true, cancelable: true, clientX: point.clientX, clientY: point.clientY,
+    }));
+  };
+  let selectionAnchor: { cell: number; columns: number; buffer: typeof terminal.buffer.active; baseY: number } | null = null;
+  const selectionCell = (touch: Touch): number | null => {
+    const screen = terminal.element?.querySelector(".xterm-screen");
+    if (!screen) return null;
+    return touchSelectionCell(touch, screen.getBoundingClientRect(), {
+      columns: terminal.cols, rows: terminal.rows, viewportY: terminal.buffer.active.viewportY,
+    });
+  };
   // Where this gesture's wheel reports say the pointer is. A wheel does not
   // travel while it turns, so every report in one drag carries the position
   // the finger started from. Reporting the moving finger instead walks the
@@ -325,7 +343,10 @@ export function createTerminal(
   // beside the planners keeps them one fact rather than two that can drift:
   // a new exit added later cannot clear one and leave the other.
   const endGesture = () => {
+    cancelTouchMenu();
+    touchMenuOpen = false;
     touchID = null;
+    selectionAnchor = null;
     wheelAnchor = null;
     touchPlanner.reset();
     alternateTouchPlanner.reset();
@@ -338,23 +359,68 @@ export function createTerminal(
     return null;
   };
   const touchStart = (event: TouchEvent) => {
-    if (!touchMedia.matches || event.touches.length !== 1 || terminal.hasSelection()) {
+    if (event.touches.length !== 1) {
       endGesture();
       return;
     }
+    if (selectText) {
+      endGesture();
+      const touch = event.touches[0]!;
+      const cell = selectionCell(touch);
+      if (cell === null) return;
+      event.preventDefault();
+      event.stopPropagation();
+      touchID = touch.identifier;
+      selectionAnchor = { cell, columns: terminal.cols, buffer: terminal.buffer.active, baseY: terminal.buffer.active.baseY };
+      const range = touchSelectionRange(cell, cell, terminal.cols);
+      terminal.select(range.column, range.row, range.length);
+      return;
+    }
+    endGesture();
     const touch = event.touches[0]!;
     touchID = touch.identifier;
+    // xterm disables native text selection, so browsers do not reliably
+    // offer a context menu on a stationary touch. Keep Copy reachable.
+    touchMenuTimer = setTimeout(() => {
+      touchMenuTimer = null;
+      touchMenuOpen = true;
+      touchPlanner.reset();
+      alternateTouchPlanner.reset();
+      openTouchMenu(touch);
+    }, 600);
+    if (terminal.hasSelection() || !touchMedia.matches) return;
     wheelAnchor = { clientX: touch.clientX, clientY: touch.clientY };
     alternateTouchPlanner.reset();
     touchPlanner.start({ clientX: touch.clientX, clientY: touch.clientY, timeStamp: event.timeStamp });
   };
   const touchMove = (event: TouchEvent) => {
+    cancelTouchMenu();
     if (event.touches.length !== 1) {
       endGesture();
       return;
     }
     const touch = touchPoint(event);
     if (touch === null) return;
+    if (touchMenuOpen) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    if (selectionAnchor !== null) {
+      event.preventDefault();
+      event.stopPropagation();
+      const anchor = selectionAnchor;
+      if (anchor.buffer !== terminal.buffer.active || anchor.columns !== terminal.cols || anchor.baseY !== terminal.buffer.active.baseY) {
+        endGesture();
+        return;
+      }
+      const cell = selectionCell(touch);
+      if (cell !== null) {
+        const range = touchSelectionRange(anchor.cell, cell, terminal.cols);
+        terminal.select(range.column, range.row, range.length);
+      }
+      return;
+    }
     const decision = touchPlanner.move(
       { clientX: touch.clientX, clientY: touch.clientY, timeStamp: event.timeStamp },
       { selectionActive: terminal.hasSelection() },
@@ -396,18 +462,27 @@ export function createTerminal(
     if (touchID === null) return;
     const ended = [...event.changedTouches].some((touch) => touch.identifier === touchID);
     if (!ended) return;
-    if (touchPlanner.end()) event.preventDefault();
+    if (selectionAnchor !== null) {
+      event.preventDefault();
+      event.stopPropagation();
+      // Touch has no native xterm selection handles or copy bubble. Offer
+      // the same Copy menu as a right-click after the finger finishes.
+      const touch = [...event.changedTouches].find((point) => point.identifier === touchID)!;
+      if (terminal.hasSelection()) openTouchMenu(touch);
+    } else if (touchMenuOpen) {
+      event.preventDefault();
+      event.stopPropagation();
+    } else if (touchPlanner.end()) event.preventDefault();
     endGesture();
   };
   const touchCancel = () => {
     endGesture();
   };
   const element = terminal.element!;
-  element.addEventListener("touchstart", touchStart, { passive: true });
-  element.addEventListener("touchmove", touchMove, { passive: false });
-  element.addEventListener("touchend", touchEnd, { passive: false });
+  element.addEventListener("touchstart", touchStart, { passive: false, capture: true });
+  element.addEventListener("touchmove", touchMove, { passive: false, capture: true });
+  element.addEventListener("touchend", touchEnd, { passive: false, capture: true });
   element.addEventListener("touchcancel", touchCancel);
-  let selectText = false;
   // xterm decides between reporting a press to the application and starting
   // a native selection when the press lands, and the modifier it reads for
   // the native path while mouse reporting is on is the platform's
@@ -418,7 +493,7 @@ export function createTerminal(
   // nothing tracks the mouse.
   const selectPress = (event: MouseEvent): void => {
     if (!selectText || event.type !== "mousedown" || terminal.modes.mouseTrackingMode === "none") return;
-    Object.defineProperty(event, forceSelectionModifier(isMacPlatform()), { get: () => true });
+    Object.defineProperty(event, forceSelectionModifier(navigator.platform), { get: () => true });
   };
   element.addEventListener("mousedown", selectPress, true);
   const viewportSubscription = terminal.onScroll(() => {
@@ -472,6 +547,7 @@ export function createTerminal(
     copyable,
     paste: (text) => terminal.paste(text),
     setSelectText: (on) => {
+      endGesture();
       selectText = on;
       return selectText;
     },
@@ -489,9 +565,10 @@ export function createTerminal(
     },
     resetScrollback,
     dispose: () => {
-      element.removeEventListener("touchstart", touchStart);
-      element.removeEventListener("touchmove", touchMove);
-      element.removeEventListener("touchend", touchEnd);
+      endGesture();
+      element.removeEventListener("touchstart", touchStart, true);
+      element.removeEventListener("touchmove", touchMove, true);
+      element.removeEventListener("touchend", touchEnd, true);
       element.removeEventListener("touchcancel", touchCancel);
       viewportSubscription.dispose();
       parent.removeEventListener("copy", copyWrappedUrl, true);

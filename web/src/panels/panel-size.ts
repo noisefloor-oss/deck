@@ -17,6 +17,7 @@ export interface PanelSizeOptions {
   max: number;
   // Space the rest of the row keeps: bounds cap at available - reserve.
   reserve: number;
+  isEnabled?: () => boolean;
 }
 
 // The smallest width the controller can persist: a narrow row can force a
@@ -90,7 +91,7 @@ export class PanelSize {
   }
 
   private enabled(): boolean {
-    return this.desktop.matches && !this.disposed;
+    return this.desktop.matches && !this.disposed && (this.opts.isEnabled?.() ?? true);
   }
 
   private bounds(): { min: number; max: number } {
@@ -164,6 +165,7 @@ export class PanelSize {
   }
 
   private reset(): void {
+    if (!this.enabled()) return;
     this.finish(false);
     this.preferred = null;
     try { window.localStorage.removeItem(this.opts.key); } catch { /* The inline removal below is the reset. */ }

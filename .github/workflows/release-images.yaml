@@ -90,10 +90,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          args=(--registry "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" --sha "$RELEASE_SHA" --uid "$RELEASE_UID" --gid "$RELEASE_GID")
+          args=(--registry "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" --sha "$RELEASE_SHA" --uid "$RELEASE_UID" --gid "$RELEASE_GID" --receipt "$RUNNER_TEMP/release-publication.json")
           if [[ -n "$FONT_CONTEXT" ]]; then args+=(--font-context "$FONT_CONTEXT"); fi
           if [[ "$REQUIRE_LICENSED" == true ]]; then args+=(--require-licensed); fi
           python3 deploy/release-images.py publish "${args[@]}"
+
+      - name: Retain source-bound publication receipt
+        if: steps.admission.outputs.accepted == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-publication-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-publication.json
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Remove runner registry credentials
         if: always()

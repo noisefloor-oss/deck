@@ -265,12 +265,12 @@ export class SidebarModel {
   // served list as stale: the server being unreachable is not the server
   // saying the sessions are gone, so nothing is dropped and nothing is
   // deselected until a read succeeds. Harnesses become visible as soon as
-  // their independent request finishes; session reconciliation must not
-  // hold up the picker.
+  // their independent request finishes; neither answer waits for the other,
+  // so a slow provider registry cannot strand a newly created session row.
   async refresh(): Promise<void> {
     const generation = ++this.refreshGeneration;
     this.loading = true;
-    const inventoryPromise = this.refreshProviders();
+    void this.refreshProviders();
     try {
       const [catalog, projects] = await Promise.all([
         this.api.listGitIdentities(),
@@ -315,7 +315,6 @@ export class SidebarModel {
       this.cb.onError?.(message, err);
     } finally {
       if (generation === this.refreshGeneration) this.loading = false;
-      await inventoryPromise;
     }
   }
 

@@ -225,6 +225,28 @@ try {
   await eventuallyEqual(() => eventStreams, 2, "the open panel follows its own change feed");
   assert.equal(scans, 2);
 
+  // The Assets panel rides the shared docked-panel resizing. Its 400px
+  // default sits at the family minimum, so the drag widens; Enter returns
+  // the family width and clears the saved preference.
+  const assetsHandle = page.locator('[data-panel-resize="assets"]');
+  await assetsHandle.waitFor();
+  const assetsSaved = () => page.evaluate(() => localStorage.getItem("noisedeck.panel.assets.width"));
+  assert.equal(await assetsSaved(), null, "no Assets width is saved before the user resizes");
+  const beforeAssetsDrag = await region.boundingBox();
+  await page.mouse.move(beforeAssetsDrag.x + 4, beforeAssetsDrag.y + 100);
+  await page.mouse.down();
+  await page.mouse.move(beforeAssetsDrag.x + 4 - 80, beforeAssetsDrag.y + 100, { steps: 6 });
+  await page.mouse.up();
+  const widenedAssets = await region.boundingBox();
+  assert.ok(Math.abs(widenedAssets.width - (beforeAssetsDrag.width + 80)) <= 1.5,
+    `an 80px left drag widens the panel 80px, not ${widenedAssets.width - beforeAssetsDrag.width}`);
+  assert.equal(await assetsSaved(), String(Math.round(beforeAssetsDrag.width + 80)), "the drag commits the width");
+  await assetsHandle.focus();
+  await page.keyboard.press("Enter");
+  const resetAssets = await region.boundingBox();
+  assert.ok(Math.abs(resetAssets.width - beforeAssetsDrag.width) <= 1.5, "Enter returns the family width");
+  assert.equal(await assetsSaved(), null, "Enter clears the saved width");
+
   // Only image files ask the image route for a thumbnail; one the route
   // cannot serve keeps the file glyph.
   await eventually(() => [...imageRequests].sort(), (paths) => paths.length === 3, "every listed image asks for its thumbnail");

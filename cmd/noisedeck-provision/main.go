@@ -696,6 +696,7 @@ func runTrust(home string, args []string, out io.Writer) error {
 		trustClaude(home, dir, out),
 		trustCodex(home, dir, out),
 		trustKimi(home, dir, out),
+		trustDevin(home, dir, out),
 	)
 }
 
@@ -908,5 +909,46 @@ func trustKimi(home, dir string, out io.Writer) error {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
 	_, _ = fmt.Fprintf(out, "kimi: trusted %s (%s)\n", dir, path)
+	return nil
+}
+
+// trustDevin appends the directory to the one central list Devin keeps,
+// creating it with just this entry when Devin has never trusted anything.
+// Devin rewrites the list itself when it answers a modal, so the edit
+// reads the current bytes and rewrites them whole, like Claude's.
+func trustDevin(home, dir string, out io.Writer) error {
+	cliDir := filepath.Join(home, ".local", "share", "devin", "cli")
+	path := filepath.Join(cliDir, "trusted_workspaces.json")
+	// #nosec G304 -- the central trust list this tool writes.
+	raw, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("read %s: %w", path, err)
+	}
+	var doc struct {
+		TrustedPaths []string `json:"trusted_paths"`
+	}
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			return fmt.Errorf("%s does not parse as Devin's trust list: %w", path, err)
+		}
+	}
+	for _, trusted := range doc.TrustedPaths {
+		if trusted == dir {
+			_, _ = fmt.Fprintf(out, "devin: already trusted (%s)\n", path)
+			return nil
+		}
+	}
+	doc.TrustedPaths = append(doc.TrustedPaths, dir)
+	encoded, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode %s: %w", path, err)
+	}
+	if err := os.MkdirAll(cliDir, 0o700); err != nil {
+		return fmt.Errorf("create %s: %w", cliDir, err)
+	}
+	if err := os.WriteFile(path, encoded, 0o600); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	_, _ = fmt.Fprintf(out, "devin: trusted %s (%s)\n", dir, path)
 	return nil
 }

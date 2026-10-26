@@ -14,7 +14,7 @@ func validContextResult(root string) map[string]any {
 	return map[string]any{
 		"schemaVersion": 5, "start": root, "projectBoundary": root,
 		"storePath":          filepath.Join(root, ".tasks", "tasks.sqlite"),
-		"storeOwnerBoundary": "", "storeSchemaVersion": 0, "engineSchemaVersion": 5,
+		"storeOwnerBoundary": "", "storeSchemaVersion": 0, "engineSchemaVersion": 6,
 		"docsPath":        ".tasks/docs/PRD.md",
 		"preferencesPath": ".tasks/preferences.json",
 		"initialized":     false, "writable": true,
@@ -76,8 +76,8 @@ func TestEngineContextRequiresExactSchemaAndRegisteredBoundary(t *testing.T) {
 
 	t.Run("engine older than store", func(t *testing.T) {
 		response := validContextResult(root)
-		response["storeSchemaVersion"] = 6
-		response["engineSchemaVersion"] = 5
+		response["storeSchemaVersion"] = 7
+		response["engineSchemaVersion"] = 6
 		_, err := resolveEngineProjectContext(context.Background(), writeContextResponse(t, response), root)
 		if err == nil || !strings.Contains(err.Error(), "newer than the pinned engine") {
 			t.Fatalf("skewed store = %v", err)
@@ -147,6 +147,25 @@ func TestEngineContextRequiresExactSchemaAndRegisteredBoundary(t *testing.T) {
 		response["blockedReason"] = "migration-unsettled"
 		if _, err := resolveEngineProjectContext(context.Background(), writeContextResponse(t, response), root); err == nil || errors.Is(err, ErrTaskStateBlocked) {
 			t.Fatalf("retired blocked reason = %v, want unsupported-contract refusal", err)
+		}
+	})
+
+	t.Run("adoption recovery", func(t *testing.T) {
+		response := validContextResult(root)
+		response["blocked"] = true
+		response["blockedReason"] = "adoption-recovery-required"
+		response["writable"] = false
+		if _, err := resolveEngineProjectContext(context.Background(), writeContextResponse(t, response), root); !errors.Is(err, ErrTaskStateBlocked) {
+			t.Fatalf("adoption recovery context = %v, want ErrTaskStateBlocked", err)
+		}
+	})
+
+	t.Run("current initialized store", func(t *testing.T) {
+		response := validContextResult(root)
+		response["storeSchemaVersion"] = 6
+		response["initialized"] = true
+		if _, err := resolveEngineProjectContext(context.Background(), writeContextResponse(t, response), root); err != nil {
+			t.Fatalf("current store schema rejected: %v", err)
 		}
 	})
 

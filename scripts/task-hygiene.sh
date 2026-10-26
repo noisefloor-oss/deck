@@ -117,6 +117,10 @@ open_pr() {
   [ "$have_gh" = 1 ] || return 0
   gh pr list --head "$1" --state open --limit 1 --json number -q '.[0].number // empty' 2>/dev/null || true
 }
+remote_pr_state() {
+  [ "$have_gh" = 1 ] || return 0
+  gh pr list --head "$1" --state all --limit 1 --json state -q '.[0].state // empty' 2>/dev/null
+}
 task_status() {
   tasks show -json -tag "$1" "$2" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("status",""))' 2>/dev/null || true
 }
@@ -250,7 +254,55 @@ for branch in $(git for-each-ref --format='%(refname:short)' refs/heads/); do
   say "NEEDS A PERSON: branch $branch has no merged pull request at its tip ($(git rev-list --count "$main..$branch" 2>/dev/null || echo '?') commit(s) not on $main)"
 done
 
-# 5. Remote-tracking refs and garbage.
+# 5. Residue that is never safe to remove automatically. Merged remote
+#    branches are only proposed for deletion; the apply set stays unchanged.
+for ref in $(git for-each-ref --format='%(refname)' refs/remotes/origin/); do
+  branch=${ref#refs/remotes/origin/}
+  case "$branch" in HEAD|main|master) continue ;; esac
+  if [ "$have_gh" != 1 ]; then
+    say "keep remote branch origin/$branch: gh is unavailable to classify its pull request"
+    continue
+  fi
+  if ! state=$(remote_pr_state "$branch"); then
+    say "NEEDS A PERSON: remote branch origin/$branch pull request lookup failed"
+    continue
+  fi
+  case "$state" in
+    MERGED) say "NEEDS A PERSON: remote branch origin/$branch is merged; delete it" ;;
+    OPEN) say "keep remote branch origin/$branch: pull request open" ;;
+    CLOSED) say "NEEDS A PERSON: remote branch origin/$branch has a closed, unmerged pull request" ;;
+    *) say "NEEDS A PERSON: remote branch origin/$branch has no pull request" ;;
+  esac
+done
+
+stashes=$(git stash list | wc -l | tr -d ' ')
+[ "$stashes" = 0 ] || say "NEEDS A PERSON: $stashes stash(es) remain"
+
+if milestones=$(tasks milestone list -json 2>"$report_error") &&
+  backlog=$(tasks list -json 2>"$report_error") &&
+  notices=$(python3 -c '
+import datetime,json,sys
+milestones=json.load(open(sys.argv[1])).get("milestones",[])
+tasks=json.load(open(sys.argv[2])).get("tasks",[])
+terminal={"done","cancelled"}
+for m in milestones:
+    if m.get("status") != "open": continue
+    related=[t for t in tasks if t.get("milestone") == m.get("name")]
+    if related and all(t.get("status") in terminal for t in related):
+        print("hygiene: NEEDS A PERSON: milestone %s is open although every task is terminal" % m["name"])
+cutoff=datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(days=30)
+for t in tasks:
+    if t.get("status") not in ("deferred","blocked"): continue
+    try: updated=datetime.datetime.fromisoformat(t["updatedAt"].replace("Z","+00:00"))
+    except (KeyError,ValueError): continue
+    if updated <= cutoff:
+        print("hygiene: NEEDS A PERSON: task %s has been %s since %s" % (t["id"],t["status"],t["updatedAt"]))' <(printf '%s' "$milestones") <(printf '%s' "$backlog") 2>>"$report_error"); then
+  [ -z "$notices" ] || printf '%s\n' "$notices"
+else
+  report_failed "milestone/task list"
+fi
+
+# 6. Remote-tracking refs and garbage.
 if git remote get-url origin >/dev/null 2>&1; then
   act "prune remote-tracking branches" git fetch --prune --quiet origin
 else

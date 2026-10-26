@@ -41,6 +41,7 @@ import {
 import { focusPanelTrigger, mountPanelsMenu, paintAssetsNew } from "../ui/panel-trigger.ts";
 import { DockedPanels } from "./docked-panels.ts";
 import { InfoBar } from "./info-bar.ts";
+import { PanelSize } from "../panels/panel-size.ts";
 import { showAutoColorProjects } from "../lib/auto-color.ts";
 import { region, workspaceLayout } from "./layout.ts";
 import { openPasswordChange } from "./password-form.ts";
@@ -116,6 +117,20 @@ const api = new FixtureApiClient(
   state.assets === "truncated" ? "truncated" : "list",
 );
 if (state.projectPreview !== null) configureProjectPreviewFixture(api, state.projectPreview);
+if (state.projectRefreshDelayMS !== null) {
+  const list = api.listProjects.bind(api);
+  const delay = state.projectRefreshDelayMS;
+  api.listProjects = async () => {
+    const projects = await list();
+    const jobs = await api.listClones();
+    if (jobs.some((job) => job.status === "done")) {
+      document.documentElement.dataset.previewProjectRefreshPending = "";
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, delay));
+      delete document.documentElement.dataset.previewProjectRefreshPending;
+    }
+    return projects;
+  };
+}
 if (state.mountDelayMS !== null) {
   const list = api.listProjectDirectories.bind(api);
   const delay = state.mountDelayMS;
@@ -276,6 +291,17 @@ if (emptyState === null) {
 // Preview-local, like the font and theme above — it reads your
 // preference but never writes it.
 const infoBar = new InfoBar(root);
+
+// The docked panels resize in the preview too, so the chats leg of the
+// probe drives the real controller over the real layout. The preview's
+// storage key is its own: the preview shows preferences, it never writes
+// the live console's.
+const previewResize = region(root, "chats").querySelector<HTMLElement>('[data-panel-resize="chats"]');
+if (previewResize !== null) {
+  new PanelSize(region(root, "chats"), previewResize, {
+    key: "noisedeck.preview.panel.chats.width", min: 400, max: 1000, reserve: 360,
+  });
+}
 
 const terminal = region(root, "terminal");
 const terminalCard = region(root, "terminal-card");
