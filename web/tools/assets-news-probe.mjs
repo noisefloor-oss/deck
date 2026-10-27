@@ -143,7 +143,7 @@ try {
     if (method === "GET" && path === "/api/settings/layout") return json(404, { code: "not_found", message: "no layout saved" });
     if (method === "GET" && path === "/api/harness-login") return json(200, { pending: [], csrf: "login-csrf" });
     if (method === "GET" && path === "/api/providers") return json(200, { providers: ["claude"] });
-    if (method === "GET" && path === "/api/settings/tutorial") return json(200, { version: 1, dismissed: true, lesson: "welcome", step: 0, done: [], scope: "operator" });
+    if (method === "GET" && path === "/api/settings/tutorial") return json(200, { version: 1, dismissed: true, lesson: "welcome", step: 0, done: [], scope: "user" });
     if (method === "GET" && path === "/api/settings") return json(200, { skip_permissions: false, skip_close_confirm: false, skip_remove_project_confirm: false });
     if (method === "GET" && path === "/api/session-activity/events") return stream();
     if (/^\/api\/projects\/[^/]+\/lanes$/.test(path)) return json(200, { lanes: [] });

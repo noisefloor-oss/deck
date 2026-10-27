@@ -207,7 +207,7 @@ export class HarnessLoginDialog {
       terminalHost.before(placeholder);
       const slot = this.root.querySelector<HTMLElement>("[data-login-terminal]")!;
       slot.hidden = false;
-      slot.dataset.mono = "operator";
+      slot.dataset.mono = "workspace";
       slot.appendChild(terminalHost);
       dialog.dataset.codexHelper = "true";
       const nativeKeys = (event: KeyboardEvent): void => event.stopPropagation();

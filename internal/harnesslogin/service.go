@@ -49,7 +49,7 @@ type registration struct {
 }
 type ticket struct {
 	registration *registration
-	operator     string
+	user         string
 	used         bool
 }
 type Pending struct {
@@ -126,11 +126,11 @@ func (s *Service) Register(ctx context.Context, peerPID int, provider, raw strin
 // Pending lists only attempts the calling user could actually begin: a
 // dismissed attempt stays owned by the user who held it, and listing it
 // for anyone else would offer a handoff that Begin then refuses.
-func (s *Service) Pending(ctx context.Context, operator, session string) []Pending {
+func (s *Service) Pending(ctx context.Context, user, session string) []Pending {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := []Pending{}
-	if operator == "" {
+	if user == "" {
 		return out
 	}
 	for id, r := range s.registrations {
@@ -138,7 +138,7 @@ func (s *Service) Pending(ctx context.Context, operator, session string) []Pendi
 			r.url = ""
 			continue
 		}
-		if r.owner != "" && r.owner != operator {
+		if r.owner != "" && r.owner != user {
 			continue
 		}
 		if r.binding.Session == session && !r.claimed && s.now().Before(r.expires) && s.runtime.Alive(ctx, r.binding) {
@@ -147,8 +147,8 @@ func (s *Service) Pending(ctx context.Context, operator, session string) []Pendi
 	}
 	return out
 }
-func (s *Service) Begin(ctx context.Context, operator, session, id string) (Handle, error) {
-	if operator == "" {
+func (s *Service) Begin(ctx context.Context, user, session, id string) (Handle, error) {
+	if user == "" {
 		return Handle{}, ErrUnavailable
 	}
 	s.mu.Lock()
@@ -157,15 +157,15 @@ func (s *Service) Begin(ctx context.Context, operator, session, id string) (Hand
 	if r == nil || r.binding.Session != session || r.claimed || !s.now().Before(r.expires) || !s.runtime.Alive(ctx, r.binding) {
 		return Handle{}, ErrConsumed
 	}
-	if r.owner != "" && r.owner != operator {
+	if r.owner != "" && r.owner != user {
 		return Handle{}, ErrConsumed
 	}
 	if r.owner == "" {
-		r.owner = operator
+		r.owner = user
 	}
 	r.claimed = true
 	handle := randomID()
-	s.tickets[handle] = &ticket{registration: r, operator: operator}
+	s.tickets[handle] = &ticket{registration: r, user: user}
 	return Handle{handle, r.expires}, nil
 }
 
@@ -173,8 +173,8 @@ func (s *Service) Begin(ctx context.Context, operator, session, id string) (Hand
 // Codex helper can reopen the login page instead of starting a
 // second login. The gates match Begin, but the fetch neither claims nor
 // consumes the attempt, and it holds no URL for any other flow.
-func (s *Service) Authorization(ctx context.Context, operator, session, id string) (string, error) {
-	if operator == "" {
+func (s *Service) Authorization(ctx context.Context, user, session, id string) (string, error) {
+	if user == "" {
 		return "", ErrUnavailable
 	}
 	s.mu.Lock()
@@ -184,7 +184,7 @@ func (s *Service) Authorization(ctx context.Context, operator, session, id strin
 		return "", ErrConsumed
 	}
 	expired := !s.now().Before(r.expires)
-	if r.binding.Session != session || r.claimed || expired || !s.runtime.Alive(ctx, r.binding) || (r.owner != "" && r.owner != operator) {
+	if r.binding.Session != session || r.claimed || expired || !s.runtime.Alive(ctx, r.binding) || (r.owner != "" && r.owner != user) {
 		if expired {
 			r.url = ""
 		}
@@ -193,17 +193,17 @@ func (s *Service) Authorization(ctx context.Context, operator, session, id strin
 	if r.flow != CodexBrowser || r.url == "" {
 		return "", ErrUnavailable
 	}
-	r.owner = operator
+	r.owner = user
 	return r.url, nil
 }
 
 // AuthorizationForHandle allows retrying the browser step after a rejected
 // callback paste left the same user's live claim intact.
-func (s *Service) AuthorizationForHandle(ctx context.Context, operator, session, id string) (string, error) {
+func (s *Service) AuthorizationForHandle(ctx context.Context, user, session, id string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	t := s.tickets[id]
-	if operator == "" || t == nil || t.used || t.operator != operator {
+	if user == "" || t == nil || t.used || t.user != user {
 		return "", ErrConsumed
 	}
 	r := t.registration
@@ -216,11 +216,11 @@ func (s *Service) AuthorizationForHandle(ctx context.Context, operator, session,
 	}
 	return r.url, nil
 }
-func (s *Service) Cancel(operator, id string) error {
+func (s *Service) Cancel(user, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	t := s.tickets[id]
-	if t == nil || t.used || t.operator != operator || !s.now().Before(t.registration.expires) {
+	if t == nil || t.used || t.user != user || !s.now().Before(t.registration.expires) {
 		return ErrConsumed
 	}
 	t.used = true
@@ -231,11 +231,11 @@ func (s *Service) Cancel(operator, id string) error {
 
 // Dismiss lets the same user reclaim a live attempt with a fresh handle.
 // Cancellation and submission remain terminal.
-func (s *Service) Dismiss(ctx context.Context, operator, id string) error {
+func (s *Service) Dismiss(ctx context.Context, user, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	t := s.tickets[id]
-	if t == nil || t.used || t.operator != operator || !s.now().Before(t.registration.expires) {
+	if t == nil || t.used || t.user != user || !s.now().Before(t.registration.expires) {
 		return ErrConsumed
 	}
 	if !s.runtime.Alive(ctx, t.registration.binding) {
@@ -247,10 +247,10 @@ func (s *Service) Dismiss(ctx context.Context, operator, id string) error {
 	t.registration.claimed = false
 	return nil
 }
-func (s *Service) Submit(ctx context.Context, operator, id, raw string) (string, error) {
+func (s *Service) Submit(ctx context.Context, user, id, raw string) (string, error) {
 	s.mu.Lock()
 	t := s.tickets[id]
-	if t == nil || t.used || t.operator != operator || !s.now().Before(t.registration.expires) {
+	if t == nil || t.used || t.user != user || !s.now().Before(t.registration.expires) {
 		s.mu.Unlock()
 		return "", ErrConsumed
 	}

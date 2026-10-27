@@ -57,7 +57,7 @@ try {
   await page.route(`${origin}/api/**`, async route => {
     const request = route.request(), path = new URL(request.url()).pathname, method = request.method();
     const json = (status, body) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
-    if (path === "/api/settings/tutorial") return json(200, { version: 1, dismissed: true, lesson: "welcome", step: 0, done: [], scope: "operator" });
+    if (path === "/api/settings/tutorial") return json(200, { version: 1, dismissed: true, lesson: "welcome", step: 0, done: [], scope: "user" });
     if (path === "/api/settings") return json(200, { skip_permissions: false, skip_close_confirm: false, skip_remove_project_confirm: false });
     if (path === "/api/git-identities") return json(200, { profiles: [profile], default_profile_id: profile.id, revision: 1 });
     if (path === "/api/session-activity/events") return route.fulfill({ status: 200, contentType: "text/event-stream", body: ": connected\n\n" });

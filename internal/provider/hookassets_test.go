@@ -103,7 +103,7 @@ func TestOpencodeHookAssetCarriesTheCaptureMechanism(t *testing.T) {
 // `sha256sum internal/provider/assets/opencode-hook.js` when the plugin
 // deliberately changes.
 func TestOpencodeHookAssetChecksum(t *testing.T) {
-	const want = "3cfb825eb1386e42892bc136093a37b5f963dcc0d5645a773cc1ea940cb5ff75"
+	const want = "989bf52153dfd729dfac98c1ee0730a67756f589a27ed7237e30236db841bfa6"
 	if got := fmt.Sprintf("%x", sha256.Sum256(OpencodeHookPlugin)); got != want {
 		t.Fatalf("opencode-hook.js sha256 = %s, want %s (deliberate plugin change? update both)", got, want)
 	}
@@ -183,7 +183,7 @@ func TestInProcessHookAssetsBoundCaptureDelivery(t *testing.T) {
 // `sha256sum internal/provider/assets/omp-hook.ts` when the hook deliberately
 // changes.
 func TestOmpHookAssetChecksum(t *testing.T) {
-	const want = "2b5e1ac48d91d71b945a1390312fbbeafc12fc2b5bcaf3ecae7b0ae1ef037a96"
+	const want = "329b3a5d3497b64a8be582c13afd597cbf09afdefefeb91f69796d4ae53524b9"
 	if got := fmt.Sprintf("%x", sha256.Sum256(OmpHookPlugin)); got != want {
 		t.Fatalf("omp-hook.ts sha256 = %s, want %s (deliberate hook change? update both)", got, want)
 	}

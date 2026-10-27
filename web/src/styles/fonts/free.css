@@ -105,7 +105,7 @@
 
 /* The workspace's mono metrics scope carries the same numbers: with one
    mono face app-wide there is nothing for it to distinguish. */
-[data-mono="operator"] {
+[data-mono="workspace"] {
   --type-mono-size: 13px;
   --type-mono-lh: 1.62;
   --type-mono-weight: 400;

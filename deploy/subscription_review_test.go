@@ -109,6 +109,10 @@ while [ "$#" -gt 0 ]; do
         *:/home/jail/.codex:Z) auth="${2%:/home/jail/.codex:Z}" ;;
         *:/work:Z) work="${2%:/work:Z}" ;;
         *:/run/broker/broker.sock:ro,Z|*:/opt/broker/noise-review:ro,Z) ;;
+        *:/opt/review-lib:ro,Z)
+          library="${2%:/opt/review-lib:ro,Z}"
+          case "$library" in "$FIXTURE"/tmp.*/review-lib) ;; *) exit 95 ;; esac
+          test -d "$library" && test -z "$(ls -A "$library")" || exit 96 ;;
         *:/opt/broker/bump:ro,z|*:/opt/node:ro,z|*:/opt/codex:ro,z|*:/usr/local/go:ro,z|*:/opt/gomod:ro,z) ;;
         *) echo 'unexpected review mount or SELinux label' >&2; exit 93 ;;
       esac
@@ -117,7 +121,7 @@ while [ "$#" -gt 0 ]; do
     *) shift ;;
   esac
 done
-test "$mounts" -eq 9 && test -n "$auth" && test -n "$work" || exit 94
+test "$mounts" -eq 10 && test -n "$auth" && test -n "$work" || exit 94
 if [ "$MODE" = successful-probe-uncertain-stop ]; then exit 0; fi
 if [ "$MODE" = missing-cidfile ]; then
   printf %s "$name" >"$FIXTURE/container-name"

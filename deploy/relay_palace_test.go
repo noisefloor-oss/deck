@@ -23,8 +23,8 @@ func TestBootstrapSplitsPrivateAndRelayPalaces(t *testing.T) {
 	}
 	script := string(raw)
 
-	private := strings.Index(script, "--palace /home/agent/.mempalace/palace")
-	relay := strings.Index(script, "--palace /home/agent/.mempalace/relay")
+	private := strings.Index(script, "MEMPALACE_SYNC_INTERVAL=0 /opt/mempalace/venv/bin/mempalace-mcp")
+	relay := strings.Index(script, "MEMPALACE_MCP_HTTP_TOKEN=\"${NOISEDECK_RELAY_TOKEN:-}\"")
 	if private < 0 || relay < 0 {
 		t.Fatalf("bootstrap must start both palaces; private@%d relay@%d", private, relay)
 	}

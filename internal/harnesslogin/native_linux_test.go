@@ -197,7 +197,7 @@ func nativeBrowserRegistration(t *testing.T, executable, harness, provider strin
 	nativePID.Store(int64(pid))
 	var pending []Pending
 	for ctx.Err() == nil {
-		pending = service.Pending(ctx, "operator-a", "native-probe")
+		pending = service.Pending(ctx, "user-a", "native-probe")
 		if len(pending) == 1 {
 			break
 		}

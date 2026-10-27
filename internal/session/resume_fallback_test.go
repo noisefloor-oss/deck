@@ -406,7 +406,7 @@ func TestReconcilerPathAlsoClosesARefusedResume(t *testing.T) {
 // conversation whose recorded store is gone. A clean exit, a requested stop,
 // a fresh generation's death, and a row the sweep is about to pick up stay
 // off it.
-func TestRecoveryRefusalForOperatorShapes(t *testing.T) {
+func TestRecoveryRefusalForUserShapes(t *testing.T) {
 	id := "01a00e45-5dce-7000-a1e2-6b3ef003dfe9"
 	one, zero := 1, 0
 	now := time.Now()

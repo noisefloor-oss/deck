@@ -344,7 +344,7 @@ try {
       // The probe drives a single claude session and never opens the picker.
       return json(200, { providers: ["claude"] });
     }
-    if (request.method() === "GET" && path === "/api/settings/tutorial") return json(200, { version: 1, dismissed: true, lesson: "welcome", step: 0, done: [], scope: "operator" });
+    if (request.method() === "GET" && path === "/api/settings/tutorial") return json(200, { version: 1, dismissed: true, lesson: "welcome", step: 0, done: [], scope: "user" });
     if (request.method() === "GET" && path === "/api/settings") {
       return json(200, { skip_permissions: false, skip_close_confirm: false, skip_remove_project_confirm: false });
     }

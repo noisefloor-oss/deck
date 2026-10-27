@@ -99,7 +99,7 @@ try {
       writes.push(request.postDataJSON());
       if (holdWrite) await new Promise((resolve) => { releaseWrite = resolve; writeStarted?.(); });
       if (failWrites) return json(503, { code: "unavailable", message: "Preference write unavailable" });
-      record = { ...request.postDataJSON(), scope: "operator" };
+      record = { ...request.postDataJSON(), scope: "user" };
       return json(200, record);
     }
     if (path === "/api/git-identities" && request.method() === "POST") {
@@ -425,7 +425,7 @@ try {
   // preferences, and selecting the remembered session tears panels down;
   // that teardown is not the user closing Tasks.
   await page.setViewportSize({ width: 1280, height: 800 });
-  record = { version: 1, dismissed: false, lesson: "lesson-2", step: 0, done: ["lesson-1"], scope: "operator" };
+  record = { version: 1, dismissed: false, lesson: "lesson-2", step: 0, done: ["lesson-1"], scope: "user" };
   lastSessionID = "s1";
   holdProjects = true;
   releaseProjects = undefined;
@@ -464,7 +464,7 @@ try {
   assert.equal(await page.locator('[data-region="tasks"]').getAttribute("data-open"), "false", "a panel the user closed while selection was pending stays closed");
   lastSessionID = null;
   holdRead = true;
-  record = { version: 1, dismissed: false, lesson: "lesson-2", step: 1, done: ["lesson-1"], scope: "operator" };
+  record = { version: 1, dismissed: false, lesson: "lesson-2", step: 1, done: ["lesson-1"], scope: "user" };
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.reload({ waitUntil: "domcontentloaded" });
   const expandSidebar = page.getByRole("button", { name: "Show sidebar", exact: true });

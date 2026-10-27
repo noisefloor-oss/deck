@@ -23,7 +23,7 @@ import { formatFileSize, formatSince } from "../../lib/format.ts";
 // bytes: nothing is decoded here either.
 export type ViewState =
   | { kind: "loading" }
-  | { kind: "text"; content: string }
+  | { kind: "text" | "diff"; content: string }
   | { kind: "image"; image: ImageView }
   | { kind: "no-preview"; reason: string }
   | { kind: "error"; message: string };
@@ -268,7 +268,7 @@ export function viewerStatusParts(entry: FileEntry, view: ViewState | null, now:
   const image = view?.kind === "image";
   const kind = image ? entry.name.slice(entry.name.lastIndexOf(".") + 1).toUpperCase() : kindOfName(entry.name);
   const parts: ViewerStatusPart[] = [{ key: "kind", text: kind, short: kind }];
-  if (view?.kind === "text") {
+  if (view?.kind === "text" || view?.kind === "diff") {
     const lines = `${view.content.split("\n").length} lines`;
     parts.push({ key: "lines", text: lines, short: lines });
   }
@@ -321,6 +321,7 @@ export class FilesPanelModel {
   loading = false;
   selected: FileEntry | null = null;
   view: ViewState | null = null;
+  viewerMode: "file" | "changes" = "file";
   uploading = false;
   // uploadErrors is one line per file that did NOT land. A multi-file
   // pick is many requests, so a partial failure has to name its files.
@@ -523,6 +524,7 @@ export class FilesPanelModel {
       this.selected = null;
       this.selectedUpload = null;
       this.view = null;
+      this.viewerMode = "file";
       this.listing = null;
       this.listError = null;
     }
@@ -553,8 +555,15 @@ export class FilesPanelModel {
     // a pending upload selection never overrides the file viewer.
     this.selectedUpload = null;
     this.selected = entry;
+    this.viewerMode = "file";
     this.cb.onOpenFile?.(entry);
     await this.loadView(entry);
+  }
+
+  async toggleViewerMode(): Promise<void> {
+    if (this.selected === null) return;
+    this.viewerMode = this.viewerMode === "changes" ? "file" : "changes";
+    await this.loadView(this.selected);
   }
 
   async refresh(quiet = false): Promise<void> {
@@ -634,11 +643,15 @@ export class FilesPanelModel {
     const previousDir = this.dir;
     const selectedPath = this.selected?.path;
     const selectedMTime = this.selected?.mtime;
+    const selectedChange = this.selected?.change;
+    const previousHead = this.listing?.head;
     await this.refresh(true);
     if (!this.openState) return;
     if (this.dir !== previousDir) {
       this.subscribeEvents();
-    } else if (selectedPath !== undefined && selectedMTime !== this.selected?.mtime) {
+    } else if (selectedPath !== undefined &&
+        (selectedMTime !== this.selected?.mtime ||
+          (this.viewerMode === "changes" && (selectedChange !== this.selected?.change || previousHead !== this.listing?.head)))) {
       const entry = this.selected;
       if (entry !== null && !isImageName(entry.name)) await this.loadView(entry, true);
     }
@@ -654,10 +667,13 @@ export class FilesPanelModel {
       return;
     }
     if (!quiet) this.view = { kind: "loading" };
+    const changes = this.viewerMode === "changes";
     try {
-      const view = await this.client.viewProjectFile(this.projectID, entry.path);
+      const view = changes
+        ? await this.client.diffProjectFile(this.projectID, entry.path)
+        : await this.client.viewProjectFile(this.projectID, entry.path);
       if (seq !== this.viewSeq) return;
-      this.view = { kind: "text", content: view.content };
+      this.view = { kind: changes ? "diff" : "text", content: view.content };
     } catch (err) {
       if (seq !== this.viewSeq) return;
       const failure = viewFailure(err);
@@ -665,7 +681,7 @@ export class FilesPanelModel {
       // reading: report the failure and keep the text, as the listing does.
       // The server's deliberate refusals are not transient — the file really
       // is binary or past the size bound now — so those still replace it.
-      if (quiet && failure.kind === "error" && this.view?.kind === "text") {
+      if (quiet && failure.kind === "error" && (this.view?.kind === "text" || this.view?.kind === "diff")) {
         this.cb.onError?.(failure.message, err);
         return;
       }

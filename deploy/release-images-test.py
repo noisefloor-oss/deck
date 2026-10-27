@@ -22,7 +22,7 @@ SHA = 'a' * 40
 
 def document(sha=SHA):
     return dict(schema=1, sha=sha, uid=1003, gid=1003,
-                playwright='1.64.1', mempalace='3.10.0', go='1.26.10',
+                playwright='1.64.1', mempalace='3.11.0', go='1.26.10',
                 font_files={'Euclid.woff2': 'b' * 64},
                 images={role: REG + '/' + PREFIX + '-' + role + '@sha256:' + str(i) * 64
                         for i, role in enumerate(('free', 'licensed', 'browser'), 1)})

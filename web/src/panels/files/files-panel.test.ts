@@ -112,6 +112,7 @@ function fakeFileApi(
       calls.viewed.push(path);
       return { content: "alpha\nbeta\n" };
     },
+    diffProjectFile: async (): Promise<FileView> => ({ content: "@@ -1 +1 @@\n-alpha\n+beta\n" }),
     subscribeProjectFileEvents: (_id: string, path: string, onChange: () => void): (() => void) => {
       calls.subscribed.push(path);
       calls.notify = onChange;
@@ -271,6 +272,59 @@ test("openFile cannot restore a viewer after the panel resets during its listing
   assert.equal(m.selected, null);
   assert.equal(m.view, null);
   assert.deepEqual(base.calls.viewed, ["docs/architecture.md"], "the stale open never reads the file again");
+});
+
+test("viewer mode switches between the file and its last-commit changes", async () => {
+  const { api } = fakeFileApi();
+  const m = model(api);
+  await m.activate({ ...entry("README.md"), change: "modified" });
+  assert.deepEqual(m.view, { kind: "text", content: "alpha\nbeta\n" });
+  await m.toggleViewerMode();
+  assert.equal(m.viewerMode, "changes");
+  assert.deepEqual(m.view, { kind: "diff", content: "@@ -1 +1 @@\n-alpha\n+beta\n" });
+  await m.toggleViewerMode();
+  assert.equal(m.viewerMode, "file");
+  assert.deepEqual(m.view, { kind: "text", content: "alpha\nbeta\n" });
+});
+
+test("changes mode refreshes after the file is committed and retains an exit", async () => {
+  let reads = 0;
+  const { api, calls } = fakeFileApi({
+    diffProjectFile: async () => ({ content: reads++ === 0 ? "@@ -1 +1 @@\n-alpha\n+beta\n" : "" }),
+  });
+  const m = model(api);
+  await m.open();
+  await m.activate({ ...entry("README.md"), change: "modified" });
+  await m.toggleViewerMode();
+  calls.notify?.();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(m.selected?.change, undefined);
+  assert.equal(reads, 2, "a new commit baseline revalidates the diff");
+  assert.deepEqual(m.view, { kind: "diff", content: "" });
+  await m.toggleViewerMode();
+  assert.equal(m.viewerMode, "file");
+  assert.deepEqual(m.view, { kind: "text", content: "alpha\nbeta\n" });
+});
+
+test("a partial commit revalidates the diff even when the file stays modified", async () => {
+  let head = "one";
+  let reads = 0;
+  const { api, calls } = fakeFileApi({
+    listProjectFiles: async (_id, path) => ({
+      path, at_root: path === "", entries: [{ ...entry("README.md"), change: "modified" }], head,
+    }),
+    diffProjectFile: async () => ({ content: reads++ === 0 ? "before partial" : "after partial" }),
+  });
+  const m = model(api);
+  await m.open();
+  await m.activate({ ...entry("README.md"), change: "modified" });
+  await m.toggleViewerMode();
+  head = "two";
+  calls.notify?.();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(m.selected?.change, "modified");
+  assert.equal(reads, 2, "a changed HEAD revalidates the diff");
+  assert.deepEqual(m.view, { kind: "diff", content: "after partial" });
 });
 
 test("closing the viewer fences a late view response", async () => {

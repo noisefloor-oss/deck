@@ -61,7 +61,7 @@ const server = createServer(async (request, response) => {
         return;
       }
       if (path === "/api/build") { json(response, 200, { build_id: "private-api-build" }); return; }
-      if (path === "/api/settings/tutorial") { json(response, 200, { version: 1, dismissed: true, lesson: "welcome", step: 0, done: [], scope: "operator" }); return; }
+      if (path === "/api/settings/tutorial") { json(response, 200, { version: 1, dismissed: true, lesson: "welcome", step: 0, done: [], scope: "user" }); return; }
       if (path === "/api/settings") { json(response, 200, { skip_permissions: false, skip_close_confirm: false, skip_remove_project_confirm: false }); return; }
       if (path === "/api/settings/layout") { json(response, 404, { error: "not_found" }); return; }
       if (path === "/api/projects") { json(response, 200, [project]); return; }

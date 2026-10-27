@@ -185,7 +185,7 @@ async function live(browser) {
   const page = await context.newPage();
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
-  let tutorial = { version: 1, dismissed: true, lesson: "welcome", step: 0, done: [], scope: "operator" };
+  let tutorial = { version: 1, dismissed: true, lesson: "welcome", step: 0, done: [], scope: "user" };
   let detailReads = 0;
   let pendingLogin = false;
   let releaseSecondDetail;
@@ -210,7 +210,7 @@ async function live(browser) {
     const json = (status, body) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
     if (path.endsWith("/events") || url.searchParams.get("watch") === "1") return route.continue();
     if (path === "/api/settings/tutorial") {
-      if (request.method() === "PUT") tutorial = { ...request.postDataJSON(), scope: "operator" };
+      if (request.method() === "PUT") tutorial = { ...request.postDataJSON(), scope: "user" };
       return json(200, tutorial);
     }
     if (path === "/api/settings/layout") return json(request.method() === "PUT" ? 200 : 404, request.method() === "PUT" ? request.postDataJSON() : { code: "not_found" });

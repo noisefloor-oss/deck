@@ -107,6 +107,7 @@ def graphql_nodes(
 # only a duplicate one. The remedy is a fresh review, never a marker edited
 # onto an old approval.
 HEAD_MARKER = "Reviewed head: "
+BASE_MARKER = "Base: "
 
 # How far into the body the envelope's metadata block reaches. The default
 # composed shape is: verdict line, blank, Reviewed head, Base, and
@@ -139,11 +140,24 @@ def marked_head(body: object) -> str | None:
     ]
     return marked[0] if len(marked) == 1 else None
 
+def marked_base(body: object) -> str | None:
+    """The base a verdict's envelope names, under the same header contract
+    as the head marker: one line of its own among the first HEADER_LINES,
+    exactly one, or the envelope does not state a base."""
+    if not isinstance(body, str):
+        return None
+    header = [line.rstrip("\r") for line in body.split("\n")[:HEADER_LINES]]
+    marked = [
+        line[len(BASE_MARKER):] for line in header if line.startswith(BASE_MARKER)
+    ]
+    return marked[0] if len(marked) == 1 else None
+
 
 def verdict_failures(
     reviews: list[dict[str, object]],
     head: str,
     reviewer: str,
+    base: str = "",
 ) -> list[str]:
     """The merge gate's review rule, over already-fetched reviews."""
     expected_login = reviewer.removesuffix("[bot]")
@@ -185,6 +199,14 @@ def verdict_failures(
             return [
                 f"the latest {reviewer} approval was written against {marked}, "
                 f"not the head being merged ({head or 'unknown'})"
+            ]
+        marked_base_sha = marked_base(latest.get("body"))
+        if base and marked_base_sha != base:
+            return [
+                f"the latest {reviewer} approval names base {marked_base_sha or 'none'}, "
+                f"not the merge base the queue will merge onto ({base}): the base moved "
+                f"after the review, so its base-impact assessment no longer applies - "
+                f"a fresh review at the current base is required"
             ]
     return []
 
@@ -274,7 +296,7 @@ def check_pr(number: int, reviewer: str, owner: str, name: str) -> list[str]:
         "view",
         str(number),
         "--json",
-        "state,isDraft,headRefOid,mergeable,mergeStateStatus,statusCheckRollup,author",
+        "state,isDraft,headRefOid,baseRefOid,mergeable,mergeStateStatus,statusCheckRollup,author",
     )
     assert isinstance(data, dict)
     failures: list[str] = []
@@ -305,7 +327,37 @@ def check_pr(number: int, reviewer: str, owner: str, name: str) -> list[str]:
         owner,
         name,
     )
-    failures.extend(verdict_failures(reviews, str(head or ""), reviewer))
+    # The base the review must name: what a merge of this PR is actually
+    # onto. A PR can carry an exact-head approval written against an older
+    # base - the queue may have moved its target under it - and that
+    # approval's base-impact assessment then covers bytes that are no
+    # longer the base. The comparison is made from the PR's immutable base
+    # commit, never a ref name a retarget could move mid-check; the whole
+    # comparison object is fetched because a --jq projection would hand
+    # the JSON parser a bare string.
+    merge_base = ""
+    if data.get("mergeable") == "MERGEABLE":
+        comparison = gh(
+            "api",
+            f"repos/{owner}/{name}/compare/{data.get('baseRefOid', '')}...{head}",
+        )
+        candidate = (
+            (comparison.get("merge_base_commit") or {}).get("sha")
+            if isinstance(comparison, dict)
+            else None
+        )
+        if isinstance(candidate, str) and len(candidate) == 40:
+            merge_base = candidate
+        else:
+            # A mergeable PR whose comparison yields no valid base SHA must
+            # block rather than quietly skip the base rule: an unusable
+            # comparison is a verification error, not evidence the base
+            # matches.
+            failures.append(
+                "the merge-base comparison returned no valid 40-character "
+                "SHA, so the approval's named base cannot be verified"
+            )
+    failures.extend(verdict_failures(reviews, str(head or ""), reviewer, merge_base))
 
     threads = graphql_nodes(
         "reviewThreads",

@@ -1542,7 +1542,7 @@ export class LiveWorkspace {
       : terminalChromePalette(name, theme);
     const palette = terminalChromeFor(this.mountedTerminalProvider(), base);
     for (const pane of this.root.querySelectorAll<HTMLElement>('[data-region="terminal"], [data-login-terminal]')) {
-      pane.dataset.mono = "operator";
+      pane.dataset.mono = "workspace";
       applyTerminalChromeVars(pane, palette);
       pane.style.backgroundColor = palette.bg;
     }

@@ -105,7 +105,7 @@ export default function (pi) {
     }
   });
 
-  // session_switch fires when the operator picks another conversation
+  // session_switch fires when the user picks another conversation
   // inside this pane (/resume, including re-picking the one already
   // running); its hook context already carries the NEW id, in this same
   // process. Reporting it keeps the recorded identity tracking the

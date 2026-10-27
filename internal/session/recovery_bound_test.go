@@ -82,7 +82,7 @@ func TestAutomaticRecoveryWindowExpiresTheSeries(t *testing.T) {
 
 // The user's explicit retry is not the unattended loop the bound exists
 // to stop, so it starts the series over.
-func TestOperatorRecoverClearsTheSeries(t *testing.T) {
+func TestUserRecoverClearsTheSeries(t *testing.T) {
 	mgr, repo, _, projectID := newTestEnv(t, sleeperDescriptor())
 	mgr.SetResumeDeps(lease.NewManager(repo.db), inputgate.New(), testWorkDirResolver(t))
 	ctx := context.Background()

@@ -87,7 +87,7 @@ try {
   let previewAskedAt = 0;
   let previewFailedAt = 0;
   let releasePreviews = () => {};
-  let record = { version: 1, dismissed: false, lesson: lastCourse.id, step: lastCourse.steps.length - 1, done: [], scope: "operator" };
+  let record = { version: 1, dismissed: false, lesson: lastCourse.id, step: lastCourse.steps.length - 1, done: [], scope: "user" };
   const writes = [];
   await page.routeWebSocket(`${origin.replace("http", "ws")}/api/sessions/*/terminal?*`, (socket) => {
     socket.onMessage((raw) => { if (JSON.parse(String(raw)).type === "input") input.push(raw); });
@@ -102,7 +102,7 @@ try {
     if (path === "/api/settings/tutorial") {
       if (request.method() === "PUT") {
         assert.equal(request.headers()["x-csrf-token"], "probe");
-        record = { ...request.postDataJSON(), scope: "operator" };
+        record = { ...request.postDataJSON(), scope: "user" };
         writes.push(record);
       }
       return json(200, record);

@@ -330,7 +330,7 @@ try {
       // none to report.
       return json(200, { global: [], project: [] });
     }
-    if (request.method() === "GET" && path === "/api/settings/tutorial") return json(200, { version: 1, dismissed: true, lesson: "welcome", step: 0, done: [], scope: "operator" });
+    if (request.method() === "GET" && path === "/api/settings/tutorial") return json(200, { version: 1, dismissed: true, lesson: "welcome", step: 0, done: [], scope: "user" });
     if (request.method() === "GET" && path === "/api/settings") {
       // The ⋯ menu IS the settings surface and reads the console settings
       // when it opens (the backend is the authority), so the smoke must

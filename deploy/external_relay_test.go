@@ -45,26 +45,39 @@ func TestExternalRelayModeValidation(t *testing.T) {
 
 func TestExternalRelayNeverStartsLocalWriter(t *testing.T) {
 	s := relayBootstrap(t)
-	start := strings.Index(s, `if [ "${NOISEDECK_RELAY_MODE:-local}" = local ]; then`)
+	start := strings.Index(s, "export MEMPALACE_CONFIG_DIR=")
 	end := strings.Index(s, "export A2A_MCP_URL=")
 	for _, mode := range []string{"local", "external"} {
 		dir := t.TempDir()
 		probe := filepath.Join(dir, "probe")
-		if err := os.WriteFile(probe, []byte("#!/bin/sh\ntouch \"$MARKER\"\n"), 0700); err != nil {
+		if err := os.WriteFile(probe, []byte("#!/bin/sh\nfor argument do\n  if [ \"$argument\" = \"$MARKER_PALACE\" ]; then touch \"$MARKER\"; fi\ndone\n"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		migrationProbe := filepath.Join(dir, "migration-probe")
+		if err := os.WriteFile(migrationProbe, []byte("#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$MIGRATION_OUT\"\n"), 0700); err != nil {
 			t.Fatal(err)
 		}
 		block := strings.ReplaceAll(s[start:end], "/home/agent/.mempalace", dir)
+		block = strings.ReplaceAll(block, "/opt/mempalace/venv/bin/python /usr/local/lib/noisedeck/migrate-mempalace-to-sqlite.py", migrationProbe)
 		block = strings.ReplaceAll(block, "/opt/mempalace/venv/bin/mempalace-mcp", probe)
 		block = strings.ReplaceAll(block, "while true; do", "for once in 1; do")
 		block = strings.ReplaceAll(block, "sleep 1", ":")
+		migrationOutput := filepath.Join(dir, "migration")
 		cmd := exec.Command("sh", "-c", "set -eu\n"+block+"\nwait")
-		cmd.Env = append(os.Environ(), "NOISEDECK_RELAY_MODE="+mode, "MARKER="+filepath.Join(dir, "started"))
+		cmd.Env = append(os.Environ(), "NOISEDECK_RELAY_MODE="+mode, "MARKER="+filepath.Join(dir, "started"), "MARKER_PALACE="+filepath.Join(dir, "relay"), "MIGRATION_OUT="+migrationOutput)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("%s: %v %s", mode, err, out)
 		}
 		_, err := os.Stat(filepath.Join(dir, "started"))
 		if (err == nil) != (mode == "local") {
 			t.Fatalf("local writer in mode %s: %v", mode, err)
+		}
+		migrated, err := os.ReadFile(migrationOutput)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(migrated), filepath.Join(dir, "relay")) != (mode == "local") {
+			t.Fatalf("relay migration in mode %s: %s", mode, migrated)
 		}
 		if mode == "external" {
 			if _, err := os.Stat(filepath.Join(dir, "relay")); !os.IsNotExist(err) {
@@ -94,7 +107,7 @@ func TestExternalRelayAuthenticatedReadiness(t *testing.T) {
 				w.Header().Set("Location", "/sink")
 			}
 			w.WriteHeader(status)
-			_, _ = w.Write([]byte(`{"result":{"serverInfo":{"version":"3.10.0"}}}`))
+			_, _ = w.Write([]byte(`{"result":{"serverInfo":{"version":"3.11.0"}}}`))
 		}))
 		cmd := exec.Command("python3", "-c", probe)
 		cmd.Env = append(os.Environ(), "A2A_MCP_URL="+server.URL, "A2A_MCP_TOKEN=synthetic")
@@ -286,6 +299,39 @@ docker() {
 		}
 		if tc.opt != "" && !strings.Contains(string(out), "app chromium relay-tunnel") {
 			t.Fatalf("tunnel not recreated: %s", out)
+		}
+	}
+}
+
+func TestStandaloneRelayMigratesSelectedPalaceAndPreservesArgs(t *testing.T) {
+	raw, err := os.ReadFile("mempalace/relay-entrypoint.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	probe := filepath.Join(dir, "probe")
+	if err := os.WriteFile(probe, []byte("#!/bin/sh\nprintf 'call' >> \"$PROBE_OUT\"\nprintf ' <%s>' \"$@\" >> \"$PROBE_OUT\"\nprintf '\\n' >> \"$PROBE_OUT\"\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	script := strings.ReplaceAll(string(raw), "/opt/mempalace/venv/bin/python /usr/local/lib/migrate-mempalace-to-sqlite.py", probe)
+	script = strings.ReplaceAll(script, "/opt/mempalace/venv/bin/mempalace-mcp", probe)
+	output := filepath.Join(dir, "calls")
+	cmd := exec.Command("sh", "-c", script, "relay", "--palace", filepath.Join(dir, "custom palace"), "--transport", "http", "--port", "8766")
+	cmd.Env = append(os.Environ(), "MEMPALACE_MCP_HTTP_TOKEN=synthetic", "MEMPALACE_CONFIG_DIR="+dir, "PROBE_OUT="+output)
+	if body, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("relay entrypoint: %v: %s", err, body)
+	}
+	calls, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	palace := filepath.Join(dir, "custom palace")
+	for _, want := range []string{
+		"call <--config> <" + filepath.Join(dir, "config.json") + "> <--palace> <" + palace + ">",
+		"call <--palace> <" + palace + "> <--transport> <http> <--port> <8766>",
+	} {
+		if !strings.Contains(string(calls), want) {
+			t.Errorf("relay calls lack %q:\n%s", want, calls)
 		}
 	}
 }

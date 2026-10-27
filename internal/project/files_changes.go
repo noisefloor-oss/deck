@@ -33,12 +33,18 @@ var errGitStatusTooLarge = errors.New("git status output exceeds the limit")
 // ReadFrom, which os/exec's io.Copy prefers over Write and so would skip
 // the limit.
 type cappedBuffer struct {
-	buf   bytes.Buffer
-	limit int
+	buf      bytes.Buffer
+	limit    int
+	err      error
+	overflow bool
 }
 
 func (b *cappedBuffer) Write(p []byte) (int, error) {
 	if b.buf.Len()+len(p) > b.limit {
+		b.overflow = true
+		if b.err != nil {
+			return 0, b.err
+		}
 		return 0, errGitStatusTooLarge
 	}
 	return b.buf.Write(p)
@@ -98,6 +104,16 @@ func gitChanges(ctx context.Context, projectRoot string) (map[string]string, err
 		return nil, err
 	}
 	return parseGitStatus(out.buf.Bytes()), nil
+}
+
+func gitHead(ctx context.Context, projectRoot string) (string, error) {
+	gitPath, err := exec.LookPath("git")
+	if err != nil {
+		return "", err
+	}
+	ctx, cancel := context.WithTimeout(ctx, gitStatusTimeout)
+	defer cancel()
+	return gitOutput(ctx, gitPath, projectRoot, "rev-parse", "HEAD")
 }
 
 // parseGitStatus reads `git status --porcelain=v2 -z` output. A deleted

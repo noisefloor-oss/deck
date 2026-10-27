@@ -192,7 +192,7 @@ const server = createServer(async (request, response) => {
       privateRequests.push(path);
       if (marker && !(protection === "none" ? state().workspaceAuthorized : grant)) { json(response, 403, { code: "unlock-required" }); return; }
       if (path.endsWith("/events")) { response.writeHead(200, { "Content-Type": "text/event-stream" }); response.end(": fixture\n\n"); return; }
-      if (path === "/api/settings/tutorial") { json(response, 200, { version: 1, dismissed: true, lesson: "welcome", step: 0, done: [], scope: "operator" }); return; }
+      if (path === "/api/settings/tutorial") { json(response, 200, { version: 1, dismissed: true, lesson: "welcome", step: 0, done: [], scope: "user" }); return; }
       if (path === "/api/settings") { json(response, 200, { skip_permissions: false, skip_close_confirm: false, skip_remove_project_confirm: false }); return; }
       if (path === "/api/settings/layout") { json(response, 404, { code: "layout-unavailable" }); return; }
       if (path === "/api/git-identities") { json(response, 200, { profiles: [{ id: "fixture", revision: 1, name: "Fixture", email: "fixture@example.invalid" }], default_profile_id: "fixture", revision: 1 }); return; }

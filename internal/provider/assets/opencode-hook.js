@@ -1,6 +1,6 @@
 // noisedeck-provider-hook.js — the provisioned opencode identity plugin (task 90).
 // Provisioning installs this at ~/.config/opencode/plugins/; Noisedeck
-// never writes the operator's plugin directory and verifies this exact
+// never writes the user's plugin directory and verifies this exact
 // content before every launch or resume (internal/provider/launchgate.go).
 //
 // opencode allocates its own native session id lazily (measured: no id

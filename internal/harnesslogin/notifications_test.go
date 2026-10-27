@@ -90,7 +90,7 @@ func authenticatedNotificationHandler(t *testing.T, h *Handler) http.Handler {
 func TestNotificationStreamRefreshesImmediatelyAndCleansUp(t *testing.T) {
 	s, _, _ := fixture(t, "codex")
 	h := NewHandler(s, []string{"https://deck.example"})
-	h.Operator = auth.ProxyPrincipal("operator-a")
+	h.User = auth.ProxyPrincipal("user-a")
 	wrapped := authenticatedNotificationHandler(t, h)
 	done := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -104,7 +104,7 @@ func TestNotificationStreamRefreshesImmediatelyAndCleansUp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Header.Set("X-Identity", "operator-a")
+	req.Header.Set("X-Identity", "user-a")
 	req.Header.Set("Origin", "https://deck.example")
 	client := server.Client()
 	client.Timeout = 5 * time.Second
@@ -151,11 +151,11 @@ func TestNotificationStreamRetainsAuthenticationAndOriginGates(t *testing.T) {
 		status                                      int
 	}{
 		{name: "unauthenticated", session: "session-a", status: 401},
-		{name: "other operator", principal: "operator-b", session: "session-a", status: 403},
-		{name: "foreign origin", principal: "operator-a", origin: "https://evil.invalid", session: "session-a", status: 403},
-		{name: "cross-site", principal: "operator-a", fetchSite: "cross-site", session: "session-a", status: 403},
-		{name: "missing session", principal: "operator-a", status: 400},
-		{name: "unavailable", principal: "operator-a", session: "session-a", unavailable: true, status: 503},
+		{name: "other user", principal: "user-b", session: "session-a", status: 403},
+		{name: "foreign origin", principal: "user-a", origin: "https://evil.invalid", session: "session-a", status: 403},
+		{name: "cross-site", principal: "user-a", fetchSite: "cross-site", session: "session-a", status: 403},
+		{name: "missing session", principal: "user-a", status: 400},
+		{name: "unavailable", principal: "user-a", session: "session-a", unavailable: true, status: 503},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s, _, _ := fixture(t, "codex")
@@ -163,7 +163,7 @@ func TestNotificationStreamRetainsAuthenticationAndOriginGates(t *testing.T) {
 				s = nil
 			}
 			h := NewHandler(s, []string{"https://deck.example"})
-			h.Operator = auth.ProxyPrincipal("operator-a")
+			h.User = auth.ProxyPrincipal("user-a")
 			req := httptest.NewRequest("GET", "/api/harness-login?watch=1&session="+tc.session, nil)
 			req.RemoteAddr = "127.0.0.1:30000"
 			req.Header.Set("X-Identity", tc.principal)
@@ -185,7 +185,7 @@ func TestNotificationStreamAcceptsSameOriginEventSourceWithoutOrigin(t *testing.
 	cancel()
 	req := httptest.NewRequest("GET", "/api/harness-login?watch=1&session=session-a", nil).WithContext(ctx)
 	req.RemoteAddr = "127.0.0.1:30000"
-	req.Header.Set("X-Identity", "operator-a")
+	req.Header.Set("X-Identity", "user-a")
 	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	out := httptest.NewRecorder()
 	authenticatedNotificationHandler(t, h).ServeHTTP(out, req)

@@ -3,6 +3,7 @@ package deploy
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -44,9 +45,12 @@ func TestMemPalaceSecurityLock(t *testing.T) {
 	}
 	var lock struct {
 		Packages []struct {
-			Name    string   `toml:"name"`
-			Version string   `toml:"version"`
-			Markers []string `toml:"resolution-markers"`
+			Name         string   `toml:"name"`
+			Version      string   `toml:"version"`
+			Markers      []string `toml:"resolution-markers"`
+			Dependencies []struct {
+				Name string `toml:"name"`
+			} `toml:"dependencies"`
 		} `toml:"package"`
 	}
 	if err := toml.Unmarshal(raw, &lock); err != nil {
@@ -55,8 +59,7 @@ func TestMemPalaceSecurityLock(t *testing.T) {
 	floors := map[string]string{
 		"anyio": "4.14.2", "certifi": "2026.10.19", "cryptography": "50.0.0",
 		"filelock": "4.2.1", "fsspec": "2026.6.0", "idna": "3.15.0",
-		"oauthlib": "4.0.0", "opentelemetry-api": "1.45.1", "pillow": "13.0.0",
-		"pydantic-settings": "2.14.2", "setuptools": "84.1.0", "soupsieve": "2.9.0",
+		"pillow": "13.0.0", "setuptools": "84.1.0", "soupsieve": "2.9.0",
 		"urllib3": "2.8.0",
 	}
 	// Only these complete marker forms prove a vulnerable entry cannot be
@@ -64,6 +67,18 @@ func TestMemPalaceSecurityLock(t *testing.T) {
 	legacy := regexp.MustCompile(`^python_full_version (< '3\.10'|== '3\.10\.\*')( and sys_platform (==|!=) 'win32')?$`)
 	seen := map[string]bool{}
 	for _, p := range lock.Packages {
+		if p.Name == "mempalace" {
+			hasCertifi := false
+			for _, dependency := range p.Dependencies {
+				hasCertifi = hasCertifi || dependency.Name == "certifi"
+			}
+			if !hasCertifi {
+				t.Error("MemPalace must select certifi at runtime for the image TLS bundle checks")
+			}
+		}
+		if p.Name == "chromadb" || p.Name == "chromadb-hnswlib" || p.Name == "chroma-hnswlib" {
+			t.Errorf("vulnerable ChromaDB package remains in the runtime lock: %s %s", p.Name, p.Version)
+		}
 		floor, required := floors[p.Name]
 		if !required {
 			continue
@@ -111,4 +126,15 @@ func securityVersion(s string) (uint64, error) {
 		result = result<<16 | n
 	}
 	return result, nil
+}
+
+func TestMemPalacePythonTLSRootsPatch(t *testing.T) {
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("python3 is not installed")
+	}
+	cmd := exec.Command(python, "-m", "unittest", "discover", "-s", "mempalace", "-p", "test_patch_python_tls_roots.py", "-v")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("Python trust-store patch: %v: %s", err, output)
+	}
 }

@@ -196,6 +196,8 @@ export const OPEN_THIS_FOLDER = "Open this folder";
 export const OPEN_THIS_FILE = "Open this file";
 export const RETURN_TO_FILE_LIST = "Return to the file list";
 export const WRAP_LONG_LINES = "Wrap long lines in the viewer";
+export const SHOW_FILE_CHANGES = "Show changes against the last commit";
+export const SHOW_FILE_CONTENT = "Show the file itself";
 // Upload collisions: each hint names what its control does to
 // the one file being asked about.
 export const CANCEL_THIS_UPLOAD = "Skip this file; the existing file stays as it is";

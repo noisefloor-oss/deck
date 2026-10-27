@@ -18,7 +18,7 @@ import * as hints from "../lib/hints.ts";
 
 export function workspaceLayout(): string {
   return `
-    <div data-workspace data-mono="operator" class="group/workspace flex h-screen w-screen flex-col overflow-hidden bg-sidebar-surface text-text-primary">
+    <div data-workspace data-mono="workspace" class="group/workspace flex h-screen w-screen flex-col overflow-hidden bg-sidebar-surface text-text-primary">
       <!-- The content row: [sidebar | main | right panel]. It is a row
            inside the shell's column flex, so the info bar sits below it
            as the last row. -->

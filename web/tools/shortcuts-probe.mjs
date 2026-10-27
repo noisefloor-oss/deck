@@ -146,7 +146,7 @@ try {
     if (request.method() === "PUT" && path === "/api/settings/last-session") return json(200, request.postDataJSON());
     if (request.method() === "GET" && path === "/api/settings/layout") return json(404, { code: "not_found", message: "no layout saved" });
     if (request.method() === "PUT" && path === "/api/settings/layout") return json(200, request.postDataJSON());
-    if (request.method() === "GET" && path === "/api/settings/tutorial") return json(200, { version: 1, dismissed: true, lesson: "welcome", step: 0, done: [], scope: "operator" });
+    if (request.method() === "GET" && path === "/api/settings/tutorial") return json(200, { version: 1, dismissed: true, lesson: "welcome", step: 0, done: [], scope: "user" });
     if (request.method() === "GET" && path === "/api/settings") return json(200, consoleSettings);
     if (request.method() === "PUT" && path === "/api/settings") {
       consoleSettings = request.postDataJSON();

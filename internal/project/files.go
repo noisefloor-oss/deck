@@ -160,6 +160,7 @@ type FileListing struct {
 	Path    string      `json:"path"`
 	Parent  string      `json:"parent,omitempty"`
 	AtRoot  bool        `json:"at_root"`
+	Head    string      `json:"head,omitempty"`
 	Entries []FileEntry `json:"entries"`
 	// Truncated reports that the directory holds more than maxEntries.
 	Truncated bool `json:"truncated,omitempty"`

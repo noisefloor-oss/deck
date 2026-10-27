@@ -99,22 +99,19 @@ uid="$(id -u)"; gid="$(id -g)"
 # The stub review command inside the jail: it records the verdict and
 # posts nothing, because it can post nothing.
 install -d -m 0755 "${jail}/bin"
-cat >"${jail}/bin/noise-review" <<'STUB'
-#!/bin/sh
-# Captures `review --repo R --pr N --event E --body B` for the host.
-event=""; body=""
-while [ $# -gt 0 ]; do
-	case "$1" in
-		--event) event="$2"; shift 2 ;;
-		--body) body="$2"; shift 2 ;;
-		*) shift ;;
-	esac
-done
-[ -n "${event}" ] || { echo "noise-review: --event is required" >&2; exit 1; }
-printf '%s\n%s\n' "${event}" "${body}" >/work/.noise-verdict
-echo '{"captured":true}'
-STUB
+cp "$(dirname "$0")/review-capture.sh" "${jail}/bin/noise-review"
 chmod 0755 "${jail}/bin/noise-review"
+
+# Only tool source files enter the jail. Missing libraries leave legacy body
+# capture available; findings mode fails closed when it cannot load its parser.
+install -d -m 0755 "${jail}/review-lib"
+review_lib="$(dirname "$(dirname "${JAIL_TOOL}")")/lib"
+if [ -f "${review_lib}/review.sh" ] && [ ! -L "${review_lib}/review.sh" ]; then
+ for lib in review.sh utils.sh token.sh jwt.sh; do
+  [ -f "${review_lib}/${lib}" ] && [ ! -L "${review_lib}/${lib}" ] || { echo 'review-jail: pinned review library is incomplete' >&2; exit 2; }
+  install -m 0644 "${review_lib}/${lib}" "${jail}/review-lib/${lib}"
+ done
+fi
 
 # The dialer's listen address: the broker URL without scheme and path.
 dial="${JAIL_BROKER#http://}"
@@ -144,6 +141,8 @@ run_jail() {
 		--env PATH=/opt/node/bin:/opt/codex/bin:/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin \
 		--env GOFLAGS=-mod=mod --env GOPATH=/home/jail/go --env GOCACHE=/home/jail/.cache/go-build \
 		--env GOMODCACHE=/opt/gomod --env GOPROXY=off \
+		--env "JAIL_HEAD=${JAIL_HEAD:-}" --env "JAIL_BASE=${JAIL_BASE:-}" \
+		--env "JAIL_REPO=${JAIL_REPO}" --env "JAIL_PR=${JAIL_PR}" \
 		--env JAIL_BROKER="${JAIL_BROKER}" --env JAIL_DIAL="${dial}" --env JAIL_MODEL="${JAIL_MODEL}" \
 		--network none \
 		--volume "${jail}/work:/work:Z" \
@@ -154,6 +153,7 @@ run_jail() {
 		--volume "${JAIL_GO}:/usr/local/go:ro,z" \
 		--volume "${JAIL_GOMOD}:/opt/gomod:ro,z" \
 		--volume "${jail}/bin/noise-review:/opt/broker/noise-review:ro,Z" \
+		--volume "${jail}/review-lib:/opt/review-lib:ro,Z" \
 		--workdir /work \
 		"${JAIL_IMAGE}" sh -c 'mkdir -p "${CODEX_HOME}"; /opt/broker/bump jail-dial -listen "${JAIL_DIAL}" -socket /run/broker/broker.sock >/dev/null & exec "$@"' sh "$@" <&0 &
 	wait $!
@@ -225,7 +225,7 @@ if [ "${1:-}" = "--hostile" ]; then
 		# toolchains carry certificate and test-fixture PEMs by name; those
 		# are not keys the host holds.
 		find / -xdev \( -name "app.pem" -o -name "auth.json" -o -name "hosts.yml" \) 2>/dev/null | { if [ "${JAIL_SUBSCRIPTION:-}" = 1 ]; then grep -v "^/home/jail/.codex/auth.json$"; else cat; fi; } | grep -q . && leak "a credential file by name"
-		grep -rIl -- "-----BEGIN [A-Z ]*PRIVATE KEY-----" /run /home/jail /tmp /etc /opt/broker 2>/dev/null | grep -q . && leak "a private key"
+		grep -rIl -- "-----BEGIN [A-Z ]*PRIVATE KEY-----" /run /home/jail /tmp /etc /opt/broker /opt/review-lib 2>/dev/null | grep -q . && leak "a private key"
 		[ ! -e /run/secrets ] || leak "/run/secrets"
 		[ ! -e /var/run/docker.sock ] || leak "the docker socket"
 		# The broker socket is the only thing under /run/broker, and the
@@ -267,7 +267,7 @@ if [ "${1:-}" = "--hostile" ]; then
 		fi
 		# The stub can record a verdict from inside: the one write the
 		# jail must be able to make.
-		/opt/broker/noise-review review --repo x --pr 0 --event COMMENT --body "hostile probe" >/dev/null
+		/opt/broker/noise-review review --repo "$JAIL_REPO" --pr "$JAIL_PR" --event COMMENT --body "hostile probe" >/dev/null
 		[ -s /work/.noise-verdict ] || leak "no way to record a verdict"
 		echo "review-jail: hostile probe found nothing"
 	' </dev/null

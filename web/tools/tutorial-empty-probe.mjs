@@ -91,7 +91,7 @@ try {
   const goneRequests = [];
   let providerList = ["claude", "codex", "shell"];
   const laneFaults = { sessionsLive: true, reviewSeen: false, failOwnReads: 0 };
-  let record = { version: 1, dismissed: false, lesson: "lesson-1", step: 0, done: [], scope: "operator" };
+  let record = { version: 1, dismissed: false, lesson: "lesson-1", step: 0, done: [], scope: "user" };
   const inputs = [];
   let inputDelay = 0;
   const sockets = new Map();
@@ -140,7 +140,7 @@ try {
     const method = request.method();
     const json = (status, body) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
     if (path === "/api/settings/tutorial") {
-      if (method === "PUT") record = { ...request.postDataJSON(), scope: "operator" };
+      if (method === "PUT") record = { ...request.postDataJSON(), scope: "user" };
       return json(200, record);
     }
     if (path === "/api/settings/layout" || path === "/api/settings/last-session") {
@@ -389,7 +389,7 @@ try {
   };
   const reset = async (step = 0) => {
     clean();
-    record = { version: 1, dismissed: false, lesson: "lesson-1", step, done: [], scope: "operator" };
+    record = { version: 1, dismissed: false, lesson: "lesson-1", step, done: [], scope: "user" };
     await page.reload({ waitUntil: "networkidle" });
     await arrived();
     if (step === 0) await button("Start the tutorial").click();
@@ -572,7 +572,7 @@ try {
   projects.push({ id: ownId, name: "mycode", canonical_path: "/workspace/mycode", last_used_at: "t", git_identity_setup_revision: 1 });
   sessions.push({ ...base, id: "own-agent", project_id: ownId, provider: "claude", display_name: "Own agent", native_session_id: "fixture-own" });
   fakeFiles.set(ownId, new Map());
-  record = { version: 1, dismissed: false, lesson: "lesson-3", step: stepIndex("lesson-3", "Give it a brief"), done: [], scope: "operator" };
+  record = { version: 1, dismissed: false, lesson: "lesson-3", step: stepIndex("lesson-3", "Give it a brief"), done: [], scope: "user" };
   await page.reload({ waitUntil: "networkidle" });
   await arrived();
   await select("own-agent");
@@ -633,7 +633,7 @@ try {
     clean();
     projects.push({ id: ownId, name: "mycode", canonical_path: "/workspace/mycode", last_used_at: "t", git_identity_setup_revision: 1 });
     sessions.push({ ...base, id: "own-agent", project_id: ownId, provider: "claude", display_name: "Own agent", native_session_id: "fixture-own" });
-    record = { version: 1, dismissed: false, lesson: id, step: stepIndex(id, title), done: [], scope: "operator" };
+    record = { version: 1, dismissed: false, lesson: id, step: stepIndex(id, title), done: [], scope: "user" };
     await page.reload({ waitUntil: "networkidle" });
     await arrived();
     await onStep(title);

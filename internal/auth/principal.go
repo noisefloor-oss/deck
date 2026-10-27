@@ -8,6 +8,10 @@ import (
 
 type principalKey struct{}
 
+// The original single-user storage principal stays stable so existing
+// settings and connection records remain attached to their owner.
+const legacySingleUserPrincipal = "operator"
+
 // Principal is an opaque authenticated identity for sensitive per-user
 // capabilities. Empty means no authentication; a project or request header
 // alone never establishes one. Password/OIDC have exactly one user.

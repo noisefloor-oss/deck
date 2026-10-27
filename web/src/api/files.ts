@@ -26,6 +26,7 @@ export interface FileListing {
   path: string;
   parent?: string;
   at_root: boolean;
+  head?: string;
   entries: FileEntry[];
   truncated?: boolean;
 }
@@ -94,6 +95,7 @@ export interface UploadTransportOptions {
 export interface FileApiClient {
   listProjectFiles(projectID: string, path: string): Promise<FileListing>;
   viewProjectFile(projectID: string, path: string): Promise<FileView>;
+  diffProjectFile(projectID: string, path: string): Promise<FileView>;
   subscribeProjectFileEvents(projectID: string, path: string, onChange: () => void): () => void;
   projectFileDownloadUrl(projectID: string, path: string): string;
   // version names the listing generation the URL is for, so a changed

@@ -56,7 +56,7 @@ export interface TutorialState {
   // How many times an observed event moved the lesson on by itself.
   advances: number;
   done: readonly string[];
-  scope: "operator" | "installation" | null;
+  scope: "user" | "operator" | "installation" | null;
   loadError: string | null;
   saveError: string | null;
   // The stored record speaks a version this build does not. Nothing is

@@ -32,7 +32,7 @@ const server = createServer(async (req, res) => {
   }
   if (url.pathname === "/api/settings/tutorial") {
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ version: 1, dismissed: true, lesson: "welcome", step: 0, done: [], scope: "operator" }));
+    res.end(JSON.stringify({ version: 1, dismissed: true, lesson: "welcome", step: 0, done: [], scope: "user" }));
     return;
   }
   if (url.pathname === "/api/settings") {

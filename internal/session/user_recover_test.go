@@ -14,7 +14,7 @@ import (
 // attempt on. The unattended loop is bounded because nobody is watching it; a
 // person who has read the failure is the retry loop, and refusing them would
 // bury work the CLI could still resume.
-func TestOperatorRecoverReopensASpentOpportunity(t *testing.T) {
+func TestUserRecoverReopensASpentOpportunity(t *testing.T) {
 	desc := sleeperDescriptor()
 	desc.contract = provider.IdentityFreshRelaunch
 	mgr, repo, _, projectID := newTestEnv(t, desc)
@@ -64,7 +64,7 @@ func TestOperatorRecoverReopensASpentOpportunity(t *testing.T) {
 // automatic sweep honors exit 0 as intentional and stays away; the person
 // who clicks Resume has decided otherwise, and the card promised them the
 // record was kept.
-func TestOperatorRecoverRevivesACleanExit(t *testing.T) {
+func TestUserRecoverRevivesACleanExit(t *testing.T) {
 	desc := sleeperDescriptor()
 	desc.contract = provider.IdentityFreshRelaunch
 	mgr, repo, _, projectID := newTestEnv(t, desc)
@@ -102,7 +102,7 @@ func TestOperatorRecoverRevivesACleanExit(t *testing.T) {
 // asked. Clicking Resume rescinds it: the successor must not inherit a stop
 // meant for its predecessor, and the reopen clears the marker with the
 // counters.
-func TestOperatorRecoverRevivesAStoppedSession(t *testing.T) {
+func TestUserRecoverRevivesAStoppedSession(t *testing.T) {
 	desc := sleeperDescriptor()
 	desc.contract = provider.IdentityFreshRelaunch
 	mgr, repo, _, projectID := newTestEnv(t, desc)
@@ -141,7 +141,7 @@ func TestOperatorRecoverRevivesAStoppedSession(t *testing.T) {
 
 // Recover refuses a session that is alive: reviving a running process would
 // destroy the work it is doing.
-func TestOperatorRecoverRefusesALiveSession(t *testing.T) {
+func TestUserRecoverRefusesALiveSession(t *testing.T) {
 	mgr, repo, _, projectID := newTestEnv(t, sleeperDescriptor())
 	mgr.SetResumeDeps(lease.NewManager(repo.db), inputgate.New(), testWorkDirResolver(t))
 	ctx := context.Background()

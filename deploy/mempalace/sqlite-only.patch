@@ -1,0 +1,410 @@
+diff --git a/mempalace/backends/chroma.py b/mempalace/backends/chroma.py
+index 9117de1..cd18daa 100644
+--- a/mempalace/backends/chroma.py
++++ b/mempalace/backends/chroma.py
+@@ -20,9 +20,18 @@ from numbers import Integral
+ from pathlib import Path
+ from typing import Any, Iterable, Iterator, Optional
+ 
+-import chromadb
+-from chromadb.config import Settings as _ChromaSettings
+-from chromadb.errors import NotFoundError as _ChromaNotFoundError
++try:
++    import chromadb
++    from chromadb.config import Settings as _ChromaSettings
++    from chromadb.errors import NotFoundError as _ChromaNotFoundError
++except ModuleNotFoundError as exc:
++    if exc.name != "chromadb":
++        raise
++    chromadb = None
++    _ChromaSettings = None
++
++    class _ChromaNotFoundError(Exception):
++        pass
+ 
+ from ._inproc_sqlite import open_reader as open_palace_reader
+ from ._inproc_sqlite import open_writer as open_palace_writer
+@@ -80,7 +89,7 @@ _ignore_embeddinggemma2_reconstruct_warning()
+ # and MemPalace promises the data never leaves the machine. Every client this
+ # backend opens says no explicitly, so a future ChromaDB release cannot turn
+ # collection back on underneath us. (GHSA-8h77)
+-_CLIENT_SETTINGS = _ChromaSettings(anonymized_telemetry=False)
++_CLIENT_SETTINGS = _ChromaSettings(anonymized_telemetry=False) if _ChromaSettings else None
+ 
+ 
+ _REQUIRED_OPERATORS = frozenset({"$eq", "$ne", "$in", "$nin", "$and", "$or", "$contains"})
+@@ -4037,6 +4046,8 @@ class ChromaBackend(BaseBackend):
+     )
+ 
+     def __init__(self):
++        if chromadb is None:
++            raise RuntimeError("ChromaDB support is not installed in this image")
+         # palace_path -> PersistentClient
+         self._clients: dict[str, Any] = {}
+         # palace_path -> (inode, mtime) of chroma.sqlite3 at cache time.
+@@ -4521,9 +4532,10 @@ class ChromaBackend(BaseBackend):
+         Probed through :func:`mempalace.backends._magic.has_sqlite_magic`,
+         which never opens a plain descriptor on the file -- see that module for
+         why a plain open+close of a live database drops the process's POSIX
+-        locks on it.
++        locks on it. Without ChromaDB installed, archived files do not select
++        an unavailable live backend.
+         """
+-        return has_sqlite_magic(os.path.join(path, "chroma.sqlite3"))
++        return chromadb is not None and has_sqlite_magic(os.path.join(path, "chroma.sqlite3"))
+ 
+     # ------------------------------------------------------------------
+     # Legacy (pre-RFC 001) surface — retained while callers migrate.
+diff --git a/mempalace/embedding.py b/mempalace/embedding.py
+index 4d21062..ae8c38e 100644
+--- a/mempalace/embedding.py
++++ b/mempalace/embedding.py
+@@ -273,68 +273,10 @@ def _resolve_embeddinggemma_batch_size() -> int:
+ 
+ 
+ def _build_ef_class():
+-    """Subclass ``ONNXMiniLM_L6_V2`` with name ``"default"``.
+-
+-    Why the rename: ChromaDB 1.5 persists the EF identity on the collection
+-    and rejects reads that pass a differently-named EF (``onnx_mini_lm_l6_v2``
+-    vs ``default``). The vectors and model are identical — only the
+-    ``name()`` tag differs — so spoofing the name lets one EF class serve
+-    palaces created with ``DefaultEmbeddingFunction`` *and* palaces we
+-    create ourselves, with the same GPU-capable ``preferred_providers``.
+-    """
+-    from functools import cached_property
+-
+-    from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2
+-
+-    class _MempalaceONNX(ONNXMiniLM_L6_V2):
+-        def __init__(self, preferred_providers=None, intra_op_num_threads=0):
+-            super().__init__(preferred_providers=preferred_providers)
+-            self._intra_op_num_threads = intra_op_num_threads
+-            self._run_lock = threading.Lock()
+-
+-        @staticmethod
+-        def name() -> str:
+-            return "default"
+-
+-        def _forward(self, documents, batch_size=32):
+-            # Every upstream embed path (__call__, embed_query) runs the
+-            # session here, so this is the one place to serialize it.
+-            with _run_guard(self._preferred_providers, self._run_lock):
+-                return super()._forward(documents, batch_size)
+-
+-        @cached_property
+-        def model(self):
+-            # Upstream builds the InferenceSession with no intra-op thread cap,
+-            # so ORT defaults its pool to the physical core count and a
+-            # background mine pins every core (#1068). Rebuild the session the
+-            # same way upstream does (same SessionOptions, same CoreML pruning,
+-            # same model path) but with our cap applied. If upstream's
+-            # internals shift, fall back to its uncapped build so embedding
+-            # still works.
+-            cap = getattr(self, "_intra_op_num_threads", 0)
+-            if not cap or cap <= 0:
+-                return super().model
+-            try:
+-                ort = self.ort
+-                providers = self._preferred_providers or ort.get_available_providers()
+-                providers = [p for p in providers if p != "CoreMLExecutionProvider"]
+-                so = ort.SessionOptions()
+-                so.log_severity_level = 3
+-                so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+-                so.intra_op_num_threads = cap
+-                return ort.InferenceSession(
+-                    os.path.join(self.DOWNLOAD_PATH, self.EXTRACTED_FOLDER_NAME, "model.onnx"),
+-                    providers=providers,
+-                    sess_options=so,
+-                )
+-            except Exception:
+-                logger.warning(
+-                    "thread-capped ORT session build failed; using ORT defaults",
+-                    exc_info=True,
+-                )
+-                return super().model
++    """Return the local all-MiniLM-L6-v2 ONNX embedder."""
++    from .minilm_onnx import MiniLMONNX
+ 
+-    return _MempalaceONNX
++    return MiniLMONNX
+ 
+ 
+ # Embeddinggemma-300m ONNX (q8) — 100+ languages, MRL-truncated to 384 dims so
+diff --git a/mempalace/mcp_server/__init__.py b/mempalace/mcp_server/__init__.py
+index 4aac1bb..5f6243c 100644
+--- a/mempalace/mcp_server/__init__.py
++++ b/mempalace/mcp_server/__init__.py
+@@ -88,11 +88,11 @@ from ..config import (  # noqa: E402
+     strip_lone_surrogates,
+ )
+ from ..version import __version__  # noqa: E402
+-from chromadb.errors import NotFoundError as _ChromaNotFoundError  # noqa: E402
+ 
+ from ..backends.chroma import (  # noqa: E402
+     ChromaBackend,
+     ChromaCollection,
++    _ChromaNotFoundError,
+     _HNSW_WRITE_DEFAULTS,
+     _clear_chroma_system_cache,
+     _is_own_db_stamp,
+diff --git a/mempalace/palace/__init__.py b/mempalace/palace/__init__.py
+index 9cc1b7c..d7d38fc 100644
+--- a/mempalace/palace/__init__.py
++++ b/mempalace/palace/__init__.py
+@@ -69,7 +69,7 @@ SKIP_DIRS = {
+     "target",
+ }
+ 
+-_DEFAULT_BACKEND = get_backend("chroma")
++_DEFAULT_BACKEND = None
+ _EXPLICIT_BACKEND_ENV = "MEMPALACE_BACKEND_EXPLICIT"
+ 
+ # Schema version for drawer normalization. Bump when the normalization
+diff --git a/mempalace/palace/palace_lock.py b/mempalace/palace/palace_lock.py
+index 36d4ffa..8f1072e 100644
+--- a/mempalace/palace/palace_lock.py
++++ b/mempalace/palace/palace_lock.py
+@@ -97,11 +97,8 @@ def _validate_palace_fts5_after_mine(
+     # Defer-import: keeps the repair module graph out of mine's hot import path.
+     from ..repair import _close_chroma_handles, maybe_autoheal_fts5_index, sqlite_integrity_errors
+ 
+-    # Pass the live singleton so the writer's cached PersistentClient actually
+-    # gets closed and WAL flushes before the read-only sqlite3 re-open.
+-    # A transient ChromaBackend (the default) would only clear its own empty
+-    # `_clients` dict and leave _DEFAULT_BACKEND's live handle in place,
+-    # which on Windows keeps the sqlite file mmap'd.
++    # This branch is only for a deliberately selected legacy backend. SQLite
++    # operation never constructs a Chroma client during import or cleanup.
+     _close_chroma_handles(palace_path, backend=_DEFAULT_BACKEND)
+ 
+     errors = sqlite_integrity_errors(palace_path)
+diff --git a/mempalace/repair.py b/mempalace/repair.py
+index 4233545..52d019f 100644
+--- a/mempalace/repair.py
++++ b/mempalace/repair.py
+@@ -43,9 +43,12 @@ from datetime import datetime
+ import re
+ from typing import Callable, Iterator, Optional
+ 
+-from chromadb.errors import NotFoundError as ChromaNotFoundError
+-
+-from .backends.chroma import ChromaBackend, _clear_chroma_system_cache, hnsw_capacity_status
++from .backends.chroma import (
++    ChromaBackend,
++    _ChromaNotFoundError as ChromaNotFoundError,
++    _clear_chroma_system_cache,
++    hnsw_capacity_status,
++)
+ 
+ # sqlite_read_uri stays in this module's namespace: callers and tests reach the
+ # read-only URI through repair. Connections to chroma.sqlite3 go through
+diff --git a/pyproject.toml b/pyproject.toml
+index 2395c03..1fff63c 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -27,7 +27,7 @@ classifiers = [
+     "Topic :: Utilities",
+ ]
+ dependencies = [
+-    "chromadb>=1.5.4,<2",
++    "certifi>=2026.10.23",
+     "pyyaml>=6.0,<7",
+     "tomli>=2.0.0; python_version < '3.11'",
+     # Multilingual embedding model deps. Onboarding now offers the
+@@ -40,6 +40,7 @@ dependencies = [
+     "huggingface_hub>=0.20",
+     "tokenizers>=0.15",
+     "numpy>=1.24",
++    "onnxruntime>=1.21; python_version >= '3.11'",
+     # Tier 6a content-date extraction uses dateutil for natural-language
+     # date parsing (filename + content body branches). It happens to install
+     # transitively today via chromadb→kubernetes→python-dateutil, but that
+@@ -60,7 +61,6 @@ mempalace-mcp = "mempalace.mcp_proxy:main"
+ mempalace-light-mcp = "mempalace.mcp_light_server:main"
+ 
+ [project.entry-points."mempalace.backends"]
+-chroma = "mempalace.backends.chroma:ChromaBackend"
+ milvus = "mempalace.backends.milvus:MilvusBackend"
+ pgvector = "mempalace.backends.pgvector:PgVectorBackend"
+ qdrant = "mempalace.backends.qdrant:QdrantBackend"
+diff --git a/mempalace/minilm_onnx.py b/mempalace/minilm_onnx.py
+new file mode 100644
+index 0000000..e5ffd6f
+--- /dev/null
++++ b/mempalace/minilm_onnx.py
+@@ -0,0 +1,174 @@
++"""Local all-MiniLM-L6-v2 inference without a vector-database dependency."""
++
++from __future__ import annotations
++
++import contextlib
++import hashlib
++import os
++import tarfile
++import tempfile
++import threading
++import urllib.request
++from functools import cached_property
++from pathlib import Path
++
++import numpy as np
++
++
++class MiniLMONNX:
++    MODEL_URL = "https://chroma-onnx-models.s3.amazonaws.com/all-MiniLM-L6-v2/onnx.tar.gz"
++    MODEL_SHA256 = "913d7300ceae3b2dbc2c50d1de4baacab4be7b9380491c27fab7418616a16ec3"
++    FILES = (
++        "config.json",
++        "model.onnx",
++        "special_tokens_map.json",
++        "tokenizer_config.json",
++        "tokenizer.json",
++        "vocab.txt",
++    )
++
++    def __init__(self, preferred_providers=None, intra_op_num_threads=0):
++        import onnxruntime as ort
++        from tokenizers import Tokenizer
++
++        self.ort = ort
++        self.Tokenizer = Tokenizer
++        self._preferred_providers = list(preferred_providers or [])
++        self._intra_op_num_threads = intra_op_num_threads
++        self._run_lock = threading.Lock()
++        self._load_lock = threading.Lock()
++        self._verified = False
++        self.root = Path.home() / ".cache" / "chroma" / "onnx_models" / "all-MiniLM-L6-v2"
++        self.model_dir = self.root / "onnx"
++
++    @staticmethod
++    def name():
++        return "default"
++
++    @staticmethod
++    def max_tokens():
++        return 256
++
++    def default_space(self):
++        return "cosine"
++
++    def supported_spaces(self):
++        return ["cosine", "l2", "ip"]
++
++    def _download(self):
++        self.model_dir.mkdir(parents=True, exist_ok=True)
++        archive = self.root / "onnx.tar.gz"
++        if not archive.exists() or self._sha256(archive) != self.MODEL_SHA256:
++            with urllib.request.urlopen(self.MODEL_URL, timeout=120) as response:
++                fd, temporary = tempfile.mkstemp(prefix=".onnx-", dir=self.root)
++                try:
++                    with os.fdopen(fd, "wb") as output:
++                        while chunk := response.read(1024 * 1024):
++                            output.write(chunk)
++                    if self._sha256(Path(temporary)) != self.MODEL_SHA256:
++                        raise RuntimeError("the MiniLM model archive failed its SHA-256 check")
++                    os.replace(temporary, archive)
++                finally:
++                    if os.path.exists(temporary):
++                        os.unlink(temporary)
++        with tarfile.open(archive, mode="r:gz") as bundle:
++            for name in self.FILES:
++                destination = self.model_dir / name
++                member = bundle.getmember(f"onnx/{name}")
++                if not member.isfile():
++                    raise RuntimeError(f"the MiniLM archive has an invalid {name} entry")
++                source = bundle.extractfile(member)
++                if source is None:
++                    raise RuntimeError(f"the MiniLM archive has no readable {name} entry")
++                with source:
++                    if destination.exists():
++                        digest = hashlib.sha256()
++                        while chunk := source.read(1024 * 1024):
++                            digest.update(chunk)
++                        if self._sha256(destination) == digest.hexdigest():
++                            continue
++                        source.seek(0)
++                    fd, temporary = tempfile.mkstemp(prefix=f".{name}.", dir=self.model_dir)
++                    try:
++                        with os.fdopen(fd, "wb") as output:
++                            while chunk := source.read(1024 * 1024):
++                                output.write(chunk)
++                        os.replace(temporary, destination)
++                    finally:
++                        if os.path.exists(temporary):
++                            os.unlink(temporary)
++
++    @staticmethod
++    def _sha256(path):
++        digest = hashlib.sha256()
++        with path.open("rb") as source:
++            while chunk := source.read(1024 * 1024):
++                digest.update(chunk)
++        return digest.hexdigest()
++
++    def _ensure_model(self):
++        if self._verified:
++            return
++        with self._load_lock:
++            if not self._verified:
++                self._download()
++                self._verified = True
++
++    @cached_property
++    def tokenizer(self):
++        tokenizer = self.Tokenizer.from_file(str(self.model_dir / "tokenizer.json"))
++        tokenizer.enable_truncation(max_length=self.max_tokens())
++        tokenizer.enable_padding(pad_id=0, pad_token="[PAD]", length=self.max_tokens())
++        return tokenizer
++
++    @cached_property
++    def model(self):
++        providers = self._preferred_providers or self.ort.get_available_providers()
++        providers = [name for name in providers if name != "CoreMLExecutionProvider"]
++        if not set(providers).issubset(self.ort.get_available_providers()):
++            raise ValueError("a requested ONNX Runtime provider is unavailable")
++        options = self.ort.SessionOptions()
++        options.log_severity_level = 3
++        options.graph_optimization_level = self.ort.GraphOptimizationLevel.ORT_ENABLE_ALL
++        if self._intra_op_num_threads > 0:
++            options.intra_op_num_threads = self._intra_op_num_threads
++        return self.ort.InferenceSession(
++            str(self.model_dir / "model.onnx"), sess_options=options, providers=providers
++        )
++
++    def _forward(self, documents, batch_size=32):
++        outputs = []
++        for start in range(0, len(documents), batch_size):
++            encoded = [self.tokenizer.encode(text) for text in documents[start : start + batch_size]]
++            if any(len(item.ids) > self.max_tokens() for item in encoded):
++                raise ValueError(f"MiniLM input exceeds {self.max_tokens()} tokens")
++            input_ids = np.asarray([item.ids for item in encoded], dtype=np.int64)
++            attention_mask = np.asarray([item.attention_mask for item in encoded], dtype=np.int64)
++            token_type_ids = np.zeros_like(input_ids)
++            serial = self._run_lock if "DmlExecutionProvider" in self._preferred_providers else contextlib.nullcontext()
++            with serial:
++                hidden = self.model.run(
++                    None,
++                    {
++                        "input_ids": input_ids,
++                        "attention_mask": attention_mask,
++                        "token_type_ids": token_type_ids,
++                    },
++                )[0]
++            mask = np.broadcast_to(attention_mask[..., None], hidden.shape)
++            pooled = np.sum(hidden * mask, axis=1) / np.clip(mask.sum(axis=1), 1e-9, None)
++            norms = np.linalg.norm(pooled, axis=1)
++            norms[norms == 0] = 1e-12
++            outputs.append((pooled / norms[:, None]).astype(np.float32))
++        return np.concatenate(outputs) if outputs else np.empty((0, 384), dtype=np.float32)
++
++    def __call__(self, input):
++        if isinstance(input, str) or not isinstance(input, (list, tuple)):
++            raise TypeError("MiniLM input must be a list of documents")
++        if not all(isinstance(text, str) for text in input):
++            raise TypeError("MiniLM documents must be text")
++        self._ensure_model()
++        return list(self._forward(list(input)))
++
++    def embed_query(self, input):
++        return self(input)

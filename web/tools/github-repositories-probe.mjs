@@ -214,7 +214,7 @@ try {
           lesson: "welcome",
           step: 0,
           done: [],
-          scope: "operator"
+          scope: "user"
         });
       }
       if (path === "/api/harness-login")

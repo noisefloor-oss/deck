@@ -32,7 +32,7 @@ func TestAuthenticatedCSRFProtectedPost(t *testing.T) {
 		handler.ServeHTTP(out, req)
 		return out
 	}
-	out := call("GET", "operator-a", "", "", "", "")
+	out := call("GET", "user-a", "", "", "", "")
 	var page struct {
 		CSRF string `json:"csrf"`
 	}
@@ -47,11 +47,11 @@ func TestAuthenticatedCSRFProtectedPost(t *testing.T) {
 		status                               int
 	}{
 		{"unauthenticated", "", "https://deck.example", page.CSRF, "application/json", 401},
-		{"missing-origin", "operator-a", "", page.CSRF, "application/json", 403},
-		{"foreign-origin", "operator-a", "https://evil.invalid", page.CSRF, "application/json", 403},
-		{"missing-csrf", "operator-a", "https://deck.example", "", "application/json", 403},
-		{"other-operator", "operator-b", "https://deck.example", page.CSRF, "application/json", 403},
-		{"simple-form", "operator-a", "https://deck.example", page.CSRF, "text/plain", 403},
+		{"missing-origin", "user-a", "", page.CSRF, "application/json", 403},
+		{"foreign-origin", "user-a", "https://evil.invalid", page.CSRF, "application/json", 403},
+		{"missing-csrf", "user-a", "https://deck.example", "", "application/json", 403},
+		{"other-user", "user-b", "https://deck.example", page.CSRF, "application/json", 403},
+		{"simple-form", "user-a", "https://deck.example", page.CSRF, "text/plain", 403},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			out := call("POST", c.principal, c.origin, c.csrf, c.media, `{"action":"submit","callback":"secret-canary"}`)
@@ -61,7 +61,7 @@ func TestAuthenticatedCSRFProtectedPost(t *testing.T) {
 		})
 	}
 	for _, body := range []string{`{"action":"begin","unknown":"secret-canary"}`, `{secret-canary`, strings.Repeat("secret-canary", MaxURLBytes)} {
-		out := call("POST", "operator-a", "https://deck.example", page.CSRF, "application/json", body)
+		out := call("POST", "user-a", "https://deck.example", page.CSRF, "application/json", body)
 		if out.Code != 400 || strings.Contains(out.Body.String(), "secret-canary") {
 			t.Fatal("invalid request was accepted or echoed")
 		}
@@ -143,10 +143,10 @@ func TestPasswordAuthenticatedDeliveryAndBothCSRFChecks(t *testing.T) {
 	}
 }
 
-func TestOnlyConfiguredProxyOperatorCanClaimNativeAttempt(t *testing.T) {
+func TestOnlyConfiguredProxyUserCanClaimNativeAttempt(t *testing.T) {
 	s, _, _ := fixture(t, "pi")
 	h := NewHandler(s, []string{"https://deck.example"})
-	h.Operator = auth.ProxyPrincipal("instance-owner")
+	h.User = auth.ProxyPrincipal("instance-owner")
 	a, err := auth.New(auth.Config{Mode: "trusted_proxy", ProxyAddresses: []string{"127.0.0.1"}, IdentityHeader: "X-Identity"}, zerolog.Nop())
 	if err != nil {
 		t.Fatal(err)
@@ -190,7 +190,7 @@ func TestDismissLifecycleOverHTTP(t *testing.T) {
 	call := func(method, body, csrf string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(method, "/api/harness-login?session=session-a", strings.NewReader(body))
 		req.RemoteAddr = "127.0.0.1:30000"
-		req.Header.Set("X-Identity", "operator-a")
+		req.Header.Set("X-Identity", "user-a")
 		if method == http.MethodPost {
 			req.Header.Set("Origin", "https://deck.example")
 			req.Header.Set(CSRFHeader, csrf)

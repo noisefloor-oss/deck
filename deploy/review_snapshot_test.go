@@ -23,7 +23,7 @@ func TestReviewSnapshotPostingGate(t *testing.T) {
 	for _, mode := range []string{"valid", "unbound", "wrong-head", "duplicate-base", "stale-head", "stale-base", "missing-main", "api-error", "changed-diff"} {
 		t.Run(mode, func(t *testing.T) {
 			dir := t.TempDir()
-			for _, sub := range []string{"bin", "candidate"} {
+			for _, sub := range []string{"bin", "candidate", "lib"} {
 				if err := os.Mkdir(filepath.Join(dir, sub), 0700); err != nil {
 					t.Fatal(err)
 				}
@@ -34,6 +34,10 @@ func TestReviewSnapshotPostingGate(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			for _, lib := range []string{"review.sh", "utils.sh", "token.sh", "jwt.sh"} {
+				write("lib/"+lib, "# selected tool source\n")
+			}
+			write("lib/must-not-mount", "synthetic excluded file\n")
 			write("diff", "net doc diff\n")
 			write("evidence", `{"repair_diff":"-func  Fix()\n+func Fix()","current_check":"success"}`)
 			write("bin/tool", "#!/bin/sh\nprintf 'dummy-app-token\\n'\n")
@@ -45,12 +49,18 @@ case "$1" in
  *) exit 90 ;;
 esac
 work=
+library=
 while [ "$#" -gt 0 ]; do
  case "$1" in
-  --volume) case "$2" in *:/work:Z) work="${2%:/work:Z}" ;; esac; shift 2 ;;
+  --volume) case "$2" in *:/work:Z) work="${2%:/work:Z}" ;; *:/opt/review-lib:ro,Z) library="${2%:/opt/review-lib:ro,Z}" ;; esac; shift 2 ;;
   *) shift ;;
  esac
 done
+case "$library" in "$FIXTURE"/tmp.*/review-lib) ;; *) exit 91 ;; esac
+[ -d "$library" ]
+[ "$(find "$library" -type f | wc -l)" -eq 4 ]
+[ ! -e "$library/must-not-mount" ]
+for lib in review.sh utils.sh token.sh jwt.sh; do cmp "$library/$lib" "$FIXTURE/lib/$lib"; done
 cat >"$FIXTURE/input"
 grep -q "Reviewed head: $JAIL_HEAD" "$FIXTURE/input"
 grep -q "Base: $JAIL_BASE" "$FIXTURE/input"

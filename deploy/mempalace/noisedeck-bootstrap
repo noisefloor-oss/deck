@@ -49,7 +49,7 @@ if ! /usr/local/bin/noisedeck-provision; then
   echo "noisedeck-bootstrap: composed provider provisioning failed; affected provider launches will refuse with remediation" >&2
 fi
 
-# MemPalace 3.10.0 keeps a fresh install's configuration under ~/.config
+# MemPalace 3.11.0 keeps a fresh install's configuration under ~/.config
 # unless ~/.mempalace already holds a config.json. The store is mounted at
 # ~/.mempalace, so the servers are told so, and a config.json is written
 # there once so that every later command, agent shells included, resolves
@@ -57,6 +57,16 @@ fi
 export MEMPALACE_CONFIG_DIR=/home/agent/.mempalace
 if [ ! -f /home/agent/.mempalace/config.json ]; then
   printf '{"palace_path": "/home/agent/.mempalace/palace"}\n' >/home/agent/.mempalace/config.json
+fi
+migration_relay=
+if [ "${NOISEDECK_RELAY_MODE:-local}" = local ]; then
+  migration_relay="--palace /home/agent/.mempalace/relay"
+fi
+if ! /opt/mempalace/venv/bin/python /usr/local/lib/noisedeck/migrate-mempalace-to-sqlite.py \
+  --config /home/agent/.mempalace/config.json \
+  --palace /home/agent/.mempalace/palace $migration_relay; then
+  echo "noisedeck-bootstrap: MemPalace SQLite migration failed; memory services were not started" >&2
+  exit 78
 fi
 
 # This loop is the private palace's sole writer. Provider lifecycle hooks
@@ -137,7 +147,7 @@ while time.monotonic() < deadline:
             "Authorization": "Bearer " + os.environ["A2A_MCP_TOKEN"]})
         with opener.open(request, timeout=2) as response:
             result = json.load(response)
-        if result.get("result", {}).get("serverInfo", {}).get("version") == "3.10.0":
+        if result.get("result", {}).get("serverInfo", {}).get("version") == "3.11.0":
             anonymous = urllib.request.Request(os.environ["A2A_MCP_URL"], data=payload,
                                                headers={"Content-Type": "application/json"})
             try:

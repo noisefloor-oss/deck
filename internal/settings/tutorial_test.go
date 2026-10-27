@@ -39,7 +39,7 @@ func mountTutorialBehindAuth(t *testing.T) *http.ServeMux {
 	authHandler, err := auth.New(auth.Config{
 		Mode:           "trusted_proxy",
 		ProxyAddresses: []string{"127.0.0.1"},
-		IdentityHeader: "X-Operator",
+		IdentityHeader: "X-User",
 	}, zerolog.Nop())
 	if err != nil {
 		t.Fatalf("auth.New: %v", err)
@@ -61,7 +61,7 @@ func proxyRequest(t *testing.T, method, target, body, identity string) *http.Req
 	// The middleware trusts the header only from a configured peer.
 	req.RemoteAddr = "127.0.0.1:443"
 	if identity != "" {
-		req.Header.Set("X-Operator", identity)
+		req.Header.Set("X-User", identity)
 	}
 	return req
 }
@@ -134,8 +134,8 @@ func TestTutorialScopeIsServerDerived(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("PUT status = %d (%s)", rec.Code, rec.Body)
 	}
-	if got := decodeTutorial(t, rec); got.Scope != "operator" {
-		t.Fatalf("authenticated write scope = %q, want operator", got.Scope)
+	if got := decodeTutorial(t, rec); got.Scope != "user" {
+		t.Fatalf("authenticated write scope = %q, want user", got.Scope)
 	}
 
 	rec = httptest.NewRecorder()
@@ -159,6 +159,15 @@ func TestTutorialScopeIsServerDerived(t *testing.T) {
 	mux.ServeHTTP(rec, proxyRequest(t, http.MethodGet, "/api/settings/tutorial", "", ""))
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("anonymous GET status = %d, want 401", rec.Code)
+	}
+
+	legacy := proxyRequest(t, http.MethodGet, "/api/settings/tutorial", "", "alice")
+	legacy.Header.Del("X-User")
+	legacy.Header.Set("X-Operator", "alice")
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, legacy)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("unconfigured legacy identity status = %d, want 401", rec.Code)
 	}
 }
 

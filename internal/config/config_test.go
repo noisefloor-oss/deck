@@ -352,7 +352,7 @@ func TestDefaultGrokProviderResolvesFromPathWithoutIdentityHook(t *testing.T) {
 	}
 }
 
-func TestScrollbackOperatorOverrideIsHonored(t *testing.T) {
+func TestScrollbackUserOverrideIsHonored(t *testing.T) {
 	validEnv(t)
 	t.Setenv("NOISEDECK_TMUX_SCROLLBACK_LINES", "5000")
 	cfg := mustLoad(t, "")

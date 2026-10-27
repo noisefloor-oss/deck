@@ -39,6 +39,7 @@ export interface TutorialPreference {
 // document plus the server-derived scope it was read or written under.
 // "installation" means an unauthenticated deployment's single shared
 // record; the server ignores any client-supplied scope on write.
+// "operator" remains accepted for compatibility with the previous release.
 export interface TutorialRecord extends TutorialPreference {
-  scope: "operator" | "installation";
+  scope: "user" | "operator" | "installation";
 }

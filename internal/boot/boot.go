@@ -344,7 +344,7 @@ func Up(ctx context.Context, cfg *config.Config, log zerolog.Logger, opts ...UpO
 	}
 	loginTransport := harnesslogin.NewHandler(login, cfg.Server.AllowedOrigins)
 	if cfg.Auth.Mode == "trusted_proxy" && cfg.HarnessLogin.TrustedProxyIdentity != "" {
-		loginTransport.Operator = auth.ProxyPrincipal(cfg.HarnessLogin.TrustedProxyIdentity)
+		loginTransport.User = auth.ProxyPrincipal(cfg.HarnessLogin.TrustedProxyIdentity)
 	}
 	loginHandler := h.Auth.Require(loginTransport)
 	h.Server.Handle("GET /api/harness-login", loginHandler)

@@ -101,5 +101,96 @@ class CommitIdentity(unittest.TestCase):
         self.assertTrue(gate.commit_identity_failures(["not-an-object"], "ddoan"))
 
 
+
+
+class VerdictBaseTests(unittest.TestCase):
+    # The approval's envelope names the base it was reviewed against; the
+    # gate compares it with the merge base a merge would actually use.
+
+    def review(self, head, base):
+        body = f"✅ VERDICT: APPROVE\n\nReviewed head: {head}\nBase: {base}\nReviewer-Model: m"
+        return {"state": "APPROVED", "submittedAt": "2026-10-26T00:00:00Z", "body": body,
+                "author": {"login": "noise-review", "__typename": "Bot"}}
+
+    def failures(self, base, body_override=None):
+        review = self.review("a" * 40, "b" * 40)
+        if body_override is not None:
+            review["body"] = body_override
+        return gate.verdict_failures([review], "a" * 40, "noise-review[bot]", base)
+
+    def test_matching_base_passes(self):
+        self.assertEqual(self.failures("b" * 40), [])
+
+    def test_moved_base_blocks(self):
+        failures = self.failures("c" * 40)
+        self.assertEqual(len(failures), 1)
+        self.assertIn("base moved after the review", failures[0])
+        self.assertIn("b" * 40, failures[0])
+        self.assertIn("c" * 40, failures[0])
+
+    def test_missing_base_marker_blocks_when_base_known(self):
+        head = "a" * 40
+        body = f"✅ VERDICT: APPROVE\n\nReviewed head: {head}\nReviewer-Model: m"
+        failures = self.failures("c" * 40, body_override=body)
+        self.assertEqual(len(failures), 1)
+        self.assertIn("names base none", failures[0])
+
+    def test_unknown_merge_base_skips_the_base_rule(self):
+        # A PR that is not cleanly mergeable has no merge base to compare;
+        # the state checks already block it, so the base rule stands down
+        # rather than failing on a value that does not exist.
+        self.assertEqual(self.failures(""), [])
+
+
+
+
+class CheckPrBaseTests(unittest.TestCase):
+    # check_pr's comparison handling: a mergeable PR with an unusable
+    # comparison fails closed instead of quietly skipping the base rule.
+
+    def check(self, comparison, mergeable="MERGEABLE"):
+        pr = {"state": "OPEN", "isDraft": False, "headRefOid": "a" * 40,
+              "baseRefOid": "b" * 40, "mergeable": mergeable,
+              "mergeStateStatus": "CLEAN", "statusCheckRollup": [],
+              "author": {"login": "ddoan"}}
+        head_ok = "a" * 40
+        verdict = {"state": "APPROVED", "submittedAt": "2026-10-26T00:00:00Z",
+                   "body": f"✅ VERDICT: APPROVE\n\nReviewed head: {head_ok}\nBase: {'b' * 40}\nReviewer-Model: m",
+                   "author": {"login": "noise-review", "__typename": "Bot"}}
+        # check_pr's gh calls in order: the PR view, the commits list, the
+        # compare API; reviews and threads arrive through graphql_nodes.
+        calls = iter([pr, [{"sha": "c" * 40, "author": {"login": "ddoan"}}], comparison])
+        def fake_gh(*args):
+            return next(calls)
+        def fake_graphql(connection, *args):
+            return [verdict] if connection == "reviews" else []
+        with patch.object(gate, "gh", side_effect=fake_gh), \
+                patch.object(gate, "graphql_nodes", side_effect=fake_graphql):
+            return gate.check_pr(1, "noise-review[bot]", "org", "deck")
+
+    def test_valid_comparison_passes(self):
+        good = {"merge_base_commit": {"sha": "b" * 40}}
+        failures = self.check(good)
+        self.assertTrue(all("merge-base" not in f for f in failures), failures)
+
+    def test_missing_sha_fails_closed(self):
+        failures = self.check({})
+        self.assertTrue(any("no valid 40-character" in f for f in failures), failures)
+
+    def test_null_sha_fails_closed(self):
+        failures = self.check({"merge_base_commit": {"sha": None}})
+        self.assertTrue(any("no valid 40-character" in f for f in failures), failures)
+
+    def test_short_sha_fails_closed(self):
+        failures = self.check({"merge_base_commit": {"sha": "b" * 12}})
+        self.assertTrue(any("no valid 40-character" in f for f in failures), failures)
+
+    def test_nonmergeable_skips_comparison(self):
+        # A non-mergeable PR never makes the comparison call; the state
+        # checks already block it.
+        failures = self.check(None, mergeable="CONFLICTING")
+        self.assertFalse(any("merge-base" in f for f in failures), failures)
+
+
 if __name__ == "__main__":
     unittest.main()

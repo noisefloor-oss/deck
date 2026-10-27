@@ -90,7 +90,7 @@ func newLadderEnv(t *testing.T) (*Manager, *Repository, *ladderDescriptor,
 // refused resume keeps the recorded identity, keeps the row and its pane,
 // advances the generation to the attempt that was made, and launches nothing
 // fresh in its place: a new conversation is the card's separate choice.
-func TestOperatorRecoverReportsARefusedResumeAndKeepsTheRecord(t *testing.T) {
+func TestUserRecoverReportsARefusedResumeAndKeepsTheRecord(t *testing.T) {
 	mgr, repo, desc, _, projectID, _ := newLadderEnv(t)
 	ctx := context.Background()
 	s, err := mgr.Create(ctx, CreateSpec{
@@ -131,7 +131,7 @@ func TestOperatorRecoverReportsARefusedResumeAndKeepsTheRecord(t *testing.T) {
 // The attestation wait notices the death, so the user's click is answered
 // with the refusal instead of a commit the reconciler contradicts seconds
 // later — and, as above, nothing is forgotten or replaced.
-func TestOperatorRecoverNoticesARefusalDuringAttestation(t *testing.T) {
+func TestUserRecoverNoticesARefusalDuringAttestation(t *testing.T) {
 	mgr, repo, desc, _, projectID, _ := newLadderEnv(t)
 	desc.resumeLife = "0.6"
 	ctx := context.Background()
@@ -180,7 +180,7 @@ func TestOperatorRecoverNoticesARefusalDuringAttestation(t *testing.T) {
 // row whose identity was already forgotten (the provider refused it earlier,
 // or the row predates identity tracking) relaunches fresh in one request
 // instead of answering 409 to a click the card explicitly offers.
-func TestOperatorRecoverFreshRungBypassesAttestedNilIdentityCheck(t *testing.T) {
+func TestUserRecoverFreshRungBypassesAttestedNilIdentityCheck(t *testing.T) {
 	mgr, repo, desc, _, projectID, _ := newLadderEnv(t)
 	ctx := context.Background()
 	s, err := mgr.Create(ctx, CreateSpec{

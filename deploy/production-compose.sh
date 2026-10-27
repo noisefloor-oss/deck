@@ -223,7 +223,7 @@ token = (pathlib.Path.home()/".a2a/relay-token").read_text()
 data = json.dumps({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"relay-check","version":"1"}}}).encode()
 request = urllib.request.Request("http://127.0.0.1:8766/mcp", data=data, headers={"Content-Type":"application/json","Authorization":"Bearer "+token})
 with urllib.request.build_opener(NoRedirect()).open(request, timeout=5) as response:
-    assert json.load(response)["result"]["serverInfo"]["version"] == "3.10.0"
+    assert json.load(response)["result"]["serverInfo"]["version"] == "3.11.0"
 print("external relay authenticated and reachable")
 '
   fi
@@ -236,7 +236,15 @@ print("external relay authenticated and reachable")
     printf '\''#!/bin/sh\nexit 0\n'\'' >"$tmp_probe"
     chmod 700 "$tmp_probe"
     "$tmp_probe"
-    test "$(mempalace --version)" = "MemPalace 3.10.0"
+    test "$(mempalace --version)" = "MemPalace 3.11.0"
+    /opt/mempalace/venv/bin/python -c '\''
+import importlib.util, json, pathlib
+assert importlib.util.find_spec("chromadb") is None
+config = json.loads((pathlib.Path.home()/".mempalace/config.json").read_text())
+assert config["backend"] == "sqlite_exact"
+from mempalace.backends import detect_backends_for_path
+assert detect_backends_for_path(str(pathlib.Path.home()/".mempalace/palace")) == ["sqlite_exact"]
+'\''
     test -x /usr/local/bin/mempalace-mcp
     test -d /home/agent/.mempalace
     test -w /home/agent/.mempalace
@@ -272,7 +280,7 @@ print("external relay authenticated and reachable")
       -d '\''{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"production-check","version":"1"}}}'\'' \
       --output "$mcp_response" http://127.0.0.1:8765/mcp
     grep -q '"serverInfo"' "$mcp_response"
-    grep -q '3.10.0' "$mcp_response"
+    grep -q '3.11.0' "$mcp_response"
   '
 
   origin=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["services"]["app"]["environment"]["NOISEDECK_SERVER_ALLOWED_ORIGINS"])' <"$rendered")

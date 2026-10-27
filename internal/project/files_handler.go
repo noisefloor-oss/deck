@@ -255,6 +255,7 @@ func (h *Handler) ListFiles(w http.ResponseWriter, r *http.Request) {
 		h.fileError(w, err)
 		return
 	}
+	listing.Head, _ = gitHead(r.Context(), root)
 	annotateChanges(r.Context(), root, listing)
 	h.json(w, http.StatusOK, listing)
 }
@@ -266,6 +267,20 @@ func (h *Handler) ViewFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body, err := ReadTextFile(root, r.URL.Query().Get("path"))
+	if err != nil {
+		h.fileError(w, err)
+		return
+	}
+	h.json(w, http.StatusOK, map[string]string{"content": body})
+}
+
+// DiffFile serves the selected file's changes against the last commit.
+func (h *Handler) DiffFile(w http.ResponseWriter, r *http.Request) {
+	root, ok := h.projectRoot(w, r)
+	if !ok {
+		return
+	}
+	body, err := DiffFile(r.Context(), root, r.URL.Query().Get("path"))
 	if err != nil {
 		h.fileError(w, err)
 		return
@@ -360,8 +375,10 @@ func filesFingerprint(ctx context.Context, root, rel string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	listing.Head, _ = gitHead(ctx, root)
 	annotateChanges(ctx, root, listing)
 	var fingerprint strings.Builder
+	fingerprint.WriteString(listing.Head)
 	for _, entry := range listing.Entries {
 		fmt.Fprintf(&fingerprint, "%s\x00%d\x00%s\x00%t\x00", entry.Name, entry.Size, entry.MTime, entry.Dir)
 		fmt.Fprintf(&fingerprint, "%s\x00", entry.Change)
@@ -476,6 +493,7 @@ func (h *Handler) MountFiles(handle func(pattern string, hd http.Handler), wrap 
 	handle("GET /api/projects/{id}/files", wrap(http.HandlerFunc(h.ListFiles)))
 	handle("GET /api/projects/{id}/files/events", wrap(http.HandlerFunc(h.FilesEvents)))
 	handle("GET /api/projects/{id}/files/view", wrap(http.HandlerFunc(h.ViewFile)))
+	handle("GET /api/projects/{id}/files/diff", wrap(http.HandlerFunc(h.DiffFile)))
 	handle("GET /api/projects/{id}/files/download", wrap(http.HandlerFunc(h.DownloadFile)))
 	handle("GET /api/projects/{id}/files/image", wrap(http.HandlerFunc(h.ImageFile)))
 	handle("POST /api/projects/{id}/files", wrap(http.HandlerFunc(h.UploadFile)))

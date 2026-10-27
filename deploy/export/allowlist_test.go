@@ -3,6 +3,7 @@ package exportgate
 // Each exception names one file and only the functional or immutable text it
 // needs. Prose citations stay failures, including prose in these same files.
 var allowedPrivateReferences = []exception{
+	{"deploy/mempalace/sqlite-only.patch", `\(#1068\)`, "Pinned upstream patch context is byte-exact and required for the image's ONNX thread-cap change."},
 	{"internal/project/repository_test.go", `"task` + `102"`, "Synthetic nested directory verifies that only immediate projects are listed."},
 	{"internal/experiment/handler_test.go", `"task ` + `295"`, "The prompt assertion checks synthetic delegated-task input."},
 	{"internal/provider/descriptor_test.go", `accept task ` + `295`, "Synthetic prompt bytes verify delegated CLI arguments."},

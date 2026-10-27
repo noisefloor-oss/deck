@@ -74,7 +74,7 @@ try {
     if (path === "/api/github/connect/status") return json({ outcome: "no-account", active: false });
     if (path === "/api/github/connect/attempt") return json({ csrf: "connect-fixture", attempt: null });
     if (path === "/api/settings") return json({ skip_permissions: false, skip_close_confirm: false, skip_remove_project_confirm: false });
-    if (path === "/api/settings/tutorial") return json({ version: 1, dismissed: true, lesson: "welcome", step: 0, done: [], scope: "operator" });
+    if (path === "/api/settings/tutorial") return json({ version: 1, dismissed: true, lesson: "welcome", step: 0, done: [], scope: "user" });
     if (path === "/api/settings/sidebar-layout") return json({ expanded: [], projects: [], sessions: {} });
     if (path === "/api/harness-login") return json({ pending: [], csrf: "fixture" });
     if (path === "/api/projects") return json([]);
@@ -239,7 +239,7 @@ try {
       default_profile_id: "identity-1", revision: 1,
     });
     if (path === "/api/settings") return json({ skip_permissions: false, skip_close_confirm: false, skip_remove_project_confirm: false });
-    if (path === "/api/settings/tutorial") return json({ version: 1, dismissed: true, lesson: "welcome", step: 0, done: [], scope: "operator" });
+    if (path === "/api/settings/tutorial") return json({ version: 1, dismissed: true, lesson: "welcome", step: 0, done: [], scope: "user" });
     if (path === "/api/settings/last-session" && request.method() === "PUT") return json(request.postDataJSON());
     if (path === "/api/settings/sidebar-layout") return json({ expanded: [], projects: [], sessions: {} });
     if (path === "/api/harness-login") return json({ pending: [], csrf: "fixture" });

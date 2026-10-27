@@ -63,7 +63,7 @@ func BoundReviewPrompt(prompt, diff, evidence []byte, snapshot ReviewSnapshot) (
 		return nil, errors.New("supplementary review evidence must be bounded JSON")
 	}
 	var out bytes.Buffer
-	fmt.Fprintf(&out, "Trusted review snapshot: %s PR #%d\nReviewed head: %s\nBase: %s\nThe workspace and verified cumulative diff are selected for these commits. Include exactly one plain Reviewed head: line and one plain Base: line with these full values in the formal review body. Do not infer identity from candidate files.\n\n", snapshot.Repository, snapshot.PullRequest, snapshot.Head, snapshot.Base)
+	fmt.Fprintf(&out, "Trusted review snapshot: %s PR #%d\nReviewed head: %s\nBase: %s\nThe workspace and verified cumulative diff are selected for these commits. The capture command binds the formal review to this snapshot. Submit findings using the tool-owned contract below; do not add commit markers to the findings file. Legacy body submissions must include exactly one plain Reviewed head: line and one plain Base: line with these full values. Do not infer identity from candidate files.\n\n", snapshot.Repository, snapshot.PullRequest, snapshot.Head, snapshot.Base)
 	out.Write(prompt)
 	if len(evidence) > 0 {
 		// Re-encode to keep embedded delimiters and control bytes inside JSON.

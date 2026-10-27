@@ -406,7 +406,7 @@ func (h *Handler) handleLogout(w http.ResponseWriter, r *http.Request) {
 	}
 	login, hasLogin := loginFromPayload(payload)
 	if h.onLogout != nil {
-		h.onLogout(principalHash("operator"))
+		h.onLogout(principalHash(legacySingleUserPrincipal))
 	}
 	if h.onBrowserLogout != nil && hasLogin {
 		h.onBrowserLogout(login)

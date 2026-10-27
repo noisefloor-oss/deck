@@ -1,0 +1,13 @@
+[data-files-diff="added"] {
+  color: var(--color-git-added);
+  background: var(--color-success-tint);
+}
+
+[data-files-diff="removed"] {
+  color: var(--color-git-deleted);
+  background: var(--color-error-tint);
+}
+
+[data-files-diff="meta"] {
+  color: var(--color-text-tertiary);
+}

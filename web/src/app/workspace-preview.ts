@@ -308,7 +308,7 @@ const terminalCard = region(root, "terminal-card");
 // The empty states have no terminal to paint: renderEmptySurfaces already
 // filled the pane and put it on the page surface.
 if (emptyState === null) {
-  terminal.dataset.mono = "operator";
+  terminal.dataset.mono = "workspace";
   // The recovery presentation is forced by the ?recovery= param; the marker
   // lets the capture harness verify which state rendered.
   terminal.dataset.recoveryState = state.recovery;

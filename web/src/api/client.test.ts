@@ -1242,11 +1242,11 @@ test("saveTutorial replaces the whole document under CSRF protection", async () 
     assert.equal(init?.body, JSON.stringify(document));
     assert.equal(new Headers(init?.headers).get("Content-Type"), "application/json");
     assert.equal(new Headers(init?.headers).get("X-CSRF-Token"), "csrf-value");
-    return json(200, { ...document, scope: "operator" });
+    return json(200, { ...document, scope: "user" });
   });
   try {
     const api = new HttpApiClient(() => "noisedeck_csrf=csrf-value");
-    assert.deepEqual(await api.saveTutorial(document), { ...document, scope: "operator" });
+    assert.deepEqual(await api.saveTutorial(document), { ...document, scope: "user" });
   } finally {
     stub.restore();
   }

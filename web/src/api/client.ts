@@ -829,6 +829,14 @@ export class HttpApiClient implements ApiClient, FileApiClient, LaneApiClient {
     );
   }
 
+  async diffProjectFile(projectID: string, path: string): Promise<FileView> {
+    return readJSON<FileView>(
+      await this.get(
+        `/api/projects/${encodeURIComponent(projectID)}/files/diff?path=${encodeURIComponent(path)}`,
+      ),
+    );
+  }
+
   async listProjectAssets(projectID: string): Promise<AssetListing> {
     return readJSON<AssetListing>(
       await this.get(`/api/projects/${encodeURIComponent(projectID)}/assets`),

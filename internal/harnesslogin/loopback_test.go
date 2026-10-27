@@ -51,22 +51,22 @@ func TestCodexIPv4CallbackPreservesNativeAuthority(t *testing.T) {
 			if err := s.Register(ctx, 124, "codex", raw); err != nil {
 				t.Fatal(err)
 			}
-			pending := s.Pending(ctx, "operator-a", "session-a")
+			pending := s.Pending(ctx, "user-a", "session-a")
 			if len(pending) != 1 {
 				t.Fatal("native IPv4 login did not become available")
 			}
-			if got, err := s.Authorization(ctx, "operator-a", "session-a", pending[0].ID); err != nil || got != raw {
+			if got, err := s.Authorization(ctx, "user-a", "session-a", pending[0].ID); err != nil || got != raw {
 				t.Fatal("native authorization URL was rewritten")
 			}
-			h, err := s.Begin(ctx, "operator-a", "session-a", pending[0].ID)
+			h, err := s.Begin(ctx, "user-a", "session-a", pending[0].ID)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := s.Submit(ctx, "operator-a", h.ID, callbackURL); !errors.Is(err, ErrInvalid) || f.dials != 0 {
+			if _, err := s.Submit(ctx, "user-a", h.ID, callbackURL); !errors.Is(err, ErrInvalid) || f.dials != 0 {
 				t.Fatal("localhost alias reached an IPv4-bound callback")
 			}
 			f.responses = []string{"HTTP/1.1 302 Found\r\nLocation: http://" + redirectAuthority + "/success?id_token=secret-canary\r\nContent-Length: 0\r\n\r\n", "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"}
-			status, err := s.Submit(ctx, "operator-a", h.ID, "http://127.0.0.1:1455/auth/callback?state=native-state&code=callback-canary")
+			status, err := s.Submit(ctx, "user-a", h.ID, "http://127.0.0.1:1455/auth/callback?state=native-state&code=callback-canary")
 			if redirectAuthority != "127.0.0.1:1455" {
 				if !errors.Is(err, ErrUnavailable) || status != "" || f.dials != 1 {
 					t.Fatal("success redirect crossed to another authority")

@@ -65,11 +65,11 @@ func fixture(t *testing.T, provider string) (*Service, *fakeRuntime, Handle) {
 	if err := s.Register(context.Background(), 124, provider, authURL("native-state")); err != nil {
 		t.Fatal(err)
 	}
-	pending := s.Pending(context.Background(), "operator-a", "session-a")
+	pending := s.Pending(context.Background(), "user-a", "session-a")
 	if len(pending) != 1 {
 		t.Fatal(pending)
 	}
-	handle, err := s.Begin(context.Background(), "operator-a", "session-a", pending[0].ID)
+	handle, err := s.Begin(context.Background(), "user-a", "session-a", pending[0].ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ const callbackURL = "http://localhost:1455/auth/callback?state=native-state&code
 func TestCallbackDeliveryDoesNotExposeNativeResponse(t *testing.T) {
 	s, f, h := fixture(t, "pi")
 	f.responses = []string{"HTTP/1.1 200 OK\r\nContent-Length: 13\r\nSet-Cookie: token=secret-canary\r\n\r\nsecret-canary"}
-	status, err := s.Submit(context.Background(), "operator-a", h.ID, callbackURL)
+	status, err := s.Submit(context.Background(), "user-a", h.ID, callbackURL)
 	if err != nil || status != "delivered" {
 		t.Fatalf("status=%q err=%v", status, err)
 	}
@@ -98,7 +98,7 @@ func TestCallbackDeliveryDoesNotExposeNativeResponse(t *testing.T) {
 func TestCodexCompletesOnlyFixedSuccessPath(t *testing.T) {
 	s, f, h := fixture(t, "codex")
 	f.responses = []string{"HTTP/1.1 302 Found\r\nLocation: http://localhost:1455/success?id_token=secret-canary\r\nContent-Length: 0\r\n\r\n", "HTTP/1.1 200 OK\r\nContent-Length: 13\r\n\r\nsecret-canary"}
-	status, err := s.Submit(context.Background(), "operator-a", h.ID, callbackURL)
+	status, err := s.Submit(context.Background(), "user-a", h.ID, callbackURL)
 	if err != nil || status != "completed" {
 		t.Fatalf("status=%q err=%v", status, err)
 	}
@@ -113,7 +113,7 @@ func TestUnreviewedNativeRedirectNeverFollowed(t *testing.T) {
 		t.Run(location, func(t *testing.T) {
 			s, f, h := fixture(t, "codex")
 			f.responses = []string{"HTTP/1.1 302 Found\r\nLocation: " + location + "\r\nContent-Length: 0\r\n\r\n"}
-			status, err := s.Submit(context.Background(), "operator-a", h.ID, callbackURL)
+			status, err := s.Submit(context.Background(), "user-a", h.ID, callbackURL)
 			if !errors.Is(err, ErrUnavailable) || status != "" || f.dials != 1 {
 				t.Fatal("unreviewed redirect accepted")
 			}
@@ -141,28 +141,28 @@ func TestMalformedCallbacksNeverDial(t *testing.T) {
 	for _, raw := range cases {
 		t.Run(raw[:min(len(raw), 80)], func(t *testing.T) {
 			s, f, h := fixture(t, "pi")
-			_, err := s.Submit(context.Background(), "operator-a", h.ID, raw)
+			_, err := s.Submit(context.Background(), "user-a", h.ID, raw)
 			if !errors.Is(err, ErrInvalid) || f.dials != 0 {
 				t.Fatal("invalid callback reached transport")
 			}
 		})
 	}
 }
-func TestOperatorSessionAndReplayBinding(t *testing.T) {
+func TestUserSessionAndReplayBinding(t *testing.T) {
 	s, f, h := fixture(t, "pi")
-	if _, err := s.Submit(context.Background(), "operator-b", h.ID, callbackURL); !errors.Is(err, ErrConsumed) {
+	if _, err := s.Submit(context.Background(), "user-b", h.ID, callbackURL); !errors.Is(err, ErrConsumed) {
 		t.Fatal(err)
 	}
-	if err := s.Cancel("operator-b", h.ID); !errors.Is(err, ErrConsumed) {
+	if err := s.Cancel("user-b", h.ID); !errors.Is(err, ErrConsumed) {
 		t.Fatal(err)
 	}
-	if len(s.Pending(context.Background(), "operator-a", "session-b")) != 0 {
+	if len(s.Pending(context.Background(), "user-a", "session-b")) != 0 {
 		t.Fatal("cross-session pending attempt")
 	}
-	if _, err := s.Submit(context.Background(), "operator-a", h.ID, callbackURL); err != nil {
+	if _, err := s.Submit(context.Background(), "user-a", h.ID, callbackURL); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Submit(context.Background(), "operator-a", h.ID, callbackURL); !errors.Is(err, ErrConsumed) {
+	if _, err := s.Submit(context.Background(), "user-a", h.ID, callbackURL); !errors.Is(err, ErrConsumed) {
 		t.Fatal(err)
 	}
 	if err := s.Register(context.Background(), 124, "pi", authURL("native-state")); !errors.Is(err, ErrConsumed) {
@@ -180,7 +180,7 @@ func TestExpiredCancelledReplacedAndRestartedAttempts(t *testing.T) {
 			case "expired":
 				s.now = func() time.Time { return h.Expires }
 			case "cancelled":
-				_ = s.Cancel("operator-a", h.ID)
+				_ = s.Cancel("user-a", h.ID)
 			case "generation":
 				f.binding.Generation++
 			case "network":
@@ -198,7 +198,7 @@ func TestExpiredCancelledReplacedAndRestartedAttempts(t *testing.T) {
 			case "backend-restart":
 				s = New(f)
 			}
-			if _, err := s.Submit(context.Background(), "operator-a", h.ID, callbackURL); err == nil {
+			if _, err := s.Submit(context.Background(), "user-a", h.ID, callbackURL); err == nil {
 				t.Fatal("stale authority survived")
 			}
 			f.mu.Lock()
@@ -217,7 +217,7 @@ func TestConcurrentSubmissionConsumesNativeAttemptOnce(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if _, err := s.Submit(context.Background(), "operator-a", h.ID, callbackURL); err == nil {
+			if _, err := s.Submit(context.Background(), "user-a", h.ID, callbackURL); err == nil {
 				accepted.Add(1)
 			}
 		}()
@@ -234,11 +234,11 @@ func TestCancelRejectsConsumedAndExpiredHandles(t *testing.T) {
 			s, _, h := fixture(t, "pi")
 			switch kind {
 			case "cancelled":
-				if err := s.Cancel("operator-a", h.ID); err != nil {
+				if err := s.Cancel("user-a", h.ID); err != nil {
 					t.Fatal(err)
 				}
 			case "submitted":
-				if _, err := s.Submit(context.Background(), "operator-a", h.ID, callbackURL); err != nil {
+				if _, err := s.Submit(context.Background(), "user-a", h.ID, callbackURL); err != nil {
 					t.Fatal(err)
 				}
 			case "expired":
@@ -248,7 +248,7 @@ func TestCancelRejectsConsumedAndExpiredHandles(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if err := s.Cancel("operator-a", h.ID); !errors.Is(err, ErrConsumed) {
+			if err := s.Cancel("user-a", h.ID); !errors.Is(err, ErrConsumed) {
 				t.Fatal("stale cancellation reported success")
 			}
 		})
@@ -262,11 +262,11 @@ func TestSubmitAndCancelHaveOnlyOneWinner(t *testing.T) {
 		cancelled, submitted := make(chan error, 1), make(chan error, 1)
 		go func() {
 			<-start
-			cancelled <- s.Cancel("operator-a", h.ID)
+			cancelled <- s.Cancel("user-a", h.ID)
 		}()
 		go func() {
 			<-start
-			_, err := s.Submit(context.Background(), "operator-a", h.ID, callbackURL)
+			_, err := s.Submit(context.Background(), "user-a", h.ID, callbackURL)
 			submitted <- err
 		}()
 		close(start)
@@ -284,11 +284,11 @@ func TestSubmitAndCancelHaveOnlyOneWinner(t *testing.T) {
 func TestUncertainDeliveryNeverRetriesOrLeaksErrors(t *testing.T) {
 	s, f, h := fixture(t, "pi")
 	f.dialError = true
-	_, err := s.Submit(context.Background(), "operator-a", h.ID, callbackURL)
+	_, err := s.Submit(context.Background(), "user-a", h.ID, callbackURL)
 	if !errors.Is(err, ErrUnavailable) || strings.Contains(err.Error(), "canary") {
 		t.Fatal("private error escaped")
 	}
-	_, err = s.Submit(context.Background(), "operator-a", h.ID, callbackURL)
+	_, err = s.Submit(context.Background(), "user-a", h.ID, callbackURL)
 	if !errors.Is(err, ErrConsumed) || f.dials != 1 {
 		t.Fatal("uncertain delivery retried")
 	}
@@ -301,7 +301,7 @@ func registrationFixture(t *testing.T) (*Service, *fakeRuntime, string) {
 	if err := s.Register(context.Background(), 124, "pi", authURL("native-state")); err != nil {
 		t.Fatal(err)
 	}
-	pending := s.Pending(context.Background(), "operator-a", "session-a")
+	pending := s.Pending(context.Background(), "user-a", "session-a")
 	if len(pending) != 1 {
 		t.Fatal(pending)
 	}
@@ -310,24 +310,24 @@ func registrationFixture(t *testing.T) (*Service, *fakeRuntime, string) {
 
 func TestDismissReturnsSameLiveAttemptToPending(t *testing.T) {
 	s, f, registration := registrationFixture(t)
-	h, err := s.Begin(context.Background(), "operator-a", "session-a", registration)
+	h, err := s.Begin(context.Background(), "user-a", "session-a", registration)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pending := s.Pending(context.Background(), "operator-a", "session-a"); len(pending) != 0 {
+	if pending := s.Pending(context.Background(), "user-a", "session-a"); len(pending) != 0 {
 		t.Fatal("held attempt visible to a second browser")
 	}
-	if _, err := s.Begin(context.Background(), "operator-a", "session-a", registration); !errors.Is(err, ErrConsumed) {
+	if _, err := s.Begin(context.Background(), "user-a", "session-a", registration); !errors.Is(err, ErrConsumed) {
 		t.Fatal("second browser claimed a held attempt")
 	}
-	if err := s.Dismiss(context.Background(), "operator-a", h.ID); err != nil {
+	if err := s.Dismiss(context.Background(), "user-a", h.ID); err != nil {
 		t.Fatal(err)
 	}
-	pending := s.Pending(context.Background(), "operator-a", "session-a")
+	pending := s.Pending(context.Background(), "user-a", "session-a")
 	if len(pending) != 1 || pending[0].ID != registration {
 		t.Fatal("dismissal did not offer the same native attempt again")
 	}
-	resumed, err := s.Begin(context.Background(), "operator-a", "session-a", registration)
+	resumed, err := s.Begin(context.Background(), "user-a", "session-a", registration)
 	if err != nil {
 		t.Fatal("reopened selector could not claim the dismissed attempt")
 	}
@@ -335,36 +335,36 @@ func TestDismissReturnsSameLiveAttemptToPending(t *testing.T) {
 		t.Fatal("resume recycled a released handle")
 	}
 	// The released handle is dead for every gesture; only the fresh one works.
-	if _, err := s.Submit(context.Background(), "operator-a", h.ID, callbackURL); !errors.Is(err, ErrConsumed) {
+	if _, err := s.Submit(context.Background(), "user-a", h.ID, callbackURL); !errors.Is(err, ErrConsumed) {
 		t.Fatal("released handle still submits")
 	}
-	if err := s.Cancel("operator-a", h.ID); !errors.Is(err, ErrConsumed) {
+	if err := s.Cancel("user-a", h.ID); !errors.Is(err, ErrConsumed) {
 		t.Fatal("released handle still cancels")
 	}
-	if err := s.Dismiss(context.Background(), "operator-a", h.ID); !errors.Is(err, ErrConsumed) {
+	if err := s.Dismiss(context.Background(), "user-a", h.ID); !errors.Is(err, ErrConsumed) {
 		t.Fatal("released handle dismissed twice")
 	}
 	if f.dials != 0 {
 		t.Fatal("released handle reached transport")
 	}
-	status, err := s.Submit(context.Background(), "operator-a", resumed.ID, callbackURL)
+	status, err := s.Submit(context.Background(), "user-a", resumed.ID, callbackURL)
 	if err != nil || status != "delivered" || f.dials != 1 {
 		t.Fatalf("resumed handoff failed: status=%q err=%v dials=%d", status, err, f.dials)
 	}
 }
 
-func TestDismissRequiresClaimingOperatorAndSession(t *testing.T) {
+func TestDismissRequiresClaimingUserAndSession(t *testing.T) {
 	s, f, h := fixture(t, "pi")
-	if err := s.Dismiss(context.Background(), "operator-b", h.ID); !errors.Is(err, ErrConsumed) {
+	if err := s.Dismiss(context.Background(), "user-b", h.ID); !errors.Is(err, ErrConsumed) {
 		t.Fatal(err)
 	}
-	if pending := s.Pending(context.Background(), "operator-a", "session-a"); len(pending) != 0 {
+	if pending := s.Pending(context.Background(), "user-a", "session-a"); len(pending) != 0 {
 		t.Fatal("foreign user released the attempt")
 	}
-	if pending := s.Pending(context.Background(), "operator-a", "session-b"); len(pending) != 0 {
+	if pending := s.Pending(context.Background(), "user-a", "session-b"); len(pending) != 0 {
 		t.Fatal("attempt visible outside its session after dismissal attempt")
 	}
-	status, err := s.Submit(context.Background(), "operator-a", h.ID, callbackURL)
+	status, err := s.Submit(context.Background(), "user-a", h.ID, callbackURL)
 	if err != nil || status != "delivered" || f.dials != 1 {
 		t.Fatal("claiming user lost the handle to a foreign dismissal")
 	}
@@ -390,10 +390,10 @@ func TestDismissFailsClosedForExpiredOrChangedAttempt(t *testing.T) {
 			case "backend-restart":
 				s = New(f)
 			}
-			if err := s.Dismiss(context.Background(), "operator-a", h.ID); err == nil {
+			if err := s.Dismiss(context.Background(), "user-a", h.ID); err == nil {
 				t.Fatal("stale dismissal succeeded")
 			}
-			if pending := s.Pending(context.Background(), "operator-a", "session-a"); len(pending) != 0 {
+			if pending := s.Pending(context.Background(), "user-a", "session-a"); len(pending) != 0 {
 				t.Fatal("stale dismissal resurrected an attempt")
 			}
 			f.mu.Lock()
@@ -409,27 +409,27 @@ func TestCancelledOrSubmittedAttemptNeverReturnsToPending(t *testing.T) {
 	for _, kind := range []string{"cancelled", "submitted"} {
 		t.Run(kind, func(t *testing.T) {
 			s, _, registration := registrationFixture(t)
-			h, err := s.Begin(context.Background(), "operator-a", "session-a", registration)
+			h, err := s.Begin(context.Background(), "user-a", "session-a", registration)
 			if err != nil {
 				t.Fatal(err)
 			}
 			switch kind {
 			case "cancelled":
-				if err := s.Cancel("operator-a", h.ID); err != nil {
+				if err := s.Cancel("user-a", h.ID); err != nil {
 					t.Fatal(err)
 				}
 			case "submitted":
-				if _, err := s.Submit(context.Background(), "operator-a", h.ID, callbackURL); err != nil {
+				if _, err := s.Submit(context.Background(), "user-a", h.ID, callbackURL); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if err := s.Dismiss(context.Background(), "operator-a", h.ID); !errors.Is(err, ErrConsumed) {
+			if err := s.Dismiss(context.Background(), "user-a", h.ID); !errors.Is(err, ErrConsumed) {
 				t.Fatal("terminal handle dismissed")
 			}
-			if _, err := s.Begin(context.Background(), "operator-a", "session-a", registration); !errors.Is(err, ErrConsumed) {
+			if _, err := s.Begin(context.Background(), "user-a", "session-a", registration); !errors.Is(err, ErrConsumed) {
 				t.Fatal("terminal attempt claimed again")
 			}
-			if pending := s.Pending(context.Background(), "operator-a", "session-a"); len(pending) != 0 {
+			if pending := s.Pending(context.Background(), "user-a", "session-a"); len(pending) != 0 {
 				t.Fatal("terminal attempt returned to pending")
 			}
 		})
@@ -438,13 +438,13 @@ func TestCancelledOrSubmittedAttemptNeverReturnsToPending(t *testing.T) {
 
 func TestInvalidCallbackCorrectionStillAllowsDismissal(t *testing.T) {
 	s, f, h := fixture(t, "pi")
-	if _, err := s.Submit(context.Background(), "operator-a", h.ID, "http://localhost:1455/auth/callback?state=wrong-state&code=x"); !errors.Is(err, ErrInvalid) {
+	if _, err := s.Submit(context.Background(), "user-a", h.ID, "http://localhost:1455/auth/callback?state=wrong-state&code=x"); !errors.Is(err, ErrInvalid) {
 		t.Fatal(err)
 	}
-	if err := s.Dismiss(context.Background(), "operator-a", h.ID); err != nil {
+	if err := s.Dismiss(context.Background(), "user-a", h.ID); err != nil {
 		t.Fatal("a correctable malformed URL consumed the handle")
 	}
-	if pending := s.Pending(context.Background(), "operator-a", "session-a"); len(pending) != 1 || f.dials != 0 {
+	if pending := s.Pending(context.Background(), "user-a", "session-a"); len(pending) != 1 || f.dials != 0 {
 		t.Fatal("corrected dismissal did not return the attempt untouched")
 	}
 }
@@ -462,7 +462,7 @@ func TestCodexAcceptsOnlyTheOnboardingStateSuffix(t *testing.T) {
 		t.Run(state, func(t *testing.T) {
 			s, f, h := fixture(t, "codex")
 			f.responses = []string{"HTTP/1.1 302 Found\r\nLocation: http://localhost:1455/success\r\nContent-Length: 0\r\n\r\n", "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"}
-			status, err := s.Submit(context.Background(), "operator-a", h.ID, base+url.QueryEscape(state))
+			status, err := s.Submit(context.Background(), "user-a", h.ID, base+url.QueryEscape(state))
 			if accepted && (err != nil || status != "completed") {
 				t.Fatalf("status=%q err=%v", status, err)
 			}
@@ -484,7 +484,7 @@ func TestPiOpenAICallbackUsesTheIssuedState(t *testing.T) {
 	for _, state := range []string{"native-state", "native-state" + lifeSciencesStateSuffix} {
 		t.Run(state, func(t *testing.T) {
 			s, f, h := fixture(t, "pi")
-			status, err := s.Submit(context.Background(), "operator-a", h.ID, "http://localhost:1455/auth/callback?code=callback-canary&state="+url.QueryEscape(state))
+			status, err := s.Submit(context.Background(), "user-a", h.ID, "http://localhost:1455/auth/callback?code=callback-canary&state="+url.QueryEscape(state))
 			if err != nil || status != "delivered" {
 				t.Fatalf("callback: %s %v", status, err)
 			}
@@ -507,16 +507,16 @@ func TestSubmitAndDismissHaveOnlyOneWinner(t *testing.T) {
 		dismissed, submitted := make(chan error, 1), make(chan error, 1)
 		go func() {
 			<-start
-			dismissed <- s.Dismiss(context.Background(), "operator-a", h.ID)
+			dismissed <- s.Dismiss(context.Background(), "user-a", h.ID)
 		}()
 		go func() {
 			<-start
-			_, err := s.Submit(context.Background(), "operator-a", h.ID, callbackURL)
+			_, err := s.Submit(context.Background(), "user-a", h.ID, callbackURL)
 			submitted <- err
 		}()
 		close(start)
 		dismissErr, submitErr := <-dismissed, <-submitted
-		pending := s.Pending(context.Background(), "operator-a", "session-a")
+		pending := s.Pending(context.Background(), "user-a", "session-a")
 		if dismissErr == nil {
 			if !errors.Is(submitErr, ErrConsumed) || f.dials != 0 {
 				t.Fatal("callback delivered after dismissal won")
@@ -530,58 +530,58 @@ func TestSubmitAndDismissHaveOnlyOneWinner(t *testing.T) {
 	}
 }
 
-func TestDismissedAttemptStaysWithFirstOperator(t *testing.T) {
+func TestDismissedAttemptStaysWithFirstUser(t *testing.T) {
 	s, f, registration := registrationFixture(t)
-	h, err := s.Begin(context.Background(), "operator-a", "session-a", registration)
+	h, err := s.Begin(context.Background(), "user-a", "session-a", registration)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Dismiss(context.Background(), "operator-a", h.ID); err != nil {
+	if err := s.Dismiss(context.Background(), "user-a", h.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Begin(context.Background(), "operator-b", "session-a", registration); !errors.Is(err, ErrConsumed) {
+	if _, err := s.Begin(context.Background(), "user-b", "session-a", registration); !errors.Is(err, ErrConsumed) {
 		t.Fatal("another user claimed a dismissed attempt")
 	}
-	resumed, err := s.Begin(context.Background(), "operator-a", "session-a", registration)
+	resumed, err := s.Begin(context.Background(), "user-a", "session-a", registration)
 	if err != nil {
 		t.Fatal("claiming user could not resume a dismissed attempt")
 	}
-	status, err := s.Submit(context.Background(), "operator-a", resumed.ID, callbackURL)
+	status, err := s.Submit(context.Background(), "user-a", resumed.ID, callbackURL)
 	if err != nil || status != "delivered" || f.dials != 1 {
 		t.Fatalf("resumed handoff failed: status=%q err=%v dials=%d", status, err, f.dials)
 	}
 }
 
-func TestPendingFiltersByAuthenticatedOperator(t *testing.T) {
+func TestPendingFiltersByAuthenticatedUser(t *testing.T) {
 	s, _, registration := registrationFixture(t)
 	// Unclaimed and never held: every authenticated user sees it.
-	if pending := s.Pending(context.Background(), "operator-a", "session-a"); len(pending) != 1 {
+	if pending := s.Pending(context.Background(), "user-a", "session-a"); len(pending) != 1 {
 		t.Fatal("unowned attempt not listed")
 	}
-	if pending := s.Pending(context.Background(), "operator-b", "session-a"); len(pending) != 1 {
+	if pending := s.Pending(context.Background(), "user-b", "session-a"); len(pending) != 1 {
 		t.Fatal("unowned attempt not listed for a second user")
 	}
 	// An unauthenticated caller is never offered an attempt.
 	if pending := s.Pending(context.Background(), "", "session-a"); len(pending) != 0 {
 		t.Fatal("anonymous caller listed a pending attempt")
 	}
-	h, err := s.Begin(context.Background(), "operator-a", "session-a", registration)
+	h, err := s.Begin(context.Background(), "user-a", "session-a", registration)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Dismiss(context.Background(), "operator-a", h.ID); err != nil {
+	if err := s.Dismiss(context.Background(), "user-a", h.ID); err != nil {
 		t.Fatal(err)
 	}
 	// Dismissed: listed only for the user who held it; anyone else would
 	// be offered a handoff Begin must refuse.
-	pending := s.Pending(context.Background(), "operator-a", "session-a")
+	pending := s.Pending(context.Background(), "user-a", "session-a")
 	if len(pending) != 1 || pending[0].ID != registration {
 		t.Fatal("dismissed attempt not listed for its user")
 	}
-	if pending := s.Pending(context.Background(), "operator-b", "session-a"); len(pending) != 0 {
+	if pending := s.Pending(context.Background(), "user-b", "session-a"); len(pending) != 0 {
 		t.Fatal("dismissed attempt listed for a foreign user")
 	}
-	if _, err := s.Begin(context.Background(), "operator-b", "session-a", registration); !errors.Is(err, ErrConsumed) {
+	if _, err := s.Begin(context.Background(), "user-b", "session-a", registration); !errors.Is(err, ErrConsumed) {
 		t.Fatal("foreign user claimed a dismissed attempt")
 	}
 }
@@ -589,7 +589,7 @@ func TestPendingFiltersByAuthenticatedOperator(t *testing.T) {
 func TestPendingFilterAndDismissRace(t *testing.T) {
 	for range 50 {
 		s, _, registration := registrationFixture(t)
-		h, err := s.Begin(context.Background(), "operator-a", "session-a", registration)
+		h, err := s.Begin(context.Background(), "user-a", "session-a", registration)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -603,14 +603,14 @@ func TestPendingFilterAndDismissRace(t *testing.T) {
 			go func() {
 				defer wg.Done()
 				<-start
-				if n := len(s.Pending(context.Background(), "operator-b", "session-a")); n != 0 {
+				if n := len(s.Pending(context.Background(), "user-b", "session-a")); n != 0 {
 					foreignListed.Add(int32(n))
 				}
 			}()
 			go func() {
 				defer wg.Done()
 				<-start
-				if n := len(s.Pending(context.Background(), "operator-a", "session-a")); n > 1 {
+				if n := len(s.Pending(context.Background(), "user-a", "session-a")); n > 1 {
 					ownerOverlisted.Add(int32(n))
 				}
 			}()
@@ -619,7 +619,7 @@ func TestPendingFilterAndDismissRace(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			_ = s.Dismiss(context.Background(), "operator-a", h.ID)
+			_ = s.Dismiss(context.Background(), "user-a", h.ID)
 		}()
 		close(start)
 		wg.Wait()
@@ -629,10 +629,10 @@ func TestPendingFilterAndDismissRace(t *testing.T) {
 		if ownerOverlisted.Load() != 0 {
 			t.Fatal("attempt listed more than once for its user")
 		}
-		if pending := s.Pending(context.Background(), "operator-a", "session-a"); len(pending) != 1 {
+		if pending := s.Pending(context.Background(), "user-a", "session-a"); len(pending) != 1 {
 			t.Fatal("attempt not pending exactly once for its user after the race")
 		}
-		if pending := s.Pending(context.Background(), "operator-b", "session-a"); len(pending) != 0 {
+		if pending := s.Pending(context.Background(), "user-b", "session-a"); len(pending) != 0 {
 			t.Fatal("attempt pending for a foreign user after the race")
 		}
 	}
@@ -641,7 +641,7 @@ func TestPendingFilterAndDismissRace(t *testing.T) {
 func TestDismissAndForeignBeginHaveOnlyOneOutcome(t *testing.T) {
 	for range 50 {
 		s, f, registration := registrationFixture(t)
-		h, err := s.Begin(context.Background(), "operator-a", "session-a", registration)
+		h, err := s.Begin(context.Background(), "user-a", "session-a", registration)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -649,11 +649,11 @@ func TestDismissAndForeignBeginHaveOnlyOneOutcome(t *testing.T) {
 		dismissed, begun := make(chan error, 1), make(chan error, 1)
 		go func() {
 			<-start
-			dismissed <- s.Dismiss(context.Background(), "operator-a", h.ID)
+			dismissed <- s.Dismiss(context.Background(), "user-a", h.ID)
 		}()
 		go func() {
 			<-start
-			_, err := s.Begin(context.Background(), "operator-b", "session-a", registration)
+			_, err := s.Begin(context.Background(), "user-b", "session-a", registration)
 			begun <- err
 		}()
 		close(start)
@@ -666,7 +666,7 @@ func TestDismissAndForeignBeginHaveOnlyOneOutcome(t *testing.T) {
 		if f.dials != 0 {
 			t.Fatal("foreign begin reached transport")
 		}
-		if _, err := s.Begin(context.Background(), "operator-a", "session-a", registration); err != nil {
+		if _, err := s.Begin(context.Background(), "user-a", "session-a", registration); err != nil {
 			t.Fatal("claiming user could not resume after the race")
 		}
 	}
@@ -681,7 +681,7 @@ func TestConcurrentDismissalReleasesHandleOnce(t *testing.T) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				if s.Dismiss(context.Background(), "operator-a", h.ID) == nil {
+				if s.Dismiss(context.Background(), "user-a", h.ID) == nil {
 					released.Add(1)
 				}
 			}()
@@ -690,7 +690,7 @@ func TestConcurrentDismissalReleasesHandleOnce(t *testing.T) {
 		if released.Load() != 1 {
 			t.Fatalf("released=%d", released.Load())
 		}
-		if pending := s.Pending(context.Background(), "operator-a", "session-a"); len(pending) != 1 {
+		if pending := s.Pending(context.Background(), "user-a", "session-a"); len(pending) != 1 {
 			t.Fatal("attempt not pending exactly once after duplicate dismissals")
 		}
 	}
@@ -700,11 +700,11 @@ func TestRepeatedDismissalKeepsTicketMapBounded(t *testing.T) {
 	s, f, registration := registrationFixture(t)
 	var released []string
 	for range 20 {
-		h, err := s.Begin(context.Background(), "operator-a", "session-a", registration)
+		h, err := s.Begin(context.Background(), "user-a", "session-a", registration)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := s.Dismiss(context.Background(), "operator-a", h.ID); err != nil {
+		if err := s.Dismiss(context.Background(), "user-a", h.ID); err != nil {
 			t.Fatal(err)
 		}
 		released = append(released, h.ID)
@@ -713,27 +713,27 @@ func TestRepeatedDismissalKeepsTicketMapBounded(t *testing.T) {
 		}
 	}
 	for _, id := range released {
-		if _, err := s.Submit(context.Background(), "operator-a", id, callbackURL); !errors.Is(err, ErrConsumed) {
+		if _, err := s.Submit(context.Background(), "user-a", id, callbackURL); !errors.Is(err, ErrConsumed) {
 			t.Fatal("released handle still submits")
 		}
-		if err := s.Cancel("operator-a", id); !errors.Is(err, ErrConsumed) {
+		if err := s.Cancel("user-a", id); !errors.Is(err, ErrConsumed) {
 			t.Fatal("released handle still cancels")
 		}
-		if err := s.Dismiss(context.Background(), "operator-a", id); !errors.Is(err, ErrConsumed) {
+		if err := s.Dismiss(context.Background(), "user-a", id); !errors.Is(err, ErrConsumed) {
 			t.Fatal("released handle dismissed twice")
 		}
 	}
 	if f.dials != 0 {
 		t.Fatal("released handle reached transport")
 	}
-	if _, err := s.Begin(context.Background(), "operator-b", "session-a", registration); !errors.Is(err, ErrConsumed) {
+	if _, err := s.Begin(context.Background(), "user-b", "session-a", registration); !errors.Is(err, ErrConsumed) {
 		t.Fatal("another user claimed a dismissed attempt")
 	}
-	resumed, err := s.Begin(context.Background(), "operator-a", "session-a", registration)
+	resumed, err := s.Begin(context.Background(), "user-a", "session-a", registration)
 	if err != nil {
 		t.Fatal("original user could not reopen the dismissed attempt")
 	}
-	status, err := s.Submit(context.Background(), "operator-a", resumed.ID, callbackURL)
+	status, err := s.Submit(context.Background(), "user-a", resumed.ID, callbackURL)
 	if err != nil || status != "delivered" || f.dials != 1 {
 		t.Fatalf("resumed handoff failed: status=%q err=%v dials=%d", status, err, f.dials)
 	}
@@ -743,7 +743,7 @@ func TestPiRejectsForeignCallbackStates(t *testing.T) {
 	for _, state := range []string{"wrong-state" + lifeSciencesStateSuffix, "native-state.onboarding_entrypoint=other", "native-state" + lifeSciencesStateSuffix + lifeSciencesStateSuffix, lifeSciencesStateSuffix} {
 		t.Run(state, func(t *testing.T) {
 			s, f, h := fixture(t, "pi")
-			_, err := s.Submit(context.Background(), "operator-a", h.ID, "http://localhost:1455/auth/callback?code=callback-canary&state="+url.QueryEscape(state))
+			_, err := s.Submit(context.Background(), "user-a", h.ID, "http://localhost:1455/auth/callback?code=callback-canary&state="+url.QueryEscape(state))
 			if !errors.Is(err, ErrInvalid) || f.dials != 0 {
 				t.Fatal("foreign state reached native Pi")
 			}

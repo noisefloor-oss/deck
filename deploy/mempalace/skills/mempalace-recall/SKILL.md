@@ -101,20 +101,12 @@ search. The canonical protocol lives in
 - **MCP error / server down.** Surface the error and suggest the user
   run `mempalace status` or re-run `/mempalace-init`. Never fall back to
   guessing.
-- **Palace index corrupt / compactor error.** If the server reports an
-  HNSW segment-writer error, a ChromaDB compaction failure, or stays
-  "Not connected" after a write, the vector index is out of sync with
-  `chroma.sqlite3` while the drawer rows remain intact. Tell the user to
-  stop the server and rebuild from SQLite — do not re-mine, which drops
-  MCP-added drawers and diary entries:
-
-  ```bash
-  mempalace repair --mode from-sqlite --archive-existing --yes
-  mempalace repair-status
-  ```
-
-  Do not attempt an in-process repair from the agent. Full steps are in
-  the shared protocol's "Recovering a corrupt index" section.
+- **Palace storage error.** Deck stores local memory in
+  `sqlite_exact.sqlite3` and retains a legacy `chroma.sqlite3` after its
+  one-time migration. Do not delete either database, re-mine to reconstruct
+  memory, or run ChromaDB repair commands. Surface the error and ask the
+  operator to restore the memory store from backup; the original Chroma
+  files are retained for recovery, not as a second live memory service.
 - **Conflicting facts.** Trust the knowledge graph's time-valid answer;
   use `mempalace_kg_supersede` for single-valued replacements,
   `mempalace_kg_invalidate` for facts that ended without replacement,

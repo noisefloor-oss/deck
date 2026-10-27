@@ -1,0 +1,35 @@
+[data-files-text] .hljs-keyword,
+[data-files-text] .hljs-selector-tag,
+[data-files-text] .hljs-built_in {
+  color: var(--color-syntax-keyword);
+}
+
+[data-files-text] .hljs-string,
+[data-files-text] .hljs-attr,
+[data-files-text] .hljs-attribute {
+  color: var(--color-mark-emerald);
+}
+
+[data-files-text] .hljs-title,
+[data-files-text] .hljs-name,
+[data-files-text] .hljs-type {
+  color: var(--color-mark-sapphire);
+}
+
+[data-files-text] .hljs-number,
+[data-files-text] .hljs-literal,
+[data-files-text] .hljs-symbol {
+  color: var(--color-mark-cerulean);
+}
+
+[data-files-text] .hljs-comment,
+[data-files-text] .hljs-quote {
+  color: var(--color-syntax-comment);
+  font-style: italic;
+}
+
+[data-files-text] .hljs-meta,
+[data-files-text] .hljs-variable,
+[data-files-text] .hljs-template-variable {
+  color: var(--color-mark-crimson);
+}

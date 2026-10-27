@@ -49,7 +49,7 @@ func tutorialScope(principal string) string {
 	if principal == "" {
 		return "installation"
 	}
-	return "operator"
+	return "user"
 }
 
 // TutorialPreference is the user-scoped record of tutorial presentation

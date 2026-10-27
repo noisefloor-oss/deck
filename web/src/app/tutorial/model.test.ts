@@ -86,7 +86,7 @@ class FakeTutorialApi {
       return call.promise;
     }
     const failure = this.failSaves.shift();
-    const record: TutorialRecord = { ...next, done: [...next.done], scope: "operator" };
+    const record: TutorialRecord = { ...next, done: [...next.done], scope: "user" };
     const promise = failure === undefined
       ? Promise.resolve(record).then((kept) => {
         this.stored = kept;
@@ -145,7 +145,7 @@ test("first use opens the walkthrough regardless of how many projects exist", as
 
 test("a stored record restores dismissal and position, and reopen resumes it", async () => {
   const fake = new FakeTutorialApi();
-  fake.stored = { version: 1, dismissed: true, lesson: "navigation", step: 2, done: ["welcome"], scope: "operator" };
+  fake.stored = { version: 1, dismissed: true, lesson: "navigation", step: 2, done: ["welcome"], scope: "user" };
   const changes: TutorialModel["state"][] = [];
   const model = new TutorialModel(asClient(fake), defaultTutorialCatalog, {
     onChange: (state) => changes.push(state),
@@ -155,7 +155,7 @@ test("a stored record restores dismissal and position, and reopen resumes it", a
   let state = model.state;
   assert.equal(state.visible, false);
   assert.equal(state.dismissed, true);
-  assert.equal(state.scope, "operator");
+  assert.equal(state.scope, "user");
   model.reopen();
   await fake.settle();
   state = model.state;
@@ -203,9 +203,9 @@ test("the welcome page stands before the first lesson until the user starts", as
 
 test("a record with progress skips the welcome page", async () => {
   const records: TutorialRecord[] = [
-    { version: 1, dismissed: false, lesson: "welcome", step: 1, done: [], scope: "operator" },
-    { version: 1, dismissed: false, lesson: "navigation", step: 0, done: [], scope: "operator" },
-    { version: 1, dismissed: false, lesson: "welcome", step: 0, done: ["navigation"], scope: "operator" },
+    { version: 1, dismissed: false, lesson: "welcome", step: 1, done: [], scope: "user" },
+    { version: 1, dismissed: false, lesson: "navigation", step: 0, done: [], scope: "user" },
+    { version: 1, dismissed: false, lesson: "welcome", step: 0, done: ["navigation"], scope: "user" },
   ];
   for (const record of records) {
     const fake = new FakeTutorialApi();
@@ -216,7 +216,7 @@ test("a record with progress skips the welcome page", async () => {
     assert.equal(model.state.welcome, false, JSON.stringify(record));
   }
   const fresh = new FakeTutorialApi();
-  fresh.stored = { version: 1, dismissed: true, lesson: "welcome", step: 0, done: [], scope: "operator" };
+  fresh.stored = { version: 1, dismissed: true, lesson: "welcome", step: 0, done: [], scope: "user" };
   const model = new TutorialModel(asClient(fresh), defaultTutorialCatalog);
   model.load();
   await fresh.settle();
@@ -250,7 +250,7 @@ test("a slow initial read cannot undo a close made before it returns", async () 
   assert.equal(fake.saves, 0);
   const load = fake.pendingLoad;
   assert(load !== null);
-  load.resolve({ version: 1, dismissed: false, lesson: "navigation", step: 1, done: ["welcome"], scope: "operator" });
+  load.resolve({ version: 1, dismissed: false, lesson: "navigation", step: 1, done: ["welcome"], scope: "user" });
   await load.promise;
   const state = model.state;
   assert.equal(state.phase, "ready");
@@ -265,7 +265,7 @@ test("a slow initial read cannot undo a close made before it returns", async () 
   const save = fake.pendingSaves[0];
   assert(save !== undefined);
   assert.deepEqual(save.doc, { version: 1, dismissed: true, lesson: "navigation", step: 1, done: ["welcome"] });
-  save.resolve({ ...save.doc, scope: "operator" });
+  save.resolve({ ...save.doc, scope: "user" });
   await save.promise;
   model.reopen();
   const resumed = model.state;
@@ -282,7 +282,7 @@ test("a slow initial read cannot undo a manual reopen", async () => {
   model.reopen();
   const load = fake.pendingLoad;
   assert(load !== null);
-  load.resolve({ version: 1, dismissed: true, lesson: "welcome", step: 0, done: [], scope: "operator" });
+  load.resolve({ version: 1, dismissed: true, lesson: "welcome", step: 0, done: [], scope: "user" });
   await load.promise;
   const state = model.state;
   assert.equal(state.phase, "ready");
@@ -298,7 +298,7 @@ test("navigation during a slow read keeps the user's position", async () => {
   model.next();
   const load = fake.pendingLoad;
   assert(load !== null);
-  load.resolve({ version: 1, dismissed: false, lesson: "navigation", step: 2, done: ["welcome"], scope: "operator" });
+  load.resolve({ version: 1, dismissed: false, lesson: "navigation", step: 2, done: ["welcome"], scope: "user" });
   await load.promise;
   const state = model.state;
   assert.equal(state.phase, "ready");
@@ -325,13 +325,13 @@ test("saves serialize and coalesce to the latest pending state", async () => {
   assert.equal(fake.saves, 1);
   const first = fake.pendingSaves[0];
   assert(first !== undefined);
-  first.resolve({ ...first.doc, scope: "operator" });
+  first.resolve({ ...first.doc, scope: "user" });
   await first.promise;
   assert.equal(fake.saves, 2);
   assert.deepEqual(fake.saved[1], { version: 1, dismissed: false, lesson: "navigation", step: 0, done: ["welcome"] });
   const second = fake.pendingSaves[1];
   assert(second !== undefined);
-  second.resolve({ ...second.doc, scope: "operator" });
+  second.resolve({ ...second.doc, scope: "user" });
   await second.promise;
   assert.equal(fake.saves, 2);
   assert.equal(model.state.saveError, null);
@@ -381,7 +381,7 @@ test("controller loss aborts in-flight work and resume adopts what the server ke
   // otherwise — resume re-reads the record instead of replaying the drop.
   const doc = fake.saved[0];
   assert(doc !== undefined);
-  fake.stored = { ...doc, done: [...doc.done], scope: "operator" };
+  fake.stored = { ...doc, done: [...doc.done], scope: "user" };
   const save = fake.pendingSaves[0];
   assert(save !== undefined);
   save.resolve(fake.stored);
@@ -415,7 +415,7 @@ test("dispose ignores late answers and later gestures", async () => {
   // no failure is reported for work that was deliberately abandoned.
   const load = fake.pendingLoad;
   assert(load !== null);
-  load.resolve({ version: 1, dismissed: true, lesson: "navigation", step: 2, done: ["welcome"], scope: "operator" });
+  load.resolve({ version: 1, dismissed: true, lesson: "navigation", step: 2, done: ["welcome"], scope: "user" });
   await load.promise;
 
   const state = model.state;
@@ -432,14 +432,14 @@ test("dispose ignores late answers and later gestures", async () => {
 
 test("an unknown stored version is read-only and preserved", async () => {
   const fake = new FakeTutorialApi();
-  fake.stored = { version: 2, dismissed: false, lesson: "welcome", step: 0, done: [], scope: "operator" };
+  fake.stored = { version: 2, dismissed: false, lesson: "welcome", step: 0, done: [], scope: "user" };
   const model = new TutorialModel(asClient(fake), defaultTutorialCatalog);
   model.load();
   await fake.settle();
   const state = model.state;
   assert.equal(state.unsupportedVersion, true);
   assert.equal(state.visible, false);
-  assert.equal(state.scope, "operator");
+  assert.equal(state.scope, "user");
   // Presentation still moves locally, but nothing is ever written over
   // the record the newer build owns.
   model.reopen();
@@ -448,12 +448,12 @@ test("an unknown stored version is read-only and preserved", async () => {
   model.close();
   await fake.settle();
   assert.equal(fake.saves, 0);
-  assert.deepEqual(fake.stored, { version: 2, dismissed: false, lesson: "welcome", step: 0, done: [], scope: "operator" });
+  assert.deepEqual(fake.stored, { version: 2, dismissed: false, lesson: "welcome", step: 0, done: [], scope: "user" });
 });
 
 test("a record naming lessons the catalog no longer ships falls back without losing dismissal", async () => {
   const fake = new FakeTutorialApi();
-  fake.stored = { version: 1, dismissed: true, lesson: "first-project", step: 99, done: ["first-project"], scope: "operator" };
+  fake.stored = { version: 1, dismissed: true, lesson: "first-project", step: 99, done: ["first-project"], scope: "user" };
   const singleLesson: readonly TutorialLesson[] = [
     { id: "welcome", title: "Welcome", steps: [{ title: "Only step", body: "Body." }] },
   ];
@@ -477,7 +477,7 @@ test("a record naming lessons the catalog no longer ships falls back without los
   // The same fallback against the shipped catalog: a stored step past the
   // lesson's end clamps to its last step.
   const fake2 = new FakeTutorialApi();
-  fake2.stored = { version: 1, dismissed: true, lesson: "welcome", step: 99, done: [], scope: "operator" };
+  fake2.stored = { version: 1, dismissed: true, lesson: "welcome", step: 99, done: [], scope: "user" };
   const model2 = new TutorialModel(asClient(fake2), defaultTutorialCatalog);
   model2.load();
   await fake2.settle();
@@ -588,7 +588,7 @@ test("a gesture before an unknown-version read never sends a replacement", async
   model.close();
   model.reopen();
   assert.equal(fake.saves, 0);
-  fake.pendingLoad!.resolve({ version: 2, dismissed: true, lesson: "future", step: 8, done: [], scope: "operator" });
+  fake.pendingLoad!.resolve({ version: 2, dismissed: true, lesson: "future", step: 8, done: [], scope: "user" });
   await fake.settle();
   assert.equal(model.state.unsupportedVersion, true);
   assert.equal(fake.saves, 0);
@@ -640,11 +640,11 @@ test("a superseded write cannot clear a new generation's queued save", async () 
   await fake.settle();
   model.selectLesson("navigation");
   model.next();
-  old.resolve({ ...old.doc, scope: "operator" });
+  old.resolve({ ...old.doc, scope: "user" });
   await old.promise;
   assert.equal(fake.saves, 2);
   const current = fake.pendingSaves[1]!;
-  current.resolve({ ...current.doc, scope: "operator" });
+  current.resolve({ ...current.doc, scope: "user" });
   await current.promise;
   assert.equal(fake.saves, 3);
   assert.equal(fake.saved[2]!.lesson, "navigation");
@@ -870,7 +870,7 @@ test("choosing a lesson arrives on its first step", async () => {
 
 test("a dismissed tutorial opens no panel, and arrival waits for the first read", async () => {
   const fake = new FakeTutorialApi();
-  fake.stored = { version: 1, dismissed: true, lesson: "panels", step: 0, done: [], scope: "operator" };
+  fake.stored = { version: 1, dismissed: true, lesson: "panels", step: 0, done: [], scope: "user" };
   const opened: string[] = [];
   const model = new TutorialModel(asClient(fake), [panelLesson()], { openPanel: (panel) => opened.push(panel) });
   model.next();
@@ -907,7 +907,7 @@ test("the step page folds on arrival and whenever the docked panel changes", asy
 
 test("reopening partway through a lesson offers the resume page and writes nothing for it", async () => {
   const fake = new FakeTutorialApi();
-  fake.stored = { version: 1, dismissed: true, lesson: "navigation", step: 1, done: ["welcome"], scope: "operator" };
+  fake.stored = { version: 1, dismissed: true, lesson: "navigation", step: 1, done: ["welcome"], scope: "user" };
   const model = new TutorialModel(asClient(fake), defaultTutorialCatalog);
   model.load();
   await fake.settle();
@@ -928,10 +928,10 @@ test("no resume page on first load, at a lesson's first step, on a closing page,
   const closing: TutorialLesson = { id: "wrap", title: "wrap", steps: [{ title: "a", body: "." }, { title: "Done", body: ".", done: { next: "all-lessons" } }] };
   const cases: { record: TutorialRecord | null; catalog: readonly TutorialLesson[] }[] = [
     { record: null, catalog: defaultTutorialCatalog },
-    { record: { version: 1, dismissed: true, lesson: "welcome", step: 0, done: [], scope: "operator" }, catalog: defaultTutorialCatalog },
-    { record: { version: 1, dismissed: true, lesson: "navigation", step: 0, done: ["welcome"], scope: "operator" }, catalog: defaultTutorialCatalog },
-    { record: { version: 1, dismissed: true, lesson: "wrap", step: 1, done: [], scope: "operator" }, catalog: [closing] },
-    { record: { version: 1, dismissed: true, lesson: "navigation", step: 2, done: ["welcome", "navigation"], scope: "operator" }, catalog: defaultTutorialCatalog },
+    { record: { version: 1, dismissed: true, lesson: "welcome", step: 0, done: [], scope: "user" }, catalog: defaultTutorialCatalog },
+    { record: { version: 1, dismissed: true, lesson: "navigation", step: 0, done: ["welcome"], scope: "user" }, catalog: defaultTutorialCatalog },
+    { record: { version: 1, dismissed: true, lesson: "wrap", step: 1, done: [], scope: "user" }, catalog: [closing] },
+    { record: { version: 1, dismissed: true, lesson: "navigation", step: 2, done: ["welcome", "navigation"], scope: "user" }, catalog: defaultTutorialCatalog },
   ];
   for (const { record, catalog } of cases) {
     const fake = new FakeTutorialApi();
@@ -947,7 +947,7 @@ test("no resume page on first load, at a lesson's first step, on a closing page,
 
 test("an open panel is not interrupted by a reopen, and choosing a lesson ends the resume page", async () => {
   const fake = new FakeTutorialApi();
-  fake.stored = { version: 1, dismissed: false, lesson: "navigation", step: 1, done: [], scope: "operator" };
+  fake.stored = { version: 1, dismissed: false, lesson: "navigation", step: 1, done: [], scope: "user" };
   const model = new TutorialModel(asClient(fake), defaultTutorialCatalog);
   model.load();
   await fake.settle();
@@ -1081,7 +1081,7 @@ test("an event never completes the last step", async () => {
 
 test("a step waiting on a reload completes only on the step the page loaded onto", async () => {
   const fake = new FakeTutorialApi();
-  fake.stored = { version: 1, dismissed: false, lesson: "reload", step: 1, done: [], scope: "operator" };
+  fake.stored = { version: 1, dismissed: false, lesson: "reload", step: 1, done: [], scope: "user" };
   const facts = new FactBook();
   let live = false;
   facts.current = (call, context) => call.name === "page_reloaded" && context.restored && live;
@@ -1107,7 +1107,7 @@ test("prompts typed in lesson 1 do not complete lesson 2's prompt steps", async 
     .map((name) => [name, readFileSync(new URL(name, dir), "utf8")])));
   const index = (id: string, title: string) => catalog.find((l) => l.id === id)!.steps.findIndex((step) => step.title === title);
   const fake = new FakeTutorialApi();
-  fake.stored = { version: 1, dismissed: false, lesson: "lesson-1", step: index("lesson-1", "Ask {agent} to build it"), done: [], scope: "operator" };
+  fake.stored = { version: 1, dismissed: false, lesson: "lesson-1", step: index("lesson-1", "Ask {agent} to build it"), done: [], scope: "user" };
   const facts = new FactBook();
   let ccparseAttached = false;
   facts.current = (call) => call.name === "task_exists" || (call.name === "session_attached" && call.arg === "project=ccparse" && ccparseAttached);

@@ -355,7 +355,7 @@ func TestLegacyRecoveryResidueConvergenceFencesBootEpoch(t *testing.T) {
 // commit: ConvergeLegacyRecoveryResidue refuses while the stamp stands, the CLI
 // surviving the stop lets ExpireStopRequest clear it, and only then does a
 // later pass commit the series.
-func TestOperatorStopDuringProbationBlocksCommit(t *testing.T) {
+func TestUserStopDuringProbationBlocksCommit(t *testing.T) {
 	e := newEnv(t)
 	s := e.launch(t)
 	deadline := time.Now().Add(30 * time.Second)

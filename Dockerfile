@@ -7,11 +7,11 @@ ARG NOISE_VISUAL_DIFF_VERSION=0.14.1
 ARG NOISE_SDLC_REF=abadbafa9f8a8fd3f41013efeb57e8ae55ecc9e2
 ARG NOISE_SDLC_VERSION=0.4.1
 
-ARG KIMI_VERSION=2.3.2
+ARG KIMI_VERSION=2.3.3
 ARG OPENCODE_VERSION=1.19.4
 ARG COMMAND_CODE_VERSION=1.88.0
-ARG CLINE_VERSION=3.0.73
-ARG KILO_VERSION=7.8.17
+ARG CLINE_VERSION=3.0.74
+ARG KILO_VERSION=7.8.18
 ARG QWEN_VERSION=0.26.1
 ARG CRUSH_VERSION=0.98.2
 
@@ -543,9 +543,9 @@ FROM core AS slim
 ARG TARGETARCH
 ARG NOISEDECK_RUNTIME_UID=1026
 ARG NOISEDECK_RUNTIME_GID=100
-ARG CLAUDE_CODE_VERSION=2.1.310
-ARG CLAUDE_BINARY_SHA256_AMD64=b73676430af12f97316a798b8371f81d640f90a58bdcb8f3ce56a835bb47df56
-ARG CLAUDE_BINARY_SHA256_ARM64=9c64d9a7442436b65fcd7cc02c1aa0051bb5a7041e7788576ed3b5f29c447d54
+ARG CLAUDE_CODE_VERSION=2.1.311
+ARG CLAUDE_BINARY_SHA256_AMD64=86dc1fcc69498159eaf15f446613e847010f9036bfbbdffd4c49350be8489ada
+ARG CLAUDE_BINARY_SHA256_ARM64=2e2496c9a8065df93acb0fca2d341f59a6b8777649b2e025ab8c9bcd5eef61f3
 # These are the exact artifacts shipped by the image. Each descriptor's
 # comments record the last behavioral measurement for that provider, which is
 # not always the version pinned here.
@@ -617,14 +617,14 @@ ARG COMMAND_CODE_VERSION
 ARG CLINE_VERSION
 ARG KILO_VERSION
 ARG QWEN_VERSION
-ARG MIMO_VERSION=0.1.15
-ARG QODER_VERSION=1.1.78
+ARG MIMO_VERSION=0.1.16
+ARG QODER_VERSION=1.1.79
 ARG CURSOR_AGENT_VERSION=2026.10.22-27dcf5f
 ARG CURSOR_AGENT_SHA256_AMD64=85296944e4600a83c4b764f578d1502bf9c416db200d33a593e8f3ecabfdc294
 ARG CURSOR_AGENT_SHA256_ARM64=22a36df9720830668ccd4d707e5190204ab9c8a0efb2f068cc914895f804d3ec
 ARG GROK_VERSION=1.0.70
 ARG BUN_VERSION=1.3.14
-ARG OMP_VERSION=18.12.6
+ARG OMP_VERSION=18.13.0
 ARG CRUSH_VERSION
 ARG PI_VERSION=1.4.0
 ARG DEVIN_VERSION=3000.11.205
@@ -883,13 +883,12 @@ FROM runtime AS mempalace
 ARG NOISEDECK_RUNTIME_UID=1026
 ARG NOISEDECK_RUNTIME_GID=100
 ARG UV_VERSION=0.13.5
-ARG MEMPALACE_VERSION=3.10.0
-# MemPalace PR 2631 (rowid-ordered page scans with early termination and
-# compact tool replies) until it lands in a release: the logstream read
-# hot path is 3x faster at every page size. The version below is what the
-# pinned commit still reports, and the readiness checks assert it.
-ARG MEMPALACE_COMMIT=bb01fd8c00bf5890111b67fd7783fddb48c5dcbe
+ARG MEMPALACE_VERSION=3.11.0
+ARG MEMPALACE_COMMIT=602d796c699cabba2971982cd9dccbbf46abfe79
 COPY deploy/mempalace/security-uv.lock /tmp/security-uv.lock
+COPY deploy/mempalace/sqlite-only.patch /tmp/sqlite-only.patch
+COPY deploy/mempalace/migrate-to-sqlite.py /tmp/migrate-to-sqlite.py
+COPY deploy/mempalace/test_migrate_to_sqlite.py /tmp/test_migrate_to_sqlite.py
 USER root
 RUN apt-get update \
     && apt-get install -y --no-install-recommends python3 python3-venv python3-nacl \
@@ -898,16 +897,21 @@ RUN apt-get update \
     && /tmp/mempalace-uv/bin/pip install --disable-pip-version-check --no-input "uv==${UV_VERSION}" \
     && git init /tmp/mempalace-src \
     && git -C /tmp/mempalace-src remote add origin https://github.com/mempalace/mempalace.git \
-    && git -C /tmp/mempalace-src fetch --depth 1 origin refs/pull/2631/head \
+    && git -C /tmp/mempalace-src fetch --depth 1 origin "${MEMPALACE_COMMIT}" \
     && git -C /tmp/mempalace-src checkout --detach FETCH_HEAD \
     && test "$(git -C /tmp/mempalace-src rev-parse HEAD)" = "${MEMPALACE_COMMIT}" \
+    && git -C /tmp/mempalace-src apply /tmp/sqlite-only.patch \
     && cp /tmp/security-uv.lock /tmp/mempalace-src/uv.lock \
     && UV_PROJECT_ENVIRONMENT=/opt/mempalace/venv \
       /tmp/mempalace-uv/bin/uv sync --project /tmp/mempalace-src --python /usr/bin/python3 --locked --no-dev --no-editable \
+    && HOME=/tmp/noisedeck-migration-test-home PYTHONDONTWRITEBYTECODE=1 /opt/mempalace/venv/bin/python -m unittest discover -v -s /tmp -p test_migrate_to_sqlite.py \
+    && /opt/mempalace/venv/bin/python -c 'import importlib.util; assert importlib.util.find_spec("chromadb") is None; import mempalace.repair' \
+    && ! /opt/mempalace/venv/bin/python -c 'from mempalace.backends import ChromaBackend; ChromaBackend()' \
+    && install -m 0555 /tmp/migrate-to-sqlite.py /usr/local/lib/noisedeck/migrate-mempalace-to-sqlite.py \
     && install -d /opt/mempalace/skills /opt/mempalace/hooks \
     && ln -s /opt/mempalace/venv/bin/mempalace /usr/local/bin/mempalace \
     && ln -s /opt/mempalace/venv/bin/mempalace-mcp /usr/local/bin/mempalace-mcp \
-    && rm -rf /tmp/security-uv.lock /tmp/mempalace-uv /tmp/mempalace-src /root/.cache/uv /home/agent/.cache \
+    && rm -rf /tmp/security-uv.lock /tmp/sqlite-only.patch /tmp/migrate-to-sqlite.py /tmp/test_migrate_to_sqlite.py /tmp/noisedeck-migration-test-home /tmp/mempalace-uv /tmp/mempalace-src /root/.cache/uv /home/agent/.cache \
     && install -d -m 0700 -o "${NOISEDECK_RUNTIME_UID}" -g "${NOISEDECK_RUNTIME_GID}" /home/agent/.cache \
     && test "$(mempalace --version)" = "MemPalace ${MEMPALACE_VERSION}"
 # Python clients use the same patched trust store as system TLS clients.
@@ -926,4 +930,5 @@ RUN chmod 0555 /usr/local/bin/noisedeck-bootstrap /usr/local/bin/noisedeck-task-
     /usr/local/lib/noisedeck/configure-mempalace.py \
     /usr/local/lib/noisedeck/mempalace-hook-forwarder.py /opt/mempalace/hooks/*.sh \
     && chmod 0444 /opt/mempalace/hooks/*.js
+ENV MEMPALACE_BACKEND=sqlite_exact
 USER ${NOISEDECK_RUNTIME_UID}:${NOISEDECK_RUNTIME_GID}

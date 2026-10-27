@@ -126,7 +126,7 @@ async function runWidth(width, mobile, options = {}) {
     if (request.method() === "GET" && path === "/api/settings/last-session") return json(404, { code: "not_found", message: "no last session remembered" });
     if (request.method() === "PUT" && path === "/api/settings/last-session") return json(200, request.postDataJSON());
     if (request.method() === "GET" && path === "/api/settings/layout") return json(404, { code: "not_found", message: "no layout saved" });
-    if (request.method() === "GET" && path === "/api/settings/tutorial") return json(200, { version: 1, dismissed: true, lesson: "welcome", step: 0, done: [], scope: "operator" });
+    if (request.method() === "GET" && path === "/api/settings/tutorial") return json(200, { version: 1, dismissed: true, lesson: "welcome", step: 0, done: [], scope: "user" });
     if (request.method() === "GET" && path === "/api/settings") {
       const body = {
         skip_permissions: false,

@@ -491,7 +491,7 @@ export class FixtureApiClient implements ApiClient, FileApiClient, LaneApiClient
     return this.tutorial;
   }
   async saveTutorial(next: TutorialPreference): Promise<TutorialRecord> {
-    this.tutorial = { ...next, done: [...next.done], scope: "operator" };
+    this.tutorial = { ...next, done: [...next.done], scope: "user" };
     return this.tutorial;
   }
   async listProjects(): Promise<Project[]> {
@@ -794,6 +794,10 @@ export class FixtureApiClient implements ApiClient, FileApiClient, LaneApiClient
       throw new ApiError(415, "not_text", "file is not text");
     }
     return { content };
+  }
+
+  async diffProjectFile(_projectID: string, _path: string): Promise<FileView> {
+    return { content: "@@ -1 +1 @@\n-old\n+new\n" };
   }
 
   subscribeProjectFileEvents(_projectID: string, _path: string, _onChange: () => void): () => void {

@@ -2,7 +2,7 @@ package workspacekeys
 
 import "testing"
 
-func TestOperatorRegistryOpenPreservesLiveChallenge(t *testing.T) {
+func TestUserRegistryOpenPreservesLiveChallenge(t *testing.T) {
 	f := newFixture(t)
 	prepared, err := f.r.PrepareMethod(f.ctx, f.actor, Passkey, "pending passkey")
 	if err != nil {
@@ -12,7 +12,7 @@ func TestOperatorRegistryOpenPreservesLiveChallenge(t *testing.T) {
 	if err := f.db.QueryRow(`SELECT registration FROM workspacekeys_methods WHERE id=?`, prepared.Method.ID).Scan(&before); err != nil || len(before) == 0 {
 		t.Fatal("missing pending registration", err)
 	}
-	operator, err := OpenExisting(f.ctx, f.db, f.r.cfg)
+	user, err := OpenExisting(f.ctx, f.db, f.r.cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -20,7 +20,7 @@ func TestOperatorRegistryOpenPreservesLiveChallenge(t *testing.T) {
 	if err := f.db.QueryRow(`SELECT registration FROM workspacekeys_methods WHERE id=?`, prepared.Method.ID).Scan(&after); err != nil || string(after) != string(before) {
 		t.Fatal("admin command invalidated live passkey ceremony", err)
 	}
-	if _, err := operator.State(f.ctx, f.actor.Login); err != nil {
+	if _, err := user.State(f.ctx, f.actor.Login); err != nil {
 		t.Fatal(err)
 	}
 	wrong := f.r.cfg

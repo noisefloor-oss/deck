@@ -22,36 +22,36 @@ func TestAuthorizationReusesOnlyLiveNativeCodexAttempt(t *testing.T) {
 				provider = "pi"
 			}
 			s, runtime, handle := fixture(t, provider)
-			if err := s.Dismiss(ctx, "operator-a", handle.ID); err != nil {
+			if err := s.Dismiss(ctx, "user-a", handle.ID); err != nil {
 				t.Fatal(err)
 			}
-			id := s.Pending(ctx, "operator-a", "session-a")[0].ID
-			operator, session := "operator-a", "session-a"
+			id := s.Pending(ctx, "user-a", "session-a")[0].ID
+			user, session := "user-a", "session-a"
 			switch scenario {
 			case "foreign session":
 				session = "session-b"
 			case "foreign user":
-				operator = "operator-b"
+				user = "user-b"
 			case "claimed", "cancelled", "submitted":
-				handle, _ = s.Begin(ctx, operator, session, id)
+				handle, _ = s.Begin(ctx, user, session, id)
 				if scenario == "cancelled" {
-					_ = s.Cancel(operator, handle.ID)
+					_ = s.Cancel(user, handle.ID)
 				}
 				if scenario == "submitted" {
 					runtime.dialError = true
-					_, _ = s.Submit(ctx, operator, handle.ID, callbackURL)
+					_, _ = s.Submit(ctx, user, handle.ID, callbackURL)
 				}
 			case "expired":
 				s.now = func() time.Time { return time.Now().Add(6 * time.Minute) }
 			case "dead":
 				runtime.alive = false
 			}
-			url, err := s.Authorization(ctx, operator, session, id)
+			url, err := s.Authorization(ctx, user, session, id)
 			if scenario == "waiting" {
 				if err != nil || url != authURL("native-state") {
 					t.Fatal("waiting attempt did not return the exact original URL")
 				}
-				if len(s.Pending(ctx, operator, session)) != 1 {
+				if len(s.Pending(ctx, user, session)) != 1 {
 					t.Fatal("opening the URL claimed the attempt")
 				}
 			} else if err == nil || url != "" {
@@ -69,11 +69,11 @@ func TestAuthorizationReusesOnlyLiveNativeCodexAttempt(t *testing.T) {
 func TestAuthorizationEndpointProtectsNativeURL(t *testing.T) {
 	ctx := context.Background()
 	s, _, handle := fixture(t, "codex")
-	if err := s.Dismiss(ctx, "operator-a", handle.ID); err != nil {
+	if err := s.Dismiss(ctx, "user-a", handle.ID); err != nil {
 		t.Fatal(err)
 	}
-	id := s.Pending(ctx, "operator-a", "session-a")[0].ID
-	s.registrations[id].owner = auth.ProxyPrincipal("operator-a")
+	id := s.Pending(ctx, "user-a", "session-a")[0].ID
+	s.registrations[id].owner = auth.ProxyPrincipal("user-a")
 	h := NewHandler(s, []string{"https://deck.example"})
 	a, err := auth.New(auth.Config{Mode: "trusted_proxy", ProxyAddresses: []string{"127.0.0.1"}, IdentityHeader: "X-Identity"}, zerolog.Nop())
 	if err != nil {
@@ -83,11 +83,11 @@ func TestAuthorizationEndpointProtectsNativeURL(t *testing.T) {
 	for _, valid := range []bool{false, true} {
 		req := httptest.NewRequest("POST", "/api/harness-login", strings.NewReader(string(body)))
 		req.RemoteAddr = "127.0.0.1:30000"
-		req.Header.Set("X-Identity", "operator-a")
+		req.Header.Set("X-Identity", "user-a")
 		req.Header.Set("Origin", "https://deck.example")
 		req.Header.Set("Content-Type", "application/json")
 		if valid {
-			req.Header.Set(CSRFHeader, h.csrf(auth.ProxyPrincipal("operator-a")))
+			req.Header.Set(CSRFHeader, h.csrf(auth.ProxyPrincipal("user-a")))
 		}
 		out := httptest.NewRecorder()
 		a.Require(h).ServeHTTP(out, req)
@@ -112,25 +112,25 @@ func TestAuthorizationEndpointProtectsNativeURL(t *testing.T) {
 func TestAuthorizationAfterRejectedCallbackRetainsClaim(t *testing.T) {
 	ctx := context.Background()
 	s, _, handle := fixture(t, "codex")
-	if _, err := s.Submit(ctx, "operator-a", handle.ID, "not-a-callback"); !errors.Is(err, ErrInvalid) {
+	if _, err := s.Submit(ctx, "user-a", handle.ID, "not-a-callback"); !errors.Is(err, ErrInvalid) {
 		t.Fatal("invalid callback did not leave a retryable claim")
 	}
-	for _, tc := range []struct{ operator, session, handle string }{
-		{"operator-b", "session-a", handle.ID},
-		{"operator-a", "session-b", handle.ID},
-		{"operator-a", "session-a", "unknown"},
+	for _, tc := range []struct{ user, session, handle string }{
+		{"user-b", "session-a", handle.ID},
+		{"user-a", "session-b", handle.ID},
+		{"user-a", "session-a", "unknown"},
 	} {
-		if url, err := s.AuthorizationForHandle(ctx, tc.operator, tc.session, tc.handle); err == nil || url != "" {
+		if url, err := s.AuthorizationForHandle(ctx, tc.user, tc.session, tc.handle); err == nil || url != "" {
 			t.Fatal("foreign or unknown handle exposed authorization URL")
 		}
 	}
-	if url, err := s.AuthorizationForHandle(ctx, "operator-a", "session-a", handle.ID); err != nil || url != authURL("native-state") {
+	if url, err := s.AuthorizationForHandle(ctx, "user-a", "session-a", handle.ID); err != nil || url != authURL("native-state") {
 		t.Fatal("user could not reopen the same claimed native login")
 	}
-	if err := s.Cancel("operator-a", handle.ID); err != nil {
+	if err := s.Cancel("user-a", handle.ID); err != nil {
 		t.Fatal(err)
 	}
-	if url, err := s.AuthorizationForHandle(ctx, "operator-a", "session-a", handle.ID); err == nil || url != "" {
+	if url, err := s.AuthorizationForHandle(ctx, "user-a", "session-a", handle.ID); err == nil || url != "" {
 		t.Fatal("consumed handle exposed authorization URL")
 	}
 }

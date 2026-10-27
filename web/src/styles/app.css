@@ -2,6 +2,8 @@
 @import "./enrollment.css";
 @import "./security-runtime.css";
 @import "./harness-login.css";
+@import "./syntax.css";
+@import "./diff.css";
 
 /* Deck design tokens.
    Values are the design system's cobalt palette (reference material,
@@ -57,6 +59,8 @@
   --color-text-tertiary: var(--color-ink-500);
   --color-text-inverse: var(--color-paper);
   --color-text-link: var(--color-accent-500);
+  --color-syntax-keyword: var(--color-mark-violet);
+  --color-syntax-comment: var(--color-ink-500);
   --color-text-on-accent: #FFFFFF;
   /* Text on a filled evidence chip. Not white: white on signal orange
      fails AA; this deep warm ink clears it in both themes (reference
@@ -473,6 +477,8 @@
   --color-text-tertiary: var(--color-ink-500);
   --color-text-inverse: var(--color-ink-900);
   --color-text-link: var(--color-accent-500);
+  --color-syntax-keyword: var(--color-accent-500);
+  --color-syntax-comment: var(--color-ink-500);
   --color-border: var(--color-line-200);
   --color-border-strong: var(--color-line-300);
   /* Focus never wears blue: no blue halo or outline, anywhere, ever. The
@@ -723,7 +729,7 @@
    (--font-mono above), so all five Dank compensations come off here and the
    untuned original stands. The scope carries the metrics only, so dropping
    the attribute reverts to Blueprint's Dank-tuned metrics in one edit. */
-[data-mono="operator"] {
+[data-mono="workspace"] {
   --type-mono-size: 13px;
   --type-mono-lh: 1.62;
   --type-mono-weight: 400;

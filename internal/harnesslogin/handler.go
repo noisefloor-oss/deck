@@ -17,10 +17,10 @@ import (
 const CSRFHeader = "X-Harness-Login-CSRF"
 
 type Handler struct {
-	Service  *Service
-	Origins  []string
-	Operator string
-	secret   [32]byte
+	Service *Service
+	Origins []string
+	User    string
+	secret  [32]byte
 }
 
 func NewHandler(service *Service, origins []string) *Handler {
@@ -44,7 +44,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Harness login requires authentication.", http.StatusUnauthorized)
 		return
 	}
-	if h.Operator != "" && principal != h.Operator {
+	if h.User != "" && principal != h.User {
 		http.Error(w, "Harness login request refused.", http.StatusForbidden)
 		return
 	}

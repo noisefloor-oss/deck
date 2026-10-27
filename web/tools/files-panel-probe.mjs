@@ -69,6 +69,8 @@ const session = {
 };
 
 const README = "# noisedeck\n\nA terminal-native console.\nline four\n";
+const GO_SOURCE = "package main\n\n/*\ncomment\n*/\nfunc main() { println(\"<img src=x>\") }\n";
+let mainGoSource = GO_SOURCE;
 const LONG_FILE_NAME = `${"long-file-name-".repeat(12)}notes.md`;
 const LONG_DIR_NAME = `${"deeply-nested-directory-".repeat(6)}leaf`;
 const MOBILE_TEXT = Array.from(
@@ -99,6 +101,7 @@ const listings = {
     entry("README.md", false, README.length, "modified"),
     entry(LONG_FILE_NAME, false, README.length),
     entry("logo.tiff", false, 18422, "new"),
+    entry("main.go", false, GO_SOURCE.length),
   ],
   "docs": [entry("docs/architecture.md", false, 331)],
   "x": [entry("x/y", true, 4096)],
@@ -185,7 +188,7 @@ try {
       // The probe drives a single claude session and never opens the picker.
       return json(200, { providers: ["claude"] });
     }
-    if (request.method() === "GET" && path === "/api/settings/tutorial") return json(200, { version: 1, dismissed: true, lesson: "welcome", step: 0, done: [], scope: "operator" });
+    if (request.method() === "GET" && path === "/api/settings/tutorial") return json(200, { version: 1, dismissed: true, lesson: "welcome", step: 0, done: [], scope: "user" });
     if (request.method() === "GET" && path === "/api/settings") {
       return json(200, { skip_permissions: false, skip_close_confirm: false, skip_remove_project_confirm: false });
     }
@@ -244,8 +247,13 @@ try {
       }
       return json(200, { path: query, at_root: query === "", entries });
     }
+    if (request.method() === "GET" && path === `/api/projects/${project.id}/files/diff`) {
+      if (query === "README.md") return json(200, { content: "@@ -1,2 +1,2 @@\n-one\n+changed\n++count\n--\n" });
+      return json(200, { content: "" });
+    }
     if (request.method() === "GET" && path === `/api/projects/${project.id}/files/view`) {
       if (query === "README.md" || query === LONG_FILE_NAME) return json(200, { content: README });
+      if (query === "main.go") return json(200, { content: mainGoSource });
       if (query === "docs/architecture.md") return json(200, { content: "# Architecture\n" });
       if (query === "notes.txt") return json(200, { content: "hello\n" });
       if (query === "mobile-scroll.txt") {
@@ -634,7 +642,7 @@ try {
     rows.map((r) => r.querySelector(".min-w-0.flex-1").textContent.trim()));
   assert.deepEqual(
     rowNames,
-    ["docs/", "x/", "broken/", "deep/", `${LONG_DIR_NAME}/`, "README.md", LONG_FILE_NAME, "logo.tiff"],
+    ["docs/", "x/", "broken/", "deep/", `${LONG_DIR_NAME}/`, "README.md", LONG_FILE_NAME, "logo.tiff", "main.go"],
     "directories first, server order",
   );
   const markers = await panel.locator("[data-files-row]").evaluateAll((rows) =>
@@ -708,6 +716,52 @@ try {
     README.split("\n")[0],
     "the row's own text is exactly the line's bytes",
   );
+
+  await panel.getByRole("button", { name: "Show changes", exact: true }).click();
+  await text.locator('[data-files-diff="added"]').first().waitFor();
+  assert.equal(await text.locator('[data-files-diff="added"]').first().textContent(), "+changed");
+  assert.equal(await text.locator('[data-files-diff="removed"]').first().textContent(), "-one");
+  assert.equal(await text.locator('[data-files-diff="added"]').nth(1).textContent(), "++count");
+  assert.equal(await text.locator('[data-files-diff="removed"]').nth(1).textContent(), "--");
+  assert.equal(await panel.getByRole("button", { name: "Show file", exact: true }).getAttribute("aria-pressed"), "true");
+  await panel.getByRole("button", { name: "Show file", exact: true }).click();
+  await text.locator("[data-files-line-text]").first().filter({ hasText: "# noisedeck" }).waitFor();
+  assert.equal(await panel.getByRole("button", { name: "Show changes", exact: true }).getAttribute("aria-pressed"), "false");
+  const changesFont = await panel.locator("[data-files-changes]").evaluate((el) => getComputedStyle(el).fontFamily);
+  await assertFontVoice(page, changesFont, "ui", "the changes toggle uses the interface face");
+  await setViewport({ width: 390, height: 844 }, "the changes toggle on a phone");
+  near((await box(panel.locator("[data-files-changes]"))).height, 44, "the changes toggle is a 44px touch target");
+  await setViewport({ width: 1400, height: 900 }, "restore the desktop viewer");
+
+  await page.getByRole("button", { name: "main.go" }).and(page.locator("[data-files-row]")).click();
+  await text.locator(".hljs-keyword").first().waitFor();
+  assert.equal(await text.evaluate((el) => el.textContent), GO_SOURCE,
+    "highlighting preserves the file's bytes and line boundaries");
+  assert.equal(await text.locator("img").count(), 0, "source markup remains text");
+  assert.ok(await text.locator(".hljs-comment").count() >= 2,
+    "a multiline comment stays highlighted across numbered rows");
+  await page.evaluate(() => { document.documentElement.dataset.theme = "light"; });
+  const lightComment = await text.locator(".hljs-comment").first().evaluate((el) => getComputedStyle(el).color);
+  await page.evaluate(() => { document.documentElement.dataset.theme = "dark"; });
+  const darkComment = await text.locator(".hljs-comment").first().evaluate((el) => getComputedStyle(el).color);
+  assert.notEqual(darkComment, lightComment, "syntax colors follow the active theme");
+  await page.evaluate(() => { document.documentElement.dataset.theme = "light"; });
+  for (const source of [
+    "package main\r\nfunc main() {}\r\n",
+    "package main\rfunc main() {}\r",
+    "package main\nvar x = \"a\u0000b\"\n",
+  ]) {
+    mainGoSource = source;
+    await page.getByRole("button", { name: "README.md" }).and(page.locator("[data-files-row]")).click();
+    await page.getByRole("button", { name: "main.go" }).and(page.locator("[data-files-row]")).click();
+    await eventually(() => text.evaluate((el) => el.textContent), (actual) => actual === source,
+      "the reloaded file text stays byte-for-byte intact");
+    assert.equal(await text.locator('[class*="hljs-"]').count(), 0,
+      "text that HTML parsing would normalize retains the plain-text path");
+  }
+  mainGoSource = GO_SOURCE;
+  await page.getByRole("button", { name: "README.md" }).and(page.locator("[data-files-row]")).click();
+  await text.locator("[data-files-line-text]").first().filter({ hasText: "# noisedeck" }).waitFor();
 
   // The footer is the machine register: kind · lines · size · recency ·
   // read-only, with the real wrap toggle beside it.

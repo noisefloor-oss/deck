@@ -38,7 +38,7 @@ func TestDockerfileInstallsPinnedDevinCLI(t *testing.T) {
 	}
 }
 
-func TestComposeExampleDocumentsDevinOperatorAuth(t *testing.T) {
+func TestComposeExampleDocumentsDevinUserAuth(t *testing.T) {
 	raw, err := os.ReadFile("compose.env.example")
 	if err != nil {
 		t.Fatal(err)

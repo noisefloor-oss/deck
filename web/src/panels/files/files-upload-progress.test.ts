@@ -24,6 +24,7 @@ function harness() {
       return snapshot;
     },
     viewProjectFile: async () => ({ content: "existing viewer" }),
+    diffProjectFile: async () => ({ content: "@@ -1 +1 @@\n-old\n+new\n" }),
     projectFileDownloadUrl: () => "",
     projectFileImageUrl: () => "",
     checkProjectFileImage: async () => {},

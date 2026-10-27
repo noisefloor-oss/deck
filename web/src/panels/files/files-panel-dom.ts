@@ -8,7 +8,7 @@
 // pixel values are deliberate.
 //
 // The viewer is read-only in the strong sense: there is no editor, and
-// file bytes are written with textContent, never parsed as markup.
+// syntax highlighting returns DOM text nodes from escaped highlighter output.
 import type { FileEntry } from "../../api/files.ts";
 import { DIALOG_ICON_BUTTON, ICON_BUTTON, SECONDARY_MD_BUTTON, SECONDARY_SM_BUTTON } from "../../ui/controls.ts";
 import { escapeHtml } from "../../lib/escape.ts";
@@ -19,6 +19,7 @@ import * as hints from "../../lib/hints.ts";
 import { uploadDetailsHtml, uploadInfo, uploadRing } from "./files-upload-view.ts";
 import {
   fileExtension,
+  isImageName,
   formatMiB,
   MAX_IMAGE_VIEW_BYTES,
   rowChange,
@@ -591,6 +592,11 @@ export class FilesPanel {
           class="flex h-7 items-center gap-1.5 rounded-control border border-field-border bg-sidebar-surface px-3 text-body-sm text-text-primary transition-colors max-md:min-h-11 hover:bg-field-hover focus-visible:bg-wash-hover">${lucideIcon("download", 13)}Download</a>
       </div>`;
     }
+    if (view.kind === "diff" && view.content === "") {
+      return `<div data-files-empty class="flex flex-1 items-center justify-center bg-surface-sunken">
+        <span class="text-micro text-text-tertiary">No changes since the last commit</span>
+      </div>`;
+    }
     // An empty file has no lines to number. Saying so is the faithful
     // rendering; a lone blank gutter row would read as a failed load.
     if (view.content === "") {
@@ -625,7 +631,10 @@ export class FilesPanel {
       </div>
     `;
     }
-    const wrap = m.view?.kind === "text"
+    const changes = (entry.change === undefined && m.viewerMode !== "changes") || isImageName(entry.name) ? "" : `<button type="button" data-files-changes data-focus-key="changes"
+      aria-label="${m.viewerMode === "changes" ? "Show file" : "Show changes"}" aria-pressed="${m.viewerMode === "changes" ? "true" : "false"}"
+      data-hint="${m.viewerMode === "changes" ? hints.SHOW_FILE_CONTENT : hints.SHOW_FILE_CHANGES}" class="${SECONDARY_SM_BUTTON} font-ui max-md:min-h-11 max-md:px-3">${m.viewerMode === "changes" ? "Show file" : "Show changes"}</button>`;
+    const wrap = m.view?.kind === "text" || m.view?.kind === "diff"
       ? `<button type="button" data-files-wrap data-focus-key="wrap" aria-label="Wrap lines"
           aria-pressed="${this.wrapLines ? "true" : "false"}" data-hint="${hints.WRAP_LONG_LINES}"
           class="flex flex-none items-center gap-[6px] rounded-control-sm px-[7px] py-0.5 text-text-tertiary transition-colors hover:bg-wash-hover hover:text-text-primary focus-visible:bg-wash-hover max-md:min-h-11 max-md:px-3">${this.wrapDot()}wrap${this.wrapSwitch()}</button>`
@@ -634,7 +643,7 @@ export class FilesPanel {
       <div data-files-viewer-footer class="flex flex-none items-center gap-2 border-t border-border bg-surface px-4 py-[6px] font-mono text-micro text-text-tertiary">
         ${viewerStatusHtml(entry, m.view, Date.now())}
         <span class="ml-auto"></span>
-        ${wrap}
+        ${changes}${wrap}
       </div>
     `;
   }
@@ -771,19 +780,47 @@ export class FilesPanel {
   // exactly the file's bytes and the newline separators.
   private paintViewerText(): void {
     const view = this.model.view;
-    if (view === null || view.kind !== "text") return;
+    if (view === null || (view.kind !== "text" && view.kind !== "diff")) return;
     const body = this.container.querySelector<HTMLElement>("[data-files-text]");
     if (body === null) return;
-    const lines = view.content.split("\n");
+    const path = this.model.selected?.path ?? "";
+    this.paintViewerRows(body, view.content.split("\n"), view.kind === "diff");
+    if (view.kind === "text") void this.highlightViewerText(body, path, view.content);
+  }
+
+  private async highlightViewerText(body: HTMLElement, path: string, content: string): Promise<void> {
+    try {
+      const { highlightedLines } = await import("./syntax.ts");
+      const lines = highlightedLines(path, content);
+      if (lines === null || this.disposed || !body.isConnected ||
+          this.model.selected?.path !== path || this.model.view?.kind !== "text" ||
+          this.model.view.content !== content) return;
+      this.paintViewerRows(body, lines);
+    } catch {
+      // A module-load failure leaves the already painted plain text intact.
+    }
+  }
+
+  private paintViewerRows(body: HTMLElement, lines: (string | DocumentFragment)[], diff = false): void {
+    body.replaceChildren();
+    let inHunk = false;
     lines.forEach((line, index) => {
       const row = document.createElement("span");
       row.dataset.filesLine = "";
+      if (diff && typeof line === "string") {
+        if (line.startsWith("@@")) inHunk = true;
+        row.dataset.filesDiff = !inHunk || line.startsWith("@@") ? "meta"
+          : line.startsWith("+") ? "added"
+          : line.startsWith("-") ? "removed"
+          : "context";
+      }
       const number = document.createElement("span");
       number.dataset.filesLineNumber = "";
       number.dataset.lineNumber = String(index + 1);
       const text = document.createElement("span");
       text.dataset.filesLineText = "";
-      text.textContent = line;
+      if (typeof line === "string") text.textContent = line;
+      else text.append(line);
       row.append(number, text);
       body.append(row);
       if (index < lines.length - 1) {
@@ -858,6 +895,10 @@ export class FilesPanel {
     }
     this.bindDropTarget();
     const input = q<HTMLInputElement>("[data-files-input]");
+    q<HTMLElement>("[data-files-changes]")?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      void this.run(() => this.model.toggleViewerMode(), "back", "back");
+    });
     q<HTMLElement>("[data-files-wrap]")?.addEventListener("click", (event) => {
       event.stopPropagation();
       this.wrapLines = !this.wrapLines;

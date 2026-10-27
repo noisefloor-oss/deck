@@ -217,6 +217,8 @@ jobs:
       MEMPALACE_TEST_IMAGE: deck:mempalace-ci-${{ github.run_id }}
       GO_TEST_IMAGE: deck:go-ci-${{ github.run_id }}
       SLIM_TEST_IMAGE: deck:slim-ci-${{ github.run_id }}
+      RELAY_TEST_IMAGE: deck-relay:acceptance-${{ github.run_id }}-${{ github.run_attempt }}
+      RELAY_TEST_CONTAINER: deck-relay-acceptance-${{ github.run_id }}-${{ github.run_attempt }}
       MEMPALACE_HOME_VOLUME: deck-mempalace-home-ci-${{ github.run_id }}-${{ github.run_attempt }}
       NOISEDECK_CI_BACKEND: ${{ needs.portable-checks.outputs.native_backend }}
 
@@ -399,25 +401,51 @@ jobs:
           path: ${{ env.CI_ROOT }}/browser-vulnerabilities.json
           if-no-files-found: warn
 
+      - name: Certify the standalone relay runtime and scan its complete image
+        run: |
+          docker build --file deploy/mempalace/relay.Dockerfile --tag "${RELAY_TEST_IMAGE}" .
+          python3 deploy/relay-runtime-acceptance.py "${RELAY_TEST_IMAGE}" --container-name "${RELAY_TEST_CONTAINER}"
+          sh deploy/scan-browser-image.sh "${RELAY_TEST_IMAGE}" "${CI_ROOT}/relay-vulnerabilities.json"
+
+      - name: Retain standalone relay vulnerability findings
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: relay-vulnerabilities-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.CI_ROOT }}/relay-vulnerabilities.json
+          if-no-files-found: warn
+
       - name: Verify MemPalace image with a fresh home volume
         run: |
           NOISEDECK_IMAGE_TAG="${MEMPALACE_TEST_IMAGE#deck:}" \
             docker compose --env-file "${COMPOSE_ENV_FILE}" \
               --file compose.yaml --file compose.mempalace.yaml build app
           docker volume create "${MEMPALACE_HOME_VOLUME}"
-          trap 'docker volume rm --force "${MEMPALACE_HOME_VOLUME}"' EXIT
           docker run --rm --user 1000:1000 \
             --volume "${MEMPALACE_HOME_VOLUME}:/home/agent" \
             --entrypoint sh "${MEMPALACE_TEST_IMAGE}" -eu -c '
               test "$(stat -c %u:%g /home/agent/.cache)" = 1000:1000
               test -w /home/agent/.cache
-              test "$(mempalace --version)" = "MemPalace 3.10.0"
+              test "$(mempalace --version)" = "MemPalace 3.11.0"
+              /opt/mempalace/venv/bin/python -c "import importlib.util; assert importlib.util.find_spec(\"chromadb\") is None"
               command -v node
               command -v jq
               ps -p $$ -o pid=
               ! command -v go
               opencode --version
             '
+
+      - name: Verify fresh-home SQLite storage survives a container restart
+        run: |
+          trap 'docker volume rm --force "${MEMPALACE_HOME_VOLUME}"' EXIT
+          for mode in write verify; do
+            docker run --rm --interactive --network none --user 1000:1000 \
+              --cap-drop ALL --security-opt no-new-privileges \
+              --pids-limit 128 --memory 512m --cpus 1 \
+              --volume "${MEMPALACE_HOME_VOLUME}:/home/agent" \
+              --entrypoint /opt/mempalace/venv/bin/python "${MEMPALACE_TEST_IMAGE}" \
+              - "${mode}" <deploy/mempalace/fresh-home-probe.py
+          done
 
       - name: Build the Go-derived MemPalace image and verify both capabilities
         run: |
@@ -428,7 +456,7 @@ jobs:
               --file compose.go.yaml \
               --file compose.go-mempalace.yaml build app
           docker run --rm --user 1000:1000 --entrypoint sh "${GO_TEST_IMAGE}" -eu -c '
-            test "$(mempalace --version)" = "MemPalace 3.10.0"
+            test "$(mempalace --version)" = "MemPalace 3.11.0"
             command -v jq
             test "$(command -v go)" = /usr/local/go/bin/go
             test "$(/bin/bash -lc "command -v go")" = /usr/local/go/bin/go
@@ -538,6 +566,8 @@ jobs:
           if test -f "${COMPOSE_ENV_FILE}"; then
             docker compose --env-file "${COMPOSE_ENV_FILE}" down --volumes --remove-orphans || true
           fi
+          docker container rm --force "${RELAY_TEST_CONTAINER}" || true
+          docker image rm "${RELAY_TEST_IMAGE}" || true
           docker image rm "${NOISE_BROWSER_TEST_IMAGE}" || true
           docker volume rm --force "${MEMPALACE_HOME_VOLUME}" || true
           docker image rm "${MEMPALACE_TEST_IMAGE}" || true

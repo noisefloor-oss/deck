@@ -107,7 +107,7 @@ func (h *Handler) Require(next http.Handler) http.Handler {
 					return
 				}
 			}
-			ctx := withPrincipal(r.Context(), "operator")
+			ctx := withPrincipal(r.Context(), legacySingleUserPrincipal)
 			if login, ok := loginFromPayload(payload); ok {
 				ctx = context.WithValue(ctx, loginKey{}, login)
 				ctx = withSessionExpiry(ctx, payload)

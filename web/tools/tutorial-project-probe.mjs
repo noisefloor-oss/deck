@@ -92,7 +92,7 @@ try {
   const goneRequests = [];
   let providerList = ["claude", "codex", "shell"];
   const laneFaults = { sessionsLive: true, reviewSeen: false, failOwnReads: 0 };
-  let record = { version: 1, dismissed: false, lesson: "lesson-1", step: 0, done: [], scope: "operator" };
+  let record = { version: 1, dismissed: false, lesson: "lesson-1", step: 0, done: [], scope: "user" };
   const inputs = [];
   const sockets = new Map();
   const replies = [];
@@ -139,7 +139,7 @@ try {
     const method = request.method();
     const json = (status, body) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
     if (path === "/api/settings/tutorial") {
-      if (method === "PUT") record = { ...request.postDataJSON(), scope: "operator" };
+      if (method === "PUT") record = { ...request.postDataJSON(), scope: "user" };
       return json(200, record);
     }
     if (path === "/api/settings/layout" || path === "/api/settings/last-session") {
@@ -738,7 +738,7 @@ try {
   mutations.length = 0;
   inputs.length = 0;
   faults.defaultIdentity = null;
-  record = { version: 1, dismissed: false, lesson: "lesson-1", step: 0, done: [], scope: "operator" };
+  record = { version: 1, dismissed: false, lesson: "lesson-1", step: 0, done: [], scope: "user" };
   await page.reload({ waitUntil: "networkidle" });
   await panel.waitFor({ state: "visible" });
   await button("Start the tutorial").click();
@@ -848,7 +848,7 @@ try {
   // --- Lesson 3: a lane, a review and a close, through the lane endpoints ---
   projects.push({ id: ownId, name: "mycode", canonical_path: "/workspace/mycode", last_used_at: "t", git_identity_setup_revision: 1 });
   sessions.push({ ...base, id: "own-agent", project_id: ownId, provider: "claude", display_name: "Own agent", native_session_id: "fixture" });
-  record = { version: 1, dismissed: false, lesson: "lesson-1", step: 0, done: [], scope: "operator" };
+  record = { version: 1, dismissed: false, lesson: "lesson-1", step: 0, done: [], scope: "user" };
   await page.reload({ waitUntil: "networkidle" });
   await panel.waitFor({ state: "visible" });
   await button("Start the tutorial").click();
@@ -949,7 +949,7 @@ try {
   tasks.length = 0;
   for (const collection of [fakeFiles, directories, prds, runs, modifiedFiles]) collection.clear();
   faults.codex = true;
-  record = { version: 1, dismissed: false, lesson: "lesson-1", step: 0, done: [], scope: "operator" };
+  record = { version: 1, dismissed: false, lesson: "lesson-1", step: 0, done: [], scope: "user" };
   await page.reload({ waitUntil: "networkidle" });
   await panel.waitFor({ state: "visible" });
   await button("Start the tutorial").click();

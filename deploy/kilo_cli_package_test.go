@@ -14,7 +14,7 @@ func TestDockerfileInstallsPinnedKiloCLI(t *testing.T) {
 	}
 	body := string(raw)
 	for _, required := range []string{
-		"ARG KILO_VERSION=7.8.17",
+		"ARG KILO_VERSION=7.8.18",
 		"RUN --mount=type=cache,target=/root/.npm,sharing=locked",
 		`"@kilocode/cli@${KILO_VERSION}"`,
 		`test "$(kilo --version)" = "${KILO_VERSION}"`,

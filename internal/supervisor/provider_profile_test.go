@@ -19,11 +19,11 @@ func TestClaudeProviderProfileGolden(t *testing.T) {
 	var wantJSON, wantDigest string
 	switch runtime.GOARCH {
 	case "amd64":
-		wantJSON = `{"schema":"noisedeck.provider-profile.v1","provider":"claude","descriptor_revision":"claude-assigned-identity.v1","tested_version":"2.1.310","runtime_relative_executable":"usr/local/bin/claude","executable_sha256":"b73676430af12f97316a798b8371f81d640f90a58bdcb8f3ce56a835bb47df56"}`
-		wantDigest = "cb7d03969d1514ef7b5a256d783f941a22b6d3348bab2b415665b3f76448544e"
+		wantJSON = `{"schema":"noisedeck.provider-profile.v1","provider":"claude","descriptor_revision":"claude-assigned-identity.v1","tested_version":"2.1.311","runtime_relative_executable":"usr/local/bin/claude","executable_sha256":"86dc1fcc69498159eaf15f446613e847010f9036bfbbdffd4c49350be8489ada"}`
+		wantDigest = "1126771cfa3c468ede8b1929bd30c2742a8fc302faeb11df1b93b30e5b10f5b7"
 	case "arm64":
-		wantJSON = `{"schema":"noisedeck.provider-profile.v1","provider":"claude","descriptor_revision":"claude-assigned-identity.v1","tested_version":"2.1.310","runtime_relative_executable":"usr/local/bin/claude","executable_sha256":"9c64d9a7442436b65fcd7cc02c1aa0051bb5a7041e7788576ed3b5f29c447d54"}`
-		wantDigest = "358b0125f3c3ad4ad78c657b689bdfd2b0c557e180d1cf16e59ac885d4b89509"
+		wantJSON = `{"schema":"noisedeck.provider-profile.v1","provider":"claude","descriptor_revision":"claude-assigned-identity.v1","tested_version":"2.1.311","runtime_relative_executable":"usr/local/bin/claude","executable_sha256":"2e2496c9a8065df93acb0fca2d341f59a6b8777649b2e025ab8c9bcd5eef61f3"}`
+		wantDigest = "5ac6b479e6306bf38ce3909b0c490a33d10001b24a6ac566887c99812685c32b"
 	default:
 		t.Fatalf("unsupported test architecture %s", runtime.GOARCH)
 	}

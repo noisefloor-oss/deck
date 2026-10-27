@@ -79,7 +79,7 @@ try {
     const path = url.pathname;
     const json = (status, body) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
     const method = request.method();
-    if (method === "GET" && path === "/api/settings/tutorial") return json(200, { version: 1, dismissed: true, lesson: "welcome", step: 0, done: [], scope: "operator" });
+    if (method === "GET" && path === "/api/settings/tutorial") return json(200, { version: 1, dismissed: true, lesson: "welcome", step: 0, done: [], scope: "user" });
     if (method === "GET" && path === "/api/settings") {
       return json(200, { skip_permissions: false, skip_close_confirm: false, skip_remove_project_confirm: false });
     }
