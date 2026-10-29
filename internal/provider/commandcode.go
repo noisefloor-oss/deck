@@ -89,7 +89,7 @@ func (c *CommandCodeDescriptor) ExecutableIdentity() ExecutableIdentity {
 	return ExecutableIdentity{
 		Interpreted:     true,
 		ExpectedProcExe: "/usr/local/bin/node",
-		LaunchTarget:    "/usr/local/lib/node_modules/command-code/dist/index.mjs",
+		LaunchTarget:    "/usr/local/lib/command-code/node_modules/command-code/dist/index.mjs",
 		ObservedCmdline: "node /usr/local/bin/command-code",
 	}
 }

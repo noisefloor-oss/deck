@@ -3,6 +3,7 @@
 # CLI syntax was inspected against the real 1.21.0 package. The
 # structured SessionStart shape and configuration are documented by Command
 # Code. Authenticated terminal behaviour still requires the release gate.
+# The executable path tracks image packaging independently of that measurement.
 
 provider: command-code
 version_tested: "1.21.0"
@@ -14,7 +15,7 @@ runtime_compatibility:
 
 executable:
   launch_path: "/usr/local/bin/command-code"
-  launch_target: "/usr/local/lib/node_modules/command-code/dist/index.mjs"
+  launch_target: "/usr/local/lib/command-code/node_modules/command-code/dist/index.mjs"
   proc_exe: "/usr/local/bin/node"
   proc_cmdline: "node /usr/local/bin/command-code"
   interpreted: true

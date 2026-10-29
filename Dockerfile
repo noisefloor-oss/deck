@@ -10,6 +10,9 @@ ARG NOISE_SDLC_VERSION=0.4.1
 ARG KIMI_VERSION=2.3.3
 ARG OPENCODE_VERSION=1.19.4
 ARG COMMAND_CODE_VERSION=1.88.0
+# Lift this pin once Command Code accepts named-only semantic-conventions exports.
+# Until then 1.44 makes it fail before even --version.
+ARG COMMAND_CODE_SEMCONV_VERSION=1.43.0
 ARG CLINE_VERSION=3.0.74
 ARG KILO_VERSION=7.8.18
 ARG QWEN_VERSION=0.26.1
@@ -54,8 +57,10 @@ FROM mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b201
 
 # Remove the older bundled Chromium so it cannot be selected accidentally.
 COPY --from=chrome-archive /chrome.zip /tmp/chrome.zip
+# USN-8956-1 fixes the Brotli decoder in Noble (CVE-2026-111497).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends unzip \
+    && apt-get install -y --no-install-recommends unzip libbrotli1 \
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libbrotli1)" ge 1.1.0-2ubuntu0.1 \
     && apt-get purge -y gstreamer1.0-plugins-bad libgstreamer-plugins-bad1.0-0 \
     && rm -rf /var/lib/apt/lists/* /ms-playwright \
       /usr/lib/node_modules/npm /usr/bin/npm /usr/bin/npx \
@@ -262,6 +267,7 @@ ARG TARGETARCH
 ARG KIMI_VERSION
 ARG OPENCODE_VERSION
 ARG COMMAND_CODE_VERSION
+ARG COMMAND_CODE_SEMCONV_VERSION
 ARG CLINE_VERSION
 ARG KILO_VERSION
 ARG QWEN_VERSION
@@ -279,23 +285,30 @@ RUN apt-get update \
 # Kimi and the rest of the npm-distributed CLIs, pinned to the
 # versions the launch gate enforces.
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
-    npm install --global \
+    npm install --prefix /opt/npm-harnesses/lib/command-code \
+      --no-save --package-lock=false --omit=dev --prefer-dedupe \
+      "command-code@${COMMAND_CODE_VERSION}" \
+      "@opentelemetry/semantic-conventions@${COMMAND_CODE_SEMCONV_VERSION}" \
+    && npm install --global \
       "@moonshot-ai/kimi-code@${KIMI_VERSION}" \
       "opencode-ai@${OPENCODE_VERSION}" \
-      "command-code@${COMMAND_CODE_VERSION}" \
       "cline@${CLINE_VERSION}" \
       "@kilocode/cli@${KILO_VERSION}" \
       "@qwen-code/qwen-code@${QWEN_VERSION}" \
       "@charmland/crush@${CRUSH_VERSION}" \
-    && find /opt/npm-harnesses/lib/node_modules \
+    && for command_code_bin in command-code cmd cmdc commandcode; do \
+         ln -s "../lib/command-code/node_modules/.bin/${command_code_bin}" \
+           "/opt/npm-harnesses/bin/${command_code_bin}"; \
+       done \
+    && find /opt/npm-harnesses/lib \
          \( -type d -name "*-baseline" -o -type f -name "*-baseline.*" \) \
          -exec rm -rf {} + \
     && if test "${TARGETARCH}" = amd64; then \
-         find /opt/npm-harnesses/lib/node_modules \
+         find /opt/npm-harnesses/lib \
            -type d \( -name "*darwin*" -o -name "*win32*" -o -name "*windows*" -o -name "*arm64*" \) \
            -prune -exec rm -rf {} +; \
        else \
-         find /opt/npm-harnesses/lib/node_modules \
+         find /opt/npm-harnesses/lib \
            -type d \( -name "*darwin*" -o -name "*win32*" -o -name "*windows*" -o -name "*x64*" -o -name "*amd64*" \) \
            -prune -exec rm -rf {} +; \
        fi \
