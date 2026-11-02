@@ -16,7 +16,7 @@ import { bindLoginActions, loginHtml, mountSetup } from "./app/login.ts";
 import { isStableReleaseBuild, watchReleaseNotice } from "./app/release-notice.ts";
 import { documentBuildID, fetchBuildID, VersionWatcher } from "./app/version-watch.ts";
 import { mountMethodManagement } from "./app/security/management-controller.ts";
-import { WorkspaceSecurity } from "./app/security/coordinator.ts";
+import { WorkspaceSecurity, type HostAdmission } from "./app/security/coordinator.ts";
 import { currentTheme } from "./app/theme.ts";
 import { applyFace, currentFace } from "./app/face.ts";
 
@@ -119,7 +119,7 @@ const mount = async () => {
   await admitWorkspace(api, authMode, generation, abort);
 };
 
-const admitWorkspace = async (api: HttpApiClient, authMode: AuthMode, generation: number, abort: AbortController): Promise<void> => {
+const admitWorkspace = async (api: HttpApiClient, authMode: AuthMode, generation: number, abort: AbortController): Promise<HostAdmission> => {
   renderMountState("Restoring the browser controller…");
   let claim: ControllerClaim | null = null;
   try {
@@ -141,18 +141,32 @@ const admitWorkspace = async (api: HttpApiClient, authMode: AuthMode, generation
       abort.signal,
     );
   } catch (cause) {
-    if (generation !== mountGeneration) return;
+    if (generation !== mountGeneration) return "retry";
     const message = cause instanceof Error ? cause.message : String(cause);
     root.inert = false;
     renderMountState(`Deck cannot safely attach: ${message}`, true);
-    return;
+    return "failed";
   }
   if (generation !== mountGeneration) {
     await claim.close();
-    return;
+    return "retry";
   }
   controller = claim;
-  if (security && !await security.confirmAdmission()) return;
+  try {
+    if (security && !await security.confirmAdmission()) {
+      await claim.close();
+      if (controller === claim) controller = null;
+      return "retry";
+    }
+  } catch (cause) {
+    await claim.close();
+    if (controller === claim) controller = null;
+    if (generation !== mountGeneration || abort.signal.aborted || security?.admissionInvalidated) return "retry";
+    const message = cause instanceof Error ? cause.message : String(cause);
+    root.inert = false;
+    renderMountState(`Deck cannot safely attach: ${message}`, true);
+    return "failed";
+  }
   root.inert = false;
   workspace = new LiveWorkspace(root, api, claim.id, authMode, {
     getItem: (key) => window.localStorage.getItem(key),
@@ -176,6 +190,7 @@ const admitWorkspace = async (api: HttpApiClient, authMode: AuthMode, generation
     releaseNoticeCleanup = watchReleaseNotice(root, api.onAuthorizationLost);
   }
   void workspace.start();
+  return "admitted";
 };
 
 window.addEventListener("pagehide", () => {

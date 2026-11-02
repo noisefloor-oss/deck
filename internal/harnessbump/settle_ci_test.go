@@ -362,3 +362,186 @@ func TestSettleCanceledUpdateObservationKeepsTheAcceptedUpdate(t *testing.T) {
 		t.Fatalf("accepted update was lost on cancellation: %+v, %v, %v", decisions, err, calls)
 	}
 }
+
+// A PR workflow starts before its aggregate check is created. Settlement must
+// wait for that bound workflow, rather than schedule another full manual run.
+func TestSettleWaitsForExistingPRWorkflowBeforeAggregate(t *testing.T) {
+	for _, status := range []string{"queued", "in_progress", "pending", "waiting", "requested", "completed"} {
+		t.Run(status, func(t *testing.T) {
+			pr := ciPR("head", "APPROVED", "head", "", "CLEAN")
+			var conclusion any
+			if status == "completed" {
+				conclusion = "success"
+			}
+			var calls []string
+			base := fakeGH([]map[string]any{pr}, &calls)
+			gh := func(ctx context.Context, args ...string) ([]byte, error) {
+				out, err := base(ctx, args...)
+				call := strings.Join(args, " ")
+				switch {
+				case strings.HasPrefix(call, "run list"):
+					if strings.Contains(call, "--event pull_request") && !strings.Contains(call, "--status action_required") {
+						return json.Marshal([]map[string]any{{"databaseId": 99, "status": status, "conclusion": conclusion}})
+					}
+					return []byte("[]"), nil
+				case call == "api repos/o/r/actions/runs/99":
+					return json.Marshal(map[string]any{
+						"id": 99, "event": "pull_request", "path": ".github/workflows/ci-fast.yaml",
+						"head_sha": "head", "head_branch": pr["headRefName"], "status": status, "conclusion": conclusion,
+						"repository": map[string]any{"full_name": "o/r"}, "head_repository": map[string]any{"full_name": "o/r"},
+						"pull_requests": []any{map[string]any{"number": 1, "head": map[string]any{"sha": "head"}}},
+					})
+				case strings.HasPrefix(call, "pr view"):
+					return json.Marshal(pr)
+				}
+				return out, err
+			}
+			decisions, err := Settle(context.Background(), gh, "o/r", "noise-review", 1, true, ciProof, ciProof)
+			if err != nil || len(decisions) != 1 || decisions[0].Action != ActionWait || decisions[0].Applied {
+				t.Fatalf("an existing workflow is pending evidence, never a successful gate: %+v, %v", decisions, err)
+			}
+			joined := strings.Join(calls, "\n")
+			if strings.Contains(joined, "workflow run") || strings.Contains(joined, "/approve") || strings.Contains(joined, "pr merge") {
+				t.Fatalf("ordinary bound PR preflight caused a mutation: %s", joined)
+			}
+		})
+	}
+}
+
+func TestSettleRejectsUnboundOrFailedExistingPRWorkflow(t *testing.T) {
+	for _, mode := range []string{"wrong-id", "wrong-head", "wrong-branch", "wrong-pr", "wrong-attached-head", "wrong-repo", "fork", "wrong-event", "wrong-workflow", "unknown-status"} {
+		t.Run(mode, func(t *testing.T) {
+			pr := ciPR("head", "APPROVED", "head", "", "CLEAN")
+			run := map[string]any{
+				"id": 99, "event": "pull_request", "path": ".github/workflows/ci-fast.yaml",
+				"head_sha": "head", "head_branch": pr["headRefName"], "status": "in_progress",
+				"repository": map[string]any{"full_name": "o/r"}, "head_repository": map[string]any{"full_name": "o/r"},
+				"pull_requests": []any{map[string]any{"number": 1, "head": map[string]any{"sha": "head"}}},
+			}
+			switch mode {
+			case "wrong-id":
+				run["id"] = 98
+			case "wrong-head":
+				run["head_sha"] = "other"
+			case "wrong-branch":
+				run["head_branch"] = "other"
+			case "wrong-pr":
+				run["pull_requests"] = []any{map[string]any{"number": 2, "head": map[string]any{"sha": "head"}}}
+			case "wrong-attached-head":
+				run["pull_requests"] = []any{map[string]any{"number": 1, "head": map[string]any{"sha": "other"}}}
+			case "wrong-repo":
+				run["repository"] = map[string]any{"full_name": "other/repo"}
+			case "fork":
+				run["head_repository"] = map[string]any{"full_name": "other/repo"}
+			case "wrong-event":
+				run["event"] = "workflow_dispatch"
+			case "wrong-workflow":
+				run["path"] = ".github/workflows/other.yaml"
+			case "unknown-status":
+				run["status"] = "unknown"
+			}
+			var calls []string
+			base := fakeGH([]map[string]any{pr}, &calls)
+			gh := func(ctx context.Context, args ...string) ([]byte, error) {
+				out, err := base(ctx, args...)
+				call := strings.Join(args, " ")
+				switch {
+				case strings.HasPrefix(call, "run list"):
+					if strings.Contains(call, "--event pull_request") && !strings.Contains(call, "--status action_required") {
+						return []byte(`[{"databaseId":99,"status":"in_progress"}]`), nil
+					}
+					return []byte("[]"), nil
+				case call == "api repos/o/r/actions/runs/99":
+					return json.Marshal(run)
+				case strings.HasPrefix(call, "pr view"):
+					return json.Marshal(pr)
+				}
+				return out, err
+			}
+			_, err := Settle(context.Background(), gh, "o/r", "noise-review", 1, true, ciProof, ciProof)
+			if err == nil {
+				t.Fatal("unbound, failed or unknown workflow was accepted")
+			}
+			joined := strings.Join(calls, "\n")
+			if strings.Contains(joined, "workflow run") || strings.Contains(joined, "/approve") || strings.Contains(joined, "pr merge") {
+				t.Fatalf("rejected workflow caused a mutation: %s", joined)
+			}
+		})
+	}
+}
+
+func TestSettleRerunsFailedPreflightInsteadOfWedging(t *testing.T) {
+	for _, conclusion := range []string{"cancelled", "failure"} {
+		t.Run(conclusion, func(t *testing.T) {
+			pr := ciPR("head", "APPROVED", "head", "", "CLEAN")
+			run := map[string]any{
+				"id": 99, "event": "pull_request", "path": ".github/workflows/ci-fast.yaml",
+				"head_sha": "head", "head_branch": pr["headRefName"], "status": "completed", "conclusion": conclusion,
+				"repository": map[string]any{"full_name": "o/r"}, "head_repository": map[string]any{"full_name": "o/r"},
+				"pull_requests": []any{map[string]any{"number": 1, "head": map[string]any{"sha": "head"}}},
+			}
+			var calls []string
+			base := fakeGH([]map[string]any{pr}, &calls)
+			gh := func(ctx context.Context, args ...string) ([]byte, error) {
+				out, err := base(ctx, args...)
+				call := strings.Join(args, " ")
+				switch {
+				case strings.HasPrefix(call, "run list"):
+					if strings.Contains(call, "--event pull_request") && !strings.Contains(call, "--status action_required") {
+						return []byte(`[{"databaseId":99,"status":"completed"}]`), nil
+					}
+					return []byte("[]"), nil
+				case call == "api repos/o/r/actions/runs/99":
+					return json.Marshal(run)
+				case strings.HasPrefix(call, "pr view"):
+					return json.Marshal(pr)
+				}
+				return out, err
+			}
+			decisions, err := Settle(context.Background(), gh, "o/r", "noise-review", 1, true, ciProof, ciProof)
+			if err != nil || len(decisions) != 1 || decisions[0].Action != ActionWait {
+				t.Fatalf("failed preflight did not become a per-PR wait: %+v, %v", decisions, err)
+			}
+			joined := strings.Join(calls, "\n")
+			if !strings.Contains(joined, "run rerun 99 --repo o/r") {
+				t.Fatalf("settle did not rerun in the validated repository: %s", joined)
+			}
+			if strings.Contains(joined, "workflow run ci-fast.yaml") {
+				t.Fatalf("rerun also dispatched a duplicate workflow: %s", joined)
+			}
+		})
+	}
+}
+
+func TestSettlePropagatesPreflightRerunFailure(t *testing.T) {
+	pr := ciPR("head", "APPROVED", "head", "", "CLEAN")
+	run := map[string]any{
+		"id": 99, "event": "pull_request", "path": ".github/workflows/ci-fast.yaml",
+		"head_sha": "head", "head_branch": pr["headRefName"], "status": "completed", "conclusion": "cancelled",
+		"repository": map[string]any{"full_name": "o/r"}, "head_repository": map[string]any{"full_name": "o/r"},
+		"pull_requests": []any{map[string]any{"number": 1, "head": map[string]any{"sha": "head"}}},
+	}
+	var calls []string
+	base := fakeGH([]map[string]any{pr}, &calls)
+	gh := func(ctx context.Context, args ...string) ([]byte, error) {
+		out, err := base(ctx, args...)
+		call := strings.Join(args, " ")
+		switch {
+		case strings.HasPrefix(call, "run list"):
+			if strings.Contains(call, "--event pull_request") && !strings.Contains(call, "--status action_required") {
+				return []byte(`[{"databaseId":99,"status":"completed"}]`), nil
+			}
+			return []byte("[]"), nil
+		case call == "api repos/o/r/actions/runs/99":
+			return json.Marshal(run)
+		case strings.HasPrefix(call, "run rerun"):
+			return nil, errors.New("rerun refused")
+		case strings.HasPrefix(call, "pr view"):
+			return json.Marshal(pr)
+		}
+		return out, err
+	}
+	if _, err := Settle(context.Background(), gh, "o/r", "noise-review", 1, true, ciProof, ciProof); err == nil || !strings.Contains(err.Error(), "rerun refused") {
+		t.Fatalf("rerun failure was swallowed: %v", err)
+	}
+}

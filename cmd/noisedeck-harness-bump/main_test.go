@@ -47,7 +47,7 @@ func TestSettleJSONPreservesErrorAndDecisions(t *testing.T) {
 func TestReviewRefsJSONKeys(t *testing.T) {
 	root := t.TempDir()
 	head, base := strings.Repeat("a", 40), strings.Repeat("b", 40)
-	response := `{"data":{"repository":{"ref":{"target":{"oid":"` + base + `"}},"pullRequest":{"id":"PR1","headRefOid":"` + head + `","baseRefOid":"stale"}}}}`
+	response := `{"data":{"repository":{"ref":{"target":{"oid":"` + base + `"}},"pullRequest":{"id":"PR1","state":"OPEN","headRefOid":"` + head + `","baseRefOid":"stale"}}}}`
 	if err := os.WriteFile(filepath.Join(root, "gh"), []byte("#!/bin/sh\nprintf '%s\\n' '"+response+"'\n"), 0700); err != nil {
 		t.Fatal(err)
 	}

@@ -163,6 +163,11 @@ func New(cfg Config, log zerolog.Logger) (*Handler, error) {
 
 	switch cfg.Mode {
 	case "password":
+		peers, err := parseTrustedPeers(cfg.ProxyAddresses)
+		if err != nil {
+			return nil, err
+		}
+		h.proxies = peers
 		if len(cfg.SessionSecret) < 32 {
 			return nil, errors.New("auth: password mode requires a 32-byte session secret")
 		}

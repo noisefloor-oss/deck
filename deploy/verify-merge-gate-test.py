@@ -1,3 +1,6 @@
+import contextlib
+import io
+import sys
 import copy
 import importlib.util
 from pathlib import Path
@@ -95,12 +98,51 @@ class CommitIdentity(unittest.TestCase):
         self.assertIn("someone-else", failures[0])
 
     def test_missing_commits_or_author_fail_closed(self):
+        self.assertTrue(gate.commit_identity_failures([self.commit("a" * 40, "")], ""))
         self.assertTrue(gate.commit_identity_failures([], "ddoan"))
         self.assertTrue(gate.commit_identity_failures(None, "ddoan"))
         self.assertTrue(gate.commit_identity_failures([self.commit("a" * 40, "ddoan")], None))
         self.assertTrue(gate.commit_identity_failures(["not-an-object"], "ddoan"))
 
 
+
+
+class RestIdentity(unittest.TestCase):
+    def check(self, author, commits):
+        with patch.object(gate, "gh", side_effect=[author, commits]) as api:
+            result = gate.pr_identity_failures(42, "org", "deck")
+            self.assertEqual(api.call_args_list[0].args, ("api", "repos/org/deck/pulls/42"))
+            return result
+
+    def test_app_bot_uses_the_same_rest_mapping_as_its_commits(self):
+        self.assertEqual(self.check(
+            {"user": {"login": "detail-app[bot]"}},
+            [{"sha": "a" * 40, "author": {"login": "detail-app[bot]"}}]), [])
+
+    def test_foreign_bot_and_unmapped_commit_still_block(self):
+        for author in [{"login": "different[bot]"}, None, {"login": "app/detail-app"}]:
+            self.assertTrue(self.check(
+                {"user": {"login": "detail-app[bot]"}},
+                [{"sha": "a" * 40, "author": author}]))
+
+    def test_identity_only_cli_compares_rest_accounts(self):
+        responses = [
+            {"nameWithOwner": "org/deck"},
+            {"user": {"login": "detail-app[bot]"}},
+            [{"sha": "a" * 40, "author": {"login": "detail-app[bot]"}}],
+        ]
+        with patch.object(sys, "argv", ["verify-merge-gate.py", "--identity-only", "42"]), \
+                patch.object(gate, "gh", side_effect=responses) as api, \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(gate.main(), 0)
+        self.assertTrue(output.getvalue().endswith(": READY\n"))
+        self.assertEqual(api.call_args_list[1].args, ("api", "repos/org/deck/pulls/42"))
+
+    def test_missing_rest_author_fails_closed(self):
+        for data in [None, {}, {"user": None}, {"user": {}},
+                     {"user": {"login": ""}}, {"user": {"login": 42}}]:
+            with patch.object(gate, "gh", return_value=data):
+                self.assertTrue(gate.pr_identity_failures(42, "org", "deck"))
 
 
 class VerdictBaseTests(unittest.TestCase):
@@ -159,7 +201,7 @@ class CheckPrBaseTests(unittest.TestCase):
                    "author": {"login": "noise-review", "__typename": "Bot"}}
         # check_pr's gh calls in order: the PR view, the commits list, the
         # compare API; reviews and threads arrive through graphql_nodes.
-        calls = iter([pr, [{"sha": "c" * 40, "author": {"login": "ddoan"}}], comparison])
+        calls = iter([pr, {"user": {"login": "ddoan"}}, [{"sha": "c" * 40, "author": {"login": "ddoan"}}], comparison])
         def fake_gh(*args):
             return next(calls)
         def fake_graphql(connection, *args):

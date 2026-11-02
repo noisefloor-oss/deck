@@ -3,6 +3,7 @@ package auth
 import (
 	"bytes"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -150,6 +151,83 @@ func TestPasswordGateWindowRolloverDoesNotShortenLockout(t *testing.T) {
 	}
 }
 
+func TestPasswordSourceUsesForwardedIPOnlyFromTrustedProxies(t *testing.T) {
+	h := newPasswordHandler(t, time.Now)
+	h.proxies = []trustedPeer{{ip: net.ParseIP("192.0.2.10")}}
+	req := passwordRequest(`{"password":"x"}`)
+	req.Header.Set("X-Forwarded-For", "198.51.100.7, 192.0.2.10")
+	if got := h.passwordSource(req); got != "198.51.100.7" {
+		t.Fatalf("trusted forwarded source = %q", got)
+	}
+	req.Header.Set("X-Forwarded-For", "203.0.113.66, 198.51.100.7")
+	if got := h.passwordSource(req); got != "198.51.100.7" {
+		t.Fatalf("client-supplied prefix selected the forged source %q", got)
+	}
+	req.Header.Set("X-Forwarded-For", "203.0.113.66")
+	req.Header.Add("X-Forwarded-For", "198.51.100.7")
+	if got := h.passwordSource(req); got != "198.51.100.7" {
+		t.Fatalf("repeated fields selected the forged source %q", got)
+	}
+	req.RemoteAddr = "192.0.2.11:40000"
+	if got := h.passwordSource(req); got != "192.0.2.11" {
+		t.Fatalf("untrusted forwarded source = %q", got)
+	}
+	req.RemoteAddr = "192.0.2.10:40000"
+	req.Header.Set("X-Forwarded-For", "not-an-ip")
+	if got := h.passwordSource(req); got != "192.0.2.10" {
+		t.Fatalf("malformed forwarded source = %q", got)
+	}
+}
+
+func TestPasswordSourceAcceptsForwardedPorts(t *testing.T) {
+	h := newPasswordHandler(t, time.Now)
+	h.proxies = []trustedPeer{{ip: net.ParseIP("192.0.2.10")}}
+	for _, tc := range []struct{ forwarded, want string }{
+		{"203.0.113.5:56725", "203.0.113.5"},
+		{"[2001:db8::1]:8080", "2001:db8::1"},
+		{"not-an-ip", "192.0.2.10"},
+		{"203.0.113.5:", "192.0.2.10"},
+		{"203.0.113.5:garbage", "192.0.2.10"},
+		{"203.0.113.5:-1", "192.0.2.10"},
+		{"203.0.113.5:+80", "192.0.2.10"},
+		{"[2001:db8::1]:+80", "192.0.2.10"},
+		{"[2001:db8::1]:65536", "192.0.2.10"},
+		{"203.0.113.5, 192.0.2.10:garbage", "192.0.2.10"},
+		{"203.0.113.5, 192.0.2.10:+80", "192.0.2.10"},
+	} {
+		req := passwordRequest(`{"password":"x"}`)
+		req.Header.Set("X-Forwarded-For", tc.forwarded)
+		if got := h.passwordSource(req); got != tc.want {
+			t.Errorf("forwarded source %q = %q, want %q", tc.forwarded, got, tc.want)
+		}
+	}
+}
+
+func TestPasswordLoginSeparatesTrustedProxyClients(t *testing.T) {
+	now := time.Now()
+	h := newPasswordHandler(t, func() time.Time { return now })
+	h.proxies = []trustedPeer{{ip: net.ParseIP("192.0.2.10")}}
+	for range maxSourceFailures {
+		req := passwordRequest(`{"password":"wrong"}`)
+		req.Header.Set("X-Forwarded-For", "203.0.113.50")
+		h.handlePasswordLogin(httptest.NewRecorder(), req)
+		now = now.Add(35 * time.Second)
+	}
+	if !h.password.sources["203.0.113.50"].lockedTil.After(now) {
+		t.Fatalf("attacking source was not locked: %+v", h.password.sources["203.0.113.50"])
+	}
+	req := passwordRequest(`{"password":"correct horse battery staple"}`)
+	req.Header.Set("X-Forwarded-For", "198.51.100.7")
+	rec := httptest.NewRecorder()
+	h.handlePasswordLogin(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("different proxy client was locked out: %d %s", rec.Code, rec.Body.String())
+	}
+	if h.password.global.failures != 0 || h.password.global.retryAt.After(now) {
+		t.Fatalf("successful login did not clear global failures: %+v", h.password.global)
+	}
+}
+
 func passwordRequest(body string) *http.Request {
 	req := httptest.NewRequest(http.MethodPost, "/auth/password", strings.NewReader(body))
 	req.RemoteAddr = "192.0.2.10:40000"
@@ -192,7 +270,6 @@ func TestPasswordLoginRefusesGenericallyAndBacksOffPerSource(t *testing.T) {
 	if second.Code != http.StatusTooManyRequests || second.Body.String() != "login failed\n" || second.Header().Get("Retry-After") == "" {
 		t.Fatalf("backoff refusal = %d %q retry=%q", second.Code, second.Body.String(), second.Header().Get("Retry-After"))
 	}
-	now = now.Add(time.Second)
 	other := passwordRequest(`{"password":"correct horse battery staple"}`)
 	other.RemoteAddr = "192.0.2.11:40000"
 	rec := httptest.NewRecorder()

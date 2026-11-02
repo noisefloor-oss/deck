@@ -56,7 +56,7 @@ func (c *Client) recoverCreatedPane(ctx context.Context, spec SessionSpec, parti
 		err      error
 	)
 	if partial != nil {
-		observed, err = c.PaneInfoByID(observeCtx, partial.PaneID)
+		observed, err = c.observeSpawnedPane(observeCtx, partial.PaneID)
 	} else {
 		observed, err = c.PaneInfoForSession(observeCtx, spec.Name)
 	}

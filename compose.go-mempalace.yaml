@@ -13,6 +13,7 @@ services:
         NOISEDECK_RUNTIME_GID: ${NOISEDECK_RUNTIME_GID:-100}
         NOISEDECK_FONTS: ${NOISEDECK_FONTS:-auto}
         NOISE_TASKS_REPO: ${NOISE_TASKS_REPO:-https://github.com/${NOISEDECK_SOURCE_ORG:-noisefloor-oss}/tasks.git}
+        NOISE_A2A_REPO: ${NOISE_A2A_REPO:-https://github.com/${NOISEDECK_SOURCE_ORG:-noisefloor-oss}/a2a.git}
         NOISE_SDLC_REPO: ${NOISE_SDLC_REPO:-https://github.com/${NOISEDECK_SOURCE_ORG:-noisefloor-oss}/sdlc.git}
         NOISE_VISUAL_DIFF_REPO: ${NOISE_VISUAL_DIFF_REPO:-https://github.com/${NOISEDECK_SOURCE_ORG:-noisefloor-oss}/visual-diff.git}
     scale: 0

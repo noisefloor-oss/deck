@@ -30,12 +30,7 @@ func parseTrustedPeers(addrs []string) ([]trustedPeer, error) {
 	return out, nil
 }
 
-func (h *Handler) trusted(remoteAddr string) bool {
-	host, _, err := net.SplitHostPort(remoteAddr)
-	if err != nil {
-		host = remoteAddr
-	}
-	ip := net.ParseIP(host)
+func (h *Handler) trustedIP(ip net.IP) bool {
 	if ip == nil {
 		return false
 	}
@@ -48,6 +43,14 @@ func (h *Handler) trusted(remoteAddr string) bool {
 		}
 	}
 	return false
+}
+
+func (h *Handler) trusted(remoteAddr string) bool {
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		host = remoteAddr
+	}
+	return h.trustedIP(net.ParseIP(host))
 }
 
 // Require authenticates every request it wraps. Password and OIDC verify

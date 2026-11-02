@@ -671,3 +671,50 @@ func assertContains(t *testing.T, path, want string) {
 		t.Errorf("%s lacks %q", filepath.Base(path), want)
 	}
 }
+
+// A MiMo update must carry both native artifacts through reconstruction;
+// moving only the npm version would leave a stale binary in the image.
+func TestApplyMimoMovesBothNativeDigests(t *testing.T) {
+	root := fixtureRepo(t)
+	h, err := Lookup("mimo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(h.Artifacts) != 2 {
+		t.Fatalf("artifacts = %v", h.Artifacts)
+	}
+	appendFile := func(rel, text string) {
+		t.Helper()
+		p := filepath.Join(root, rel)
+		old, err := os.ReadFile(p)
+		if err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, append(old, []byte(text)...), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pins := "ARG MIMO_VERSION=0.1.16\nARG MIMO_SHA256_AMD64=" + strings.Repeat("1", 64) + "\nARG MIMO_SHA256_ARM64=" + strings.Repeat("2", 64) + "\n"
+	appendFile("Dockerfile", pins)
+	appendFile("deploy/mimo_code_cli_package_test.go", pins)
+	appendFile("docs/provider-contracts/README.md", "| mimo | 0.1.16 | 0.1.13 | x |\n")
+	digests := map[string]string{"MIMO_SHA256_AMD64": strings.Repeat("a", 64), "MIMO_SHA256_ARM64": strings.Repeat("b", 64)}
+	for _, a := range h.Artifacts {
+		want := "https://github.com/XiaomiMiMo/MiMo-Code/releases/download/v0.1.17/mimocode-linux-arm64.tar.gz"
+		if a.Arch == "amd64" {
+			want = "https://github.com/XiaomiMiMo/MiMo-Code/releases/download/v0.1.17/mimocode-linux-x64-baseline.tar.gz"
+		}
+		if got := a.URL("0.1.17"); got != want {
+			t.Fatalf("URL = %s, want %s", got, want)
+		}
+	}
+	if _, err := Apply(root, Bump{Harness: h, From: "0.1.16", To: "0.1.17", Digests: digests}); err != nil {
+		t.Fatal(err)
+	}
+	for _, rel := range []string{"Dockerfile", "deploy/mimo_code_cli_package_test.go"} {
+		assertContains(t, filepath.Join(root, rel), "ARG MIMO_VERSION=0.1.17")
+		for arg, digest := range digests {
+			assertContains(t, filepath.Join(root, rel), "ARG "+arg+"="+digest)
+		}
+	}
+}

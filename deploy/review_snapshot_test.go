@@ -85,7 +85,7 @@ else
  head="$JAIL_HEAD"; base="$JAIL_BASE"
  [ "$MODE" != stale-head ] || head="$base"
  [ "$MODE" != stale-base ] || base="$head"
- jq -n --arg head "$head" --arg base "$base" '{data:{repository:{ref:{target:{oid:$base}},pullRequest:{id:"PR7",headRefOid:$head,baseRefOid:"stale-recorded-base",mergeQueueEntry:null}}}}'
+ jq -n --arg head "$head" --arg base "$base" '{data:{repository:{ref:{target:{oid:$base}},pullRequest:{id:"PR7",state:"OPEN",headRefOid:$head,baseRefOid:"stale-recorded-base",mergeQueueEntry:null}}}}'
 fi
 `)
 			cmd := exec.Command("bash", "../scripts/harness-bump/review-jail.sh")

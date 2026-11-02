@@ -11,8 +11,10 @@ import { bindRuntimeActions, runtimeHtml, type RuntimeAction, type RuntimeScreen
 import { onboardingHtml, type OnboardingScreen, type OnboardingView, type OnboardingProgressRow } from "./onboarding.ts";
 import { bindOnboardingActions, type OnboardingAction } from "./onboarding-actions.ts";
 
+export type HostAdmission = "admitted" | "retry" | "failed";
+
 export interface SecurityWorkspaceHost {
-  admit(): Promise<void>;
+  admit(): Promise<HostAdmission>;
   detach(): void;
   manageMethods?(context: MethodManagementContext): Promise<() => void>;
 }
@@ -371,7 +373,12 @@ export class WorkspaceSecurity {
       this.clearSecrets(); await this.manageMethods(method); return;
     }
     this.clearSecrets(); this.unbind?.(); this.unbind = undefined;
-    if (!this.admitted) { this.admitted = true; await this.host.admit(); }
+    if (!this.admitted) {
+      const hostAdmission = await this.host.admit();
+      if (hostAdmission === "failed") return;
+      if (hostAdmission === "retry") { await this.refresh(); return; }
+      this.admitted = true;
+    }
     if (!this.disposed && this.admitted) this.scheduleCheck();
   }
   private scheduleCheck(): void {
@@ -414,6 +421,7 @@ export class WorkspaceSecurity {
     void this.refresh().finally(() => { this.refreshingAuthorization = false; });
   }
   get encrypted(): boolean { return this.state?.onboarding.protection === "encrypted"; }
+  get admissionInvalidated(): boolean { return this.disposed || this.authorizationExpired; }
   lock(): void { if (this.admitted && this.encrypted) this.showRuntime({ kind: "lock-confirm" }); }
   async confirmAdmission(): Promise<boolean> {
     const state = await this.api.state(this.lifetime.signal);

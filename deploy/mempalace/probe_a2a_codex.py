@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove (or disprove) Codex's a2a native-queue receive path on codex 0.162.1.
+"""Prove (or disprove) Codex's a2a native-queue receive path.
 
 Isolation: temp HOME (with its own hooks.json/config.toml and a loopback dummy
 model provider speaking the OpenAI Responses wire API), a private tmux socket
@@ -151,13 +151,19 @@ def launch_tui(probe: Probe, socket: Path, env: dict[str, str], cwd: Path) -> No
 
 
 def kill_daemons(probe: Probe) -> None:
-    """Kill the probe-home app-server daemon so a fresh one reloads config."""
-    subprocess.run(["pkill", "-f", f"{probe.root}/home/.codex/packages"],
-                   check=False, timeout=15,
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    subprocess.run(["pkill", "-f", f"HOME={probe.root}/home"],
-                   check=False, timeout=15,
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    """Stop only this synthetic HOME's daemon through Codex's native command."""
+    try:
+        result = subprocess.run(
+            ["codex", "app-server", "daemon", "stop"],
+            env=probe.env({"PROBE_API_KEY": "probe-dummy-key"}),
+            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        probe.fail(f"setup: stopping the synthetic Codex daemon failed: {error}")
+        return
+    if result.returncode:
+        probe.fail("setup: stopping the synthetic Codex daemon failed: "
+                   + result.stderr.strip())
 
 
 # ── Probe ────────────────────────────────────────────────────────────────────
@@ -325,12 +331,23 @@ def probe_codex(keep: bool = False) -> None:
         subprocess.run(["tmux", "-S", str(socket), "kill-server"],
                        check=False, timeout=15,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        kill_daemons(probe)
-        if server:
-            server.shutdown()
-        probe.stop()
-        if not keep:
-            probe.cleanup()
+        primary_error = sys.exc_info()[1]
+        try:
+            kill_daemons(probe)
+        except BaseException as error:
+            if primary_error is None:
+                raise
+            print(f"Additional daemon cleanup failure: {error}", file=sys.stderr)
+        finally:
+            try:
+                if server:
+                    server.shutdown()
+            finally:
+                try:
+                    probe.stop()
+                finally:
+                    if not keep:
+                        probe.cleanup()
 
 
 def main() -> None:

@@ -52,7 +52,7 @@ func TestWaitForSettlementContinuesAfterBranchUpdate(t *testing.T) {
 }
 
 func TestWaitForSettlementStopsForTerminalDecisions(t *testing.T) {
-	for _, action := range []Action{ActionBlocked, ActionChangesRequested, ActionHandOff, ActionIgnored, ActionMerge, ActionQueued} {
+	for _, action := range []Action{ActionBlocked, ActionChangesRequested, ActionHandOff, ActionIgnored, ActionMerge, ActionQueued, ActionMerged} {
 		t.Run(string(action), func(t *testing.T) {
 			reads := 0
 			_, err := WaitForSettlement(t.Context(), time.Hour, func(context.Context) ([]Decision, error) {

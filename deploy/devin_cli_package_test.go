@@ -14,9 +14,9 @@ func TestDockerfileInstallsPinnedDevinCLI(t *testing.T) {
 	}
 	body := string(raw)
 	for _, required := range []string{
-		"ARG DEVIN_VERSION=3000.11.205",
-		"ARG DEVIN_SHA256_AMD64=2e65c8b93682258fc91f5e4cead92e3698338cebf1b31dbc32a3201cb63705c4",
-		"ARG DEVIN_SHA256_ARM64=a9b10d318319439446eb5204b0d147cac01cb0a639c77f8740de73206a3181a5",
+		"ARG DEVIN_VERSION=3000.11.234",
+		"ARG DEVIN_SHA256_AMD64=201370cddd2924294e3ca6b46fd8ece49b5763953b644a1dd823fce5490cb41a",
+		"ARG DEVIN_SHA256_ARM64=438ca7f8280b3ef0747afc406e827d9e182156000277a1660358ac4fbd04156e",
 		"https://static.devin.ai/cli/${DEVIN_VERSION}/devin-${DEVIN_VERSION}-${devin_arch}-unknown-linux.tar.gz",
 		`echo "${devin_sha256}  /tmp/devin.tar.gz" | sha256sum -c -`,
 		`tar --no-same-owner -xzf /tmp/devin.tar.gz`,

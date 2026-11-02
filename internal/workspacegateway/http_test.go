@@ -17,6 +17,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -59,6 +60,11 @@ func newFixtureWithPolicy(t *testing.T, options Options, policy workspacekeys.En
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = f.db.Close() })
+	epochStore, err := NewLogoutEpochStore(context.Background(), f.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.config.Auth.EpochStore = epochStore
 	f.keys, err = workspacekeys.New(context.Background(), f.db, workspacekeys.Config{InstanceID: f.config.InstanceID, RPID: f.config.RPID, Origin: f.config.Origin, Now: func() time.Time { return f.now }, EncryptionPolicy: policy})
 	if err != nil {
 		t.Fatal(err)
@@ -105,6 +111,34 @@ func (f *fixture) signedRequest(t *testing.T, method, path string, body any, log
 	for _, cookie := range cookies {
 		r.AddCookie(cookie)
 	}
+	return r
+}
+
+func (f *fixture) signedRequestWithEpoch(t *testing.T, method, path string, body any, login auth.Login, epoch uint64, cookies ...*http.Cookie) *http.Request {
+	t.Helper()
+	r := f.signedRequest(t, method, path, body, login, cookies...)
+	originalCookies := r.Cookies()
+	cookie, _ := r.Cookie("__Host-noisedeck_session")
+	parts := strings.SplitN(cookie.Value, ".", 2)
+	raw, _ := base64.RawURLEncoding.DecodeString(parts[0])
+	fields := strings.Split(string(raw), ":")
+	fields[0] = "v4"
+	fields = append(fields, strconv.FormatUint(epoch, 10))
+	payload := strings.Join(fields, ":")
+	mac := hmac.New(sha256.New, f.config.Auth.SessionSecret)
+	_, _ = mac.Write([]byte(payload))
+	signature := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	cookie.Value = base64.RawURLEncoding.EncodeToString([]byte(payload)) + "." + signature
+	r.Header.Del("Cookie")
+	r.AddCookie(cookie)
+	for _, original := range originalCookies {
+		if original.Name != "__Host-noisedeck_session" {
+			r.AddCookie(original)
+		}
+	}
+	mac.Reset()
+	_, _ = mac.Write([]byte("csrf:" + payload))
+	r.Header.Set(auth.CSRFHeader, base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))
 	return r
 }
 
@@ -370,7 +404,11 @@ func TestForgedGoogleSessionCannotPrepareWithoutReceipt(t *testing.T) {
 	if logout.Code != 204 {
 		t.Fatal(logout.Code)
 	}
-	if w := f.serve(f.signedRequest(t, "POST", path, prepare, f.login, receipt)); w.Code != 403 {
+	request := f.signedRequestWithEpoch(t, "POST", path, prepare, f.login, 1, receipt)
+	if current, _ := request.Cookie(enrollmentCookie); current.Value != receipt.Value {
+		t.Fatal("current-epoch request lost the enrollment receipt")
+	}
+	if w := f.serve(request); w.Code != 403 {
 		t.Fatal("signed-out receipt remains usable with forged Google cookie")
 	}
 }
@@ -432,6 +470,7 @@ func TestGatewayLogoutBeforeEnrollmentAndAcrossExpiry(t *testing.T) {
 	if w := f.serve(f.signedRequest(t, "POST", "/auth/logout", nil, f.login)); w.Code != 204 {
 		t.Fatal("unbound owner cannot sign out")
 	}
+	f.login.ID = strings.Repeat("c", 64)
 	f.enroll(t)
 	f.h.options.Access = &logoutAccess{during: func() { f.now = f.now.Add(2 * time.Hour) }}
 	w := f.serve(f.signedRequest(t, "POST", "/auth/logout", nil, f.login))
@@ -448,8 +487,38 @@ func TestGatewayLogoutBeforeEnrollmentAndAcrossExpiry(t *testing.T) {
 		}
 	}
 	f.h.options.Access = &logoutAccess{err: workspacekeys.ErrConflict}
+	f.login.ID = strings.Repeat("d", 64)
 	if w := f.serve(f.signedRequest(t, "POST", "/auth/logout", nil, f.login)); w.Code != 503 {
 		t.Fatal("failed grant revocation reported logout success")
+	}
+}
+
+func TestGatewayLogoutInvalidatesExistingSessions(t *testing.T) {
+	f := newFixture(t, Options{})
+	stale := f.signedRequest(t, "GET", apiPrefix+"/state", nil, f.login)
+	if w := f.serve(stale); w.Code != 200 {
+		t.Fatalf("pre-logout session = %d", w.Code)
+	}
+	if w := f.serve(f.signedRequest(t, "POST", "/auth/logout", nil, f.login)); w.Code != 204 {
+		t.Fatalf("logout = %d", w.Code)
+	}
+	if w := f.serve(stale); w.Code != 401 {
+		t.Fatalf("captured pre-logout session = %d, want 401", w.Code)
+	}
+
+	restarted, err := New(f.config, f.keys, f.invites, Options{Assets: fstest.MapFS{"index.html": {Data: []byte("<title>Deck</title>Security shell")}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.h = restarted
+	if w := f.serve(stale); w.Code != 401 {
+		t.Fatalf("restart resurrected the captured pre-logout session: %d", w.Code)
+	}
+
+	other := f.login
+	other.ID = strings.Repeat("b", 64)
+	if w := f.serve(f.signedRequest(t, "GET", apiPrefix+"/state", nil, other)); w.Code != 200 {
+		t.Fatalf("logout invalidated a different login: %d", w.Code)
 	}
 }
 

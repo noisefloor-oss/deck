@@ -991,7 +991,7 @@ func paneWidth(ctx context.Context, e *env) (string, error) {
 func TestNotRunningSessionRefused(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
-	if applied, err := e.repo.MarkInterrupted(ctx, e.session.ID, "test non-running fixture"); err != nil || !applied {
+	if applied, err := e.repo.MarkInterruptedObserved(ctx, e.session, "test non-running fixture"); err != nil || !applied {
 		t.Fatalf("interrupt session: applied=%v err=%v", applied, err)
 	}
 	c, status := e.dial(t, "browser-a", false)

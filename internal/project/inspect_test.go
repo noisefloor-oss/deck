@@ -170,6 +170,40 @@ func TestInspectCloneDestinationStates(t *testing.T) {
 	}
 }
 
+func TestInspectCloneDestinationReportsAuthoritativeEmptiness(t *testing.T) {
+	root := inspectRoot(t)
+	for _, tc := range []struct {
+		name  string
+		setup func(t *testing.T, path string)
+	}{
+		{name: "empty"},
+		{name: "file", setup: func(t *testing.T, path string) {
+			t.Helper()
+			if err := os.WriteFile(filepath.Join(path, "README.md"), []byte("occupied\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "hidden directory", setup: func(t *testing.T, path string) {
+			t.Helper()
+			mkdir(t, filepath.Join(path, ".cache"))
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := mkdir(t, filepath.Join(root, "empty-retry"))
+			if tc.setup != nil {
+				tc.setup(t, path)
+			}
+			out := inspect(t, root, "fable/empty-retry", "")
+			if out.Empty != (tc.name == "empty") {
+				t.Fatalf("empty = %v for %s destination; entries = %v", out.Empty, tc.name, out.Entries)
+			}
+			if err := os.RemoveAll(path); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func TestInspectAbsentChildOfAnInRootSymlinkStaysConfined(t *testing.T) {
 	root := inspectRoot(t)
 	outside := mkdir(t, filepath.Join(t.TempDir(), "outside"))

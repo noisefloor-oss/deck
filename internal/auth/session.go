@@ -77,6 +77,12 @@ func (h *Handler) bumpLogoutEpoch(loginID string) {
 	}
 }
 
+// RevokeLogin invalidates every session issued to this login, including
+// renewals already in flight. Legacy logins use the shared empty ID.
+func (h *Handler) RevokeLogin(login Login) {
+	h.bumpLogoutEpoch(login.ID)
+}
+
 // payloadLogoutEpoch reads the epoch a verified payload carries. v3 and
 // earlier predate the field and count as zero.
 func payloadLogoutEpoch(parts []string) uint64 {

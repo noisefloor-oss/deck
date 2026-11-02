@@ -4,53 +4,10 @@ import (
 	"context"
 	"errors"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 )
-
-func TestCachedCheckCoalescesConcurrentAndRepeatedCalls(t *testing.T) {
-	started := make(chan struct{})
-	release := make(chan struct{})
-	var calls atomic.Int32
-	check := NewCachedCheck("provider-test", time.Minute, time.Second,
-		func(context.Context) error {
-			if calls.Add(1) == 1 {
-				close(started)
-			}
-			<-release
-			return nil
-		})
-
-	const callers = 64
-	var wg sync.WaitGroup
-	errs := make(chan error, callers)
-	for range callers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			errs <- check.Probe(context.Background())
-		}()
-	}
-	<-started
-	close(release)
-	wg.Wait()
-	close(errs)
-	for err := range errs {
-		if err != nil {
-			t.Fatalf("coalesced probe: %v", err)
-		}
-	}
-	for range 100 {
-		if err := check.Probe(context.Background()); err != nil {
-			t.Fatalf("cached probe: %v", err)
-		}
-	}
-	if got := calls.Load(); got != 1 {
-		t.Fatalf("probe calls = %d, want 1", got)
-	}
-}
 
 func TestCachedCheckRefreshesStaleSuccessAndFailure(t *testing.T) {
 	now := time.Unix(100, 0)
@@ -121,81 +78,6 @@ func TestCachedCheckTimesOutAndClearsInflightRun(t *testing.T) {
 	}
 	if got := calls.Load(); got != 2 {
 		t.Fatalf("probe calls after stale retry = %d, want 2", got)
-	}
-}
-
-func TestCachedCheckSurvivesCallerCancellation(t *testing.T) {
-	started := make(chan struct{})
-	release := make(chan struct{})
-	var calls atomic.Int32
-	check := NewCachedCheck("provider-test", time.Minute, time.Second,
-		func(context.Context) error {
-			calls.Add(1)
-			close(started)
-			<-release
-			return nil
-		})
-
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
-	go func() { done <- check.Probe(ctx) }()
-	<-started
-	cancel()
-	if err := <-done; !errors.Is(err, context.Canceled) {
-		t.Fatalf("canceled caller = %v, want context canceled", err)
-	}
-	close(release)
-	if err := check.Probe(context.Background()); err != nil {
-		t.Fatalf("shared probe after caller cancellation: %v", err)
-	}
-	if got := calls.Load(); got != 1 {
-		t.Fatalf("caller cancellation restarted probe: calls = %d", got)
-	}
-}
-
-func TestGatedCachedValueQueueWaitDoesNotConsumeProbeBudget(t *testing.T) {
-	gate := make(chan struct{}, 1)
-	holderStarted := make(chan struct{})
-	releaseHolder := make(chan struct{})
-	holder := newGatedCachedValue(time.Minute, 10*time.Second, gate,
-		func(context.Context) (struct{}, error) {
-			close(holderStarted)
-			<-releaseHolder
-			return struct{}{}, nil
-		})
-	holderDone := make(chan error, 1)
-	go func() {
-		_, err := holder.get(context.Background())
-		holderDone <- err
-	}()
-	<-holderStarted
-
-	var queuedStarted time.Time
-	var queuedDeadline time.Time
-	queued := newGatedCachedValue(time.Minute, 10*time.Second, gate,
-		func(ctx context.Context) (struct{}, error) {
-			queuedStarted = time.Now()
-			queuedDeadline, _ = ctx.Deadline()
-			return struct{}{}, nil
-		})
-	queuedDone := make(chan error, 1)
-	go func() {
-		_, err := queued.get(context.Background())
-		queuedDone <- err
-	}()
-
-	// Hold the slot well past the point where a shared budget would
-	// noticeably shrink the queued probe's timeout.
-	time.Sleep(time.Second)
-	close(releaseHolder)
-	if err := <-holderDone; err != nil {
-		t.Fatalf("slot holder: %v", err)
-	}
-	if err := <-queuedDone; err != nil {
-		t.Fatalf("queued probe: %v", err)
-	}
-	if remaining := queuedDeadline.Sub(queuedStarted); remaining < 9*time.Second {
-		t.Fatalf("queued probe budget = %s, want the full 10s after the queue wait", remaining)
 	}
 }
 

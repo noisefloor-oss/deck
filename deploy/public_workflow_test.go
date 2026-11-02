@@ -311,6 +311,9 @@ func TestPublicRunnerRouting(t *testing.T) {
 					script := `import json,sys
 expression,repo,visibility,row=sys.argv[1:]
 row=json.loads(row)
+if not expression.startswith("${{"):
+    print(json.dumps(expression))
+    sys.exit(0)
 expression=expression.removeprefix("${{").removesuffix("}}").strip()
 expression=expression.replace("github.repository","repo").replace("github.event.repository.visibility","visibility").replace("matrix.os", "row['os']").replace("matrix.runner", "row['runner']").replace("&&"," and ").replace("||"," or ")
 print(json.dumps(eval(expression,{"__builtins__":{}},{"repo":repo,"visibility":visibility,"row":row,"fromJSON":json.loads})))`
@@ -323,9 +326,6 @@ print(json.dumps(eval(expression,{"__builtins__":{}},{"repo":repo,"visibility":v
 						t.Fatal(err)
 					}
 					var want any = []any{"self-hosted", "Linux", arch}
-					if file == "ci-fast.yaml" && nativeLinuxJob(name) {
-						want = []any{"self-hosted", "Linux", "native-linux"}
-					}
 					if row["arch"] == "amd64" {
 						want = []any{"self-hosted", "Linux", "X64", "ubuntu-24.04"}
 					}
@@ -334,6 +334,9 @@ print(json.dumps(eval(expression,{"__builtins__":{}},{"repo":repo,"visibility":v
 						if arch == "X64" {
 							want = "ubuntu-24.04"
 						}
+					}
+					if file == "ci-fast.yaml" {
+						want = hostedCIRunner
 					}
 					if !reflect.DeepEqual(actual, want) {
 						t.Errorf("%s/%s %s/%s arch %s: got %v want %v", file, name, scenario.repo, scenario.visibility, arch, actual, want)

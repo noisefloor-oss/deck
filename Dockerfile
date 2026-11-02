@@ -6,17 +6,19 @@ ARG NOISE_VISUAL_DIFF_REF=9b5b0348791991f37e2cb5a4078f17ae55b7c644
 ARG NOISE_VISUAL_DIFF_VERSION=0.14.1
 ARG NOISE_SDLC_REF=abadbafa9f8a8fd3f41013efeb57e8ae55ecc9e2
 ARG NOISE_SDLC_VERSION=0.4.1
+ARG NOISE_A2A_REF=4ebda82d51ae5c4c185c3a49f05dbb3074f01dc4
+ARG NOISE_A2A_VERSION=0.1.0
 
-ARG KIMI_VERSION=2.3.3
-ARG OPENCODE_VERSION=1.19.4
-ARG COMMAND_CODE_VERSION=1.88.0
+ARG KIMI_VERSION=2.4.1
+ARG OPENCODE_VERSION=1.19.5
+ARG COMMAND_CODE_VERSION=1.88.2
 # Lift this pin once Command Code accepts named-only semantic-conventions exports.
 # Until then 1.44 makes it fail before even --version.
 ARG COMMAND_CODE_SEMCONV_VERSION=1.43.0
 ARG CLINE_VERSION=3.0.74
 ARG KILO_VERSION=7.8.18
-ARG QWEN_VERSION=0.26.1
-ARG CRUSH_VERSION=0.98.2
+ARG QWEN_VERSION=0.26.5
+ARG CRUSH_VERSION=0.99.0
 
 # A local named context overrides this empty input stage when fonts are supplied.
 FROM scratch AS licensed-fonts
@@ -161,6 +163,29 @@ RUN --mount=type=secret,id=github_token \
     && cd /src/noise-tasks \
     && install -d -m 0700 /out \
     && CGO_ENABLED=0 make package DESTDIR=/out PREFIX=/usr/local VERSION="${NOISE_TASKS_VERSION}"
+
+FROM golang:1.26.10-bookworm@sha256:ee3901c61e423732605a51f1b8157c849ec01194ea0a274213b5202b2c11e7bf AS a2a-build
+
+# Deck consumes the standalone client from an exact reviewed revision rather
+# than carrying a second copy and suite in this repository.
+ARG NOISE_A2A_REPO=https://github.com/noisefloor-oss/a2a.git
+ARG NOISE_A2A_REF
+RUN --mount=type=secret,id=github_token \
+    a2a_git_config="$(mktemp)" \
+    && trap 'rm -f "${a2a_git_config}"' EXIT \
+    && if [ -s /run/secrets/github_token ]; then \
+      auth="$(printf 'x-access-token:%s' "$(cat /run/secrets/github_token)" | base64 -w0)"; \
+      git config --file "${a2a_git_config}" http.extraheader "Authorization: Basic ${auth}"; \
+      unset auth; \
+    fi \
+    && GIT_CONFIG_GLOBAL="${a2a_git_config}" \
+      git clone --no-checkout "${NOISE_A2A_REPO}" /src/a2a \
+    && rm -f "${a2a_git_config}" \
+    && trap - EXIT \
+    && git -C /src/a2a checkout --detach "${NOISE_A2A_REF}" \
+    && test "$(git -C /src/a2a rev-parse HEAD)" = "${NOISE_A2A_REF}" \
+    && install -d -m 0755 /out \
+    && install -m 0555 /src/a2a/a2a.py /out/a2a
 
 FROM golang:1.26.10-bookworm@sha256:ee3901c61e423732605a51f1b8157c849ec01194ea0a274213b5202b2c11e7bf AS noise-sdlc-build
 
@@ -556,13 +581,13 @@ FROM core AS slim
 ARG TARGETARCH
 ARG NOISEDECK_RUNTIME_UID=1026
 ARG NOISEDECK_RUNTIME_GID=100
-ARG CLAUDE_CODE_VERSION=2.1.311
-ARG CLAUDE_BINARY_SHA256_AMD64=86dc1fcc69498159eaf15f446613e847010f9036bfbbdffd4c49350be8489ada
-ARG CLAUDE_BINARY_SHA256_ARM64=2e2496c9a8065df93acb0fca2d341f59a6b8777649b2e025ab8c9bcd5eef61f3
+ARG CLAUDE_CODE_VERSION=2.1.316
+ARG CLAUDE_BINARY_SHA256_AMD64=fd13c70000fec3f2116dfbcbb6121210b4a29328bf0e46210a59dd594a67d824
+ARG CLAUDE_BINARY_SHA256_ARM64=55cdb8e162d190432696ea54010e0fca2e18d06fa7a7127fd563b9ffd4f22624
 # These are the exact artifacts shipped by the image. Each descriptor's
 # comments record the last behavioral measurement for that provider, which is
 # not always the version pinned here.
-ARG CODEX_VERSION=0.162.1
+ARG CODEX_VERSION=0.166.0
 
 USER root
 ENV HOME=/root
@@ -631,18 +656,21 @@ ARG CLINE_VERSION
 ARG KILO_VERSION
 ARG QWEN_VERSION
 ARG MIMO_VERSION=0.1.16
-ARG QODER_VERSION=1.1.79
+ARG MIMO_SHA256_AMD64=2eb7863354a222d20d3319f5876711df85ef07b5e89bb644fdceaf3f81fd884a
+ARG MIMO_SHA256_ARM64=220c621eb61a175ba0bc8e9c45c217abfed8dace1f17111c3717bceb95ad2ab3
+ARG QODER_VERSION=1.1.81
 ARG CURSOR_AGENT_VERSION=2026.10.22-27dcf5f
 ARG CURSOR_AGENT_SHA256_AMD64=85296944e4600a83c4b764f578d1502bf9c416db200d33a593e8f3ecabfdc294
 ARG CURSOR_AGENT_SHA256_ARM64=22a36df9720830668ccd4d707e5190204ab9c8a0efb2f068cc914895f804d3ec
 ARG GROK_VERSION=1.0.70
-ARG BUN_VERSION=1.3.14
-ARG OMP_VERSION=18.13.0
+# Oh My Pi 18.13.3 requires Bun 1.4.4 or later.
+ARG BUN_VERSION=1.4.4
+ARG OMP_VERSION=18.15.0
 ARG CRUSH_VERSION
-ARG PI_VERSION=1.4.0
-ARG DEVIN_VERSION=3000.11.205
-ARG DEVIN_SHA256_AMD64=2e65c8b93682258fc91f5e4cead92e3698338cebf1b31dbc32a3201cb63705c4
-ARG DEVIN_SHA256_ARM64=a9b10d318319439446eb5204b0d147cac01cb0a639c77f8740de73206a3181a5
+ARG PI_VERSION=1.5.0
+ARG DEVIN_VERSION=3000.11.234
+ARG DEVIN_SHA256_AMD64=201370cddd2924294e3ca6b46fd8ece49b5763953b644a1dd823fce5490cb41a
+ARG DEVIN_SHA256_ARM64=438ca7f8280b3ef0747afc406e827d9e182156000277a1660358ac4fbd04156e
 
 USER root
 ENV HOME=/root
@@ -674,15 +702,27 @@ RUN test "$(kimi --version | awk '{print $1}')" = "${KIMI_VERSION}" \
     && test "$(qwen --version)" = "${QWEN_VERSION}" \
     && test "$(crush --version)" = "crush version v${CRUSH_VERSION}"
 
-# MiMo's launcher selects its platform binary at runtime, including the x64
-# baseline fallback on CPUs without AVX2. Install it after the general provider
-# pruning above so the matching baseline artifact remains available. The
-# version and help checks run against a scratch home that is deleted
-# afterwards: MiMo writes its config/data/state trees — and --help runs its
-# one-time database migration — even for these commands, and that first-run
-# state must not bake into the image layer.
+# Keep the unmodified npm launcher, but install its native binary from the
+# versioned GitHub release: the launcher's FDS fetch can terminate mid-body.
+# The x64 baseline runs on both AVX2 and older CPUs. Download digests move
+# with the version in the harness catalogue. Scratch HOME keeps first-run
+# state out of the image.
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
-    npm install --global "@mimo-ai/cli@${MIMO_VERSION}" \
+    npm install --global --ignore-scripts "@mimo-ai/cli@${MIMO_VERSION}" \
+    && case "${TARGETARCH}" in \
+      amd64) mimo_target=linux-x64-baseline; mimo_sha256="${MIMO_SHA256_AMD64}" ;; \
+      arm64) mimo_target=linux-arm64; mimo_sha256="${MIMO_SHA256_ARM64}" ;; \
+      *) echo "unsupported target architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+    && curl -fsSL --connect-timeout 15 --max-time 180 --retry 3 --retry-all-errors \
+      "https://github.com/XiaomiMiMo/MiMo-Code/releases/download/v${MIMO_VERSION}/mimocode-${mimo_target}.tar.gz" \
+      -o /tmp/mimo.tar.gz \
+    && echo "${mimo_sha256}  /tmp/mimo.tar.gz" | sha256sum -c - \
+    && install -d /usr/local/lib/node_modules/@mimo-ai/cli/vendor \
+    && tar --no-same-owner -xzf /tmp/mimo.tar.gz \
+      -C /usr/local/lib/node_modules/@mimo-ai/cli/vendor mimo \
+    && chmod 0755 /usr/local/lib/node_modules/@mimo-ai/cli/vendor/mimo \
+    && rm /tmp/mimo.tar.gz \
     && check=$(mktemp -d) \
     && export HOME="$check" \
     && test "$(mimo --version)" = "${MIMO_VERSION}" \
@@ -844,8 +884,9 @@ RUN case "${TARGETARCH}" in \
 # The a2a client is runtime tooling, not a MemPalace extra: the sealed
 # bootstrap runs `a2a courier`, and the batch workflow's claude receive probe
 # loads it from the runtime image it builds. The mempalace stage inherits it.
-COPY deploy/a2a/a2a.py /usr/local/bin/a2a
-RUN chmod 0555 /usr/local/bin/a2a
+COPY --from=a2a-build /out/a2a /usr/local/bin/a2a
+ARG NOISE_A2A_VERSION
+RUN test "$(a2a --version)" = "a2a ${NOISE_A2A_VERSION}" && chmod 0555 /usr/local/bin/a2a
 
 # Restore the runtime identity and home the slim image established, so the
 # full image's final configuration is the slim image's: same user, same HOME,

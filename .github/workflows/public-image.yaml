@@ -11,6 +11,7 @@ permissions:
 
 env:
   NOISE_TASKS_REPO: ${{ vars.NOISE_TASKS_REPO }}
+  NOISE_A2A_REPO: ${{ vars.NOISE_A2A_REPO }}
   NOISE_SDLC_REPO: ${{ vars.NOISE_SDLC_REPO }}
 
 concurrency:

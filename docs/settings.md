@@ -32,7 +32,7 @@ adapt to your host.
   or `gh auth login` inside a session writes back to the host directory.
   Prepare it writable by the chosen runtime identity.
 - `NOISEDECK_SOURCE_ORG` (default `noisefloor-oss`): the GitHub
-  organization the image build fetches Tasks, SDLC and Visual Diff from.
+  organization the image build fetches a2a, Tasks, SDLC and Visual Diff from.
   Set it only when you install from a trusted fork or mirror; each pinned
   commit is still verified.
 - `NOISEDECK_HOST_ID_PATH`: where the host identity file lives, for hosts
@@ -90,7 +90,7 @@ which has its own prerequisites and checks.
 
 The image is built locally from this tree's Dockerfile. No prebuilt Deck
 image is pulled or published. The build downloads its digest-pinned base
-images, the version-pinned agent CLIs, and the pinned Noisefloor Tasks,
+images, the version-pinned agent CLIs, and the pinned Noisefloor a2a, Tasks,
 SDLC and Visual Diff sources named by the `NOISE_*_REPO` build arguments
 in the Dockerfile. No GitHub token is needed.
 

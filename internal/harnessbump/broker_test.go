@@ -106,6 +106,10 @@ func TestBrokerPutsTheKeyOnForwardedRequestsAndNothingElse(t *testing.T) {
 		"persistence":                `{"model":"gpt-review","store":true}`,
 		"continuation":               `{"model":"gpt-review","previous_response_id":"resp_1"}`,
 		"unbounded output":           `{"model":"gpt-review","max_output_tokens":100000}`,
+		"null output bound":          `{"model":"gpt-review","max_output_tokens":null}`,
+		"text output bound":          `{"model":"gpt-review","max_output_tokens":"1000"}`,
+		"negative output bound":      `{"model":"gpt-review","max_output_tokens":-1}`,
+		"zero output bound":          `{"model":"gpt-review","max_output_tokens":0}`,
 		"not json":                   `model=gpt-review`,
 		"no model":                   `{"input":"x"}`,
 		"hosted web search":          `{"model":"gpt-review","tools":[{"type":"web_search"}]}`,
@@ -132,12 +136,21 @@ func TestBrokerPutsTheKeyOnForwardedRequestsAndNothingElse(t *testing.T) {
 	codex := `{"model":"gpt-review","instructions":"x","input":[{"role":"user","content":[{"type":"input_text","text":"hi"}]},{"role":"assistant","content":[{"type":"output_text","text":"ok","annotations":[],"logprobs":[]}]},{"type":"function_call","name":"shell","arguments":"{}","call_id":"c1"},{"type":"function_call_output","call_id":"c1","output":"ok"},{"type":"reasoning","encrypted_content":"e"}],"tools":[{"type":"function","name":"shell","parameters":{},"description":"d","strict":false},{"type":"namespace","name":"fs","description":"d","tools":[{"type":"function","name":"read","parameters":{},"description":"d","strict":false}]},{"type":"local_shell"}],"tool_choice":"auto","parallel_tool_calls":false,"reasoning":{"effort":"low","context":"all_turns"},"store":false,"stream":true,"include":["reasoning.encrypted_content"],"text":{"verbosity":"low"},"prompt_cache_key":"k","client_metadata":{"a":"b"},"max_output_tokens":1000}`
 	// The budget: three admitted calls, then 429 with nothing upstream.
 	for i := 0; i < 2; i++ {
-		resp, _ := http.Post(broker.URL+"/v1/responses", "application/json", strings.NewReader(codex))
+		body := codex
+		if i == 1 {
+			body = `{"model":"gpt-review","max_output_tokens":1}`
+		}
+		resp, _ := http.Post(broker.URL+"/v1/responses", "application/json", strings.NewReader(body))
 		_ = resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("admitted call %d: %d", i+2, resp.StatusCode)
 		}
 	}
+	var lowerForwarded map[string]any
+	if err := json.Unmarshal([]byte(seenBody), &lowerForwarded); err != nil || lowerForwarded["max_output_tokens"] != float64(1) {
+		t.Fatalf("lower bound was replaced: %s (%v)", seenBody, err)
+	}
+
 	seenPath = ""
 	resp, _ = http.Post(broker.URL+"/v1/responses", "application/json", strings.NewReader(`{"model":"gpt-review"}`))
 	_ = resp.Body.Close()

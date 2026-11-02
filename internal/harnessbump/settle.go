@@ -61,6 +61,8 @@ const (
 	ActionMerge Action = "merge"
 	// ActionQueued is an accepted or observed queue request, not a merge.
 	ActionQueued Action = "queued"
+	// ActionMerged observes a completed merge; it never submits one.
+	ActionMerged Action = "merged"
 	// ActionChangesRequested: the verdict stands and says no; a person or an
 	// agent takes it from here.
 	ActionChangesRequested Action = "changes-requested"
@@ -210,11 +212,13 @@ func Settle(ctx context.Context, gh GH, repo, botLogin string, only int, apply b
 			// between the read and the write fails the write instead of
 			// acting on a commit nobody judged.
 			case ActionMerge:
-				var submitted bool
-				submitted, err = enqueueBump(ctx, gh, repo, pr, queueBase)
+				var result bumpQueueResult
+				result, err = enqueueBump(ctx, gh, repo, pr, queueBase)
 				if err == nil {
-					d.Action, d.Reason, d.Applied = ActionQueued, "already queued; awaiting actual merge", submitted
-					if submitted {
+					d.Action, d.Reason, d.Applied = ActionQueued, "already queued; awaiting actual merge", result.Submitted
+					if result.MergeCommit != "" {
+						d.Action, d.Reason = ActionMerged, "already merged at "+result.MergeCommit
+					} else if result.Submitted {
 						d.Reason = "queue request accepted; awaiting actual merge"
 					}
 				}
@@ -372,6 +376,9 @@ func dispatchFastChecks(ctx context.Context, gh GH, repo string, pr pullRequest,
 	if len(runs) != 0 {
 		return "Fast checks already has a run at " + pr.HeadRefOid, nil
 	}
+	if reason, err := existingPRFastChecks(ctx, gh, repo, pr); err != nil || reason != "" {
+		return reason, err
+	}
 	current, err := readPR(ctx, gh, repo, pr.Number)
 	if err != nil {
 		return "", err
@@ -389,6 +396,91 @@ func dispatchFastChecks(ctx context.Context, gh GH, repo string, pr pullRequest,
 		return "", fmt.Errorf("fast checks dispatch failed for %s at %s: %w; settle can retry; the branch must contain ci-fast.yaml with workflow_dispatch (dispatching main would not check this head)", pr.HeadRefName, pr.HeadRefOid, err)
 	}
 	return "requested Fast checks on " + pr.HeadRefName + " at " + pr.HeadRefOid, nil
+}
+
+// A pull_request workflow can be running before its aggregate check exists.
+// Observing it prevents a duplicate dispatch; it never admits a check result.
+func existingPRFastChecks(ctx context.Context, gh GH, repo string, pr pullRequest) (string, error) {
+	raw, err := gh(ctx, "run", "list", "--repo", repo, "--workflow", "ci-fast.yaml", "--branch", pr.HeadRefName,
+		"--commit", pr.HeadRefOid, "--event", "pull_request", "--limit", "1", "--json", "databaseId,status,conclusion")
+	if err != nil {
+		return "", err
+	}
+	var runs []struct {
+		DatabaseID         int64
+		Status, Conclusion string
+	}
+	if err := json.Unmarshal(raw, &runs); err != nil {
+		return "", fmt.Errorf("read existing pull-request Fast checks: %w", err)
+	}
+	if len(runs) == 0 || runs[0].Status == "action_required" || runs[0].Conclusion == "action_required" {
+		// Execution approval remains the separate, proven handoff above.
+		return "", nil
+	}
+	run, err := readBoundPRFastChecks(ctx, gh, repo, pr, runs[0].DatabaseID)
+	if err != nil {
+		return "", err
+	}
+	if run.Conclusion == "action_required" {
+		return "Fast checks approval state changed; a later settle will observe it", nil
+	}
+	switch run.Status {
+	case "queued", "in_progress", "pending", "waiting", "requested":
+	case "completed":
+		if run.Conclusion != "success" {
+			if _, err := gh(ctx, "run", "rerun", strconv.FormatInt(run.ID, 10), "--repo", repo); err != nil {
+				return "", fmt.Errorf("rerun pull-request Fast checks run %d after %s: %w", run.ID, run.Conclusion, err)
+			}
+			return fmt.Sprintf("requested rerun of pull-request Fast checks run %d after %s", run.ID, run.Conclusion), nil
+		}
+	default:
+		return "", fmt.Errorf("pull-request Fast checks run %d has unknown status %q", run.ID, run.Status)
+	}
+	return fmt.Sprintf("pull-request Fast checks run %d already exists at %s; awaiting its aggregate gate", run.ID, pr.HeadRefOid), nil
+}
+
+type fastChecksPRRun struct {
+	ID         int64  `json:"id"`
+	Event      string `json:"event"`
+	Path       string `json:"path"`
+	HeadSHA    string `json:"head_sha"`
+	HeadBranch string `json:"head_branch"`
+	Conclusion string `json:"conclusion"`
+	Status     string `json:"status"`
+	Repository struct {
+		FullName string `json:"full_name"`
+	} `json:"repository"`
+	HeadRepository struct {
+		FullName string `json:"full_name"`
+	} `json:"head_repository"`
+	PullRequests []struct {
+		Number int `json:"number"`
+		Head   struct {
+			SHA string `json:"sha"`
+		} `json:"head"`
+	} `json:"pull_requests"`
+}
+
+// Both execution approval and ordinary-run observation require the same exact
+// repository, workflow, pull request, branch, and head binding.
+func readBoundPRFastChecks(ctx context.Context, gh GH, repo string, pr pullRequest, id int64) (fastChecksPRRun, error) {
+	var run fastChecksPRRun
+	raw, err := gh(ctx, "api", "repos/"+repo+"/actions/runs/"+strconv.FormatInt(id, 10))
+	if err != nil {
+		return run, err
+	}
+	if err := json.Unmarshal(raw, &run); err != nil {
+		return run, fmt.Errorf("read Fast checks target: %w", err)
+	}
+	bound := false
+	for _, attached := range run.PullRequests {
+		bound = bound || (attached.Number == pr.Number && attached.Head.SHA == pr.HeadRefOid)
+	}
+	if run.ID <= 0 || run.ID != id || run.Event != "pull_request" || run.Path != ".github/workflows/ci-fast.yaml" ||
+		run.HeadSHA != pr.HeadRefOid || run.HeadBranch != pr.HeadRefName || run.Repository.FullName != repo || run.HeadRepository.FullName != repo || !bound {
+		return run, errors.New("fast checks target is not this proven same-repository pull-request head")
+	}
+	return run, nil
 }
 
 // approveFastChecks admits execution, never a check result or a PR review.
@@ -410,40 +502,9 @@ func approveFastChecks(ctx context.Context, gh GH, repo string, pr pullRequest, 
 		return "", nil
 	}
 	endpoint := "repos/" + repo + "/actions/runs/" + strconv.FormatInt(runs[0].DatabaseID, 10)
-	raw, err = gh(ctx, "api", endpoint)
+	run, err := readBoundPRFastChecks(ctx, gh, repo, pr, runs[0].DatabaseID)
 	if err != nil {
 		return "", err
-	}
-	var run struct {
-		ID         int64  `json:"id"`
-		Event      string `json:"event"`
-		Path       string `json:"path"`
-		HeadSHA    string `json:"head_sha"`
-		HeadBranch string `json:"head_branch"`
-		Conclusion string `json:"conclusion"`
-		Repository struct {
-			FullName string `json:"full_name"`
-		} `json:"repository"`
-		HeadRepository struct {
-			FullName string `json:"full_name"`
-		} `json:"head_repository"`
-		PullRequests []struct {
-			Number int `json:"number"`
-			Head   struct {
-				SHA string `json:"sha"`
-			} `json:"head"`
-		} `json:"pull_requests"`
-	}
-	if err := json.Unmarshal(raw, &run); err != nil {
-		return "", fmt.Errorf("read Fast checks approval target: %w", err)
-	}
-	bound := false
-	for _, attached := range run.PullRequests {
-		bound = bound || (attached.Number == pr.Number && attached.Head.SHA == pr.HeadRefOid)
-	}
-	if run.ID <= 0 || run.ID != runs[0].DatabaseID || run.Event != "pull_request" || run.Path != ".github/workflows/ci-fast.yaml" ||
-		run.HeadSHA != pr.HeadRefOid || run.HeadBranch != pr.HeadRefName || run.Repository.FullName != repo || run.HeadRepository.FullName != repo || !bound {
-		return "", errors.New("approval target is not this proven same-repository Fast checks head")
 	}
 	if run.Conclusion != "action_required" {
 		return "Fast checks approval state changed; a later settle will observe it", nil

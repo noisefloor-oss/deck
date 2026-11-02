@@ -123,6 +123,29 @@ test("Windows and Linux chords plan copy and paste", () => {
   assert.equal(planClipboardKey(k({ key: "C", ctrlKey: true, shiftKey: true }), true, false), "copy-selection", "shifted label");
 });
 
+test("physical C and V chords work on non-Latin layouts", () => {
+  const ctrlC = key({ key: "с", code: "KeyC", metaKey: false, ctrlKey: true });
+  assert.equal(planClipboardKey(ctrlC, true, false), "copy-selection");
+  assert.equal(planClipboardKey({ ...ctrlC, shiftKey: true }, false, false), "copy-viewport");
+  assert.equal(nativeClipboardKey(ctrlC, true, true), true);
+  assert.equal(nativeClipboardKey({ ...ctrlC, key: "м", code: "KeyV" }, false, true), true);
+  assert.equal(planClipboardKey({ ...ctrlC, key: "м", code: "KeyV", shiftKey: true }, false, false), "paste");
+  assert.equal(planClipboardKey({ ...ctrlC, metaKey: true, ctrlKey: false }, false, true), "copy-viewport");
+  assert.equal(planClipboardKey({ ...ctrlC, code: undefined }, true, false), null, "a non-Latin label alone is not a Latin chord");
+});
+
+test("IME composition keydowns never become clipboard chords", () => {
+  for (const event of [
+    key({ key: "Process", code: "KeyC", metaKey: false, ctrlKey: true }),
+    key({ key: "Process", code: "KeyV", metaKey: false, ctrlKey: true, shiftKey: true }),
+    key({ key: "Dead", code: "KeyC", metaKey: false, ctrlKey: true }),
+    key({ key: "c", code: "KeyC", metaKey: false, ctrlKey: true, isComposing: true }),
+  ]) {
+    assert.equal(planClipboardKey(event, true, false), null);
+    assert.equal(nativeClipboardKey(event, true, true), false);
+  }
+});
+
 test("macOS keeps ⌘C and Ctrl+Insert as the screen-copy chords and leaves ⌘V native", () => {
   assert.equal(planClipboardKey(key(), false, true), "copy-viewport");
   assert.equal(planClipboardKey(key({ key: "Insert", metaKey: false, ctrlKey: true }), false, true), "copy-viewport");

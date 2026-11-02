@@ -5,7 +5,7 @@ import { SecurityClient, type SecurityMethod, type SecurityState } from "../../s
 import { createMethodEnvelope, openMethodEnvelope, workspaceCommitment, type OpenedMethod } from "../../security/envelope.ts";
 import { encodeBase64url } from "../../security/encoding.ts";
 import { formatRecoveryKey } from "../../security/recovery.ts";
-import { WorkspaceSecurity } from "./coordinator.ts";
+import { WorkspaceSecurity, type HostAdmission } from "./coordinator.ts";
 
 const response = (value: unknown, status = 200) => new Response(JSON.stringify(value), {
   status, headers: { "X-Deck-Workspace-Security": "v1" },
@@ -15,7 +15,7 @@ function deferred<T>() {
   const promise = new Promise<T>(done => { resolve = done; });
   return { promise, resolve };
 }
-function fixture(request: typeof fetch) {
+function fixture(request: typeof fetch, admissionResults: HostAdmission[] = ["admitted"]) {
   const originals = new Map<string, PropertyDescriptor | undefined>();
   for (const [name, value] of Object.entries({
     window: new EventTarget(), document: new EventTarget(),
@@ -33,12 +33,13 @@ function fixture(request: typeof fetch) {
   let detached = 0, admitted = 0;
   const api = new SecurityClient(request, () => "noisedeck_csrf=fixture");
   const controller = new WorkspaceSecurity(root as unknown as HTMLElement, new HttpApiClient(), {
-    detach: () => { detached++; }, admit: async () => { admitted++; },
+    detach: () => { detached++; },
+    admit: async () => { admitted++; return admissionResults[Math.min(admitted - 1, admissionResults.length - 1)] ?? "failed"; },
   }, api);
   // The assertions inspect lifetimes that cannot be observed from rendered HTML.
   const owned = controller as unknown as {
     source?: OpenedMethod; key?: string; ceremony: AbortController; state?: SecurityState;
-    everyday?: SecurityMethod; recovery?: SecurityMethod; checkRecovery(value: string): Promise<void>;
+    everyday?: SecurityMethod; recovery?: SecurityMethod; authenticated: boolean; admitted: boolean; admit(): Promise<void>; checkRecovery(value: string): Promise<void>;
   };
   return { root, api, controller, owned, detached: () => detached, admitted: () => admitted,
     close() {
@@ -74,7 +75,18 @@ test("setup state 401 disposes the opened source and removes recovery data immed
     assert.equal(f.owned.source, undefined); assert.equal(f.owned.key, undefined);
     assert.match(f.root.innerHTML, /data-security-runtime="signed-out"/);
     assert.ok(!f.root.innerHTML.includes(key));
+    assert.equal(f.controller.admissionInvalidated, true);
     assert.equal(f.detached(), 1); assert.equal(f.admitted(), 0);
+  } finally { f.close(); }
+});
+
+test("disposal invalidates admission without replacing the current screen", async () => {
+  const f = fixture(async () => response(state));
+  try {
+    f.root.innerHTML = "paused";
+    f.controller.dispose();
+    assert.equal(f.controller.admissionInvalidated, true);
+    assert.equal(f.root.innerHTML, "paused");
   } finally { f.close(); }
 });
 
@@ -116,6 +128,35 @@ for (const status of [200, 409]) test(`recovery proof response ${status} after e
     assert.ok(!f.root.innerHTML.includes(key));
     assert.equal(f.owned.key, undefined); assert.equal(f.owned.recovery, undefined);
     assert.equal(f.owned.everyday, undefined); assert.equal(f.admitted(), 0);
+  } finally { f.close(); }
+});
+
+test("a host that returns without constructing the workspace is retried, not marked admitted", async () => {
+  const openState: SecurityState = { ...state, phase: "ready", storage: "open", runtime: "running", workspaceAuthorized: true, browserGranted: true,
+    onboarding: { ...state.onboarding, setupComplete: true } };
+  const f = fixture(async url => String(url).endsWith("/onboarding") ? response(openState.onboarding)
+    : String(url).includes("/methods") || String(url).includes("/unlock-options") ? response([]) : response(openState), ["retry", "admitted"]);
+  try {
+    f.owned.authenticated = true;
+    f.owned.state = openState;
+    await f.owned.admit();
+    assert.equal(f.admitted(), 2, f.root.innerHTML);
+    assert.equal(f.owned.admitted, true);
+  } finally { f.close(); }
+});
+
+test("a terminal host failure is stable and does not retry", async () => {
+  const openState: SecurityState = { ...state, phase: "ready", storage: "open", runtime: "running", workspaceAuthorized: true, browserGranted: true,
+    onboarding: { ...state.onboarding, setupComplete: true } };
+  const f = fixture(async url => String(url).endsWith("/onboarding") ? response(openState.onboarding)
+    : String(url).includes("/methods") || String(url).includes("/unlock-options") ? response([]) : response(openState), ["failed", "failed"]);
+  try {
+    f.owned.authenticated = true;
+    f.owned.state = openState;
+    await f.owned.admit();
+    assert.equal(f.admitted(), 1);
+    assert.equal(f.owned.admitted, false);
+    assert.doesNotMatch(f.root.innerHTML, /data-onboarding="unreachable"/);
   } finally { f.close(); }
 });
 

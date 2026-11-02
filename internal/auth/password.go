@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -53,8 +54,9 @@ func (g *passwordGate) admit(source string) (bool, time.Duration) {
 	now := g.now()
 	g.global = freshAttempt(g.global, now)
 	s := freshAttempt(g.sources[source], now)
+	// Exponential retry is source-local. Applying one attacker's global
+	// retry to every client would keep the operator locked out forever.
 	until := later(g.global.lockedTil, s.lockedTil)
-	until = later(until, g.global.retryAt)
 	until = later(until, s.retryAt)
 	if now.Before(until) {
 		return false, until.Sub(now)
@@ -79,6 +81,7 @@ func (g *passwordGate) record(source string, success bool) {
 	s := g.sources[source]
 	s.inFlight = max(0, s.inFlight-1)
 	if success {
+		g.global = passwordAttempt{windowAt: g.global.windowAt, inFlight: g.global.inFlight}
 		if s.inFlight == 0 {
 			delete(g.sources, source)
 		} else {
@@ -168,9 +171,42 @@ func requestSource(remote string) string {
 	return remote
 }
 
+func (h *Handler) passwordSource(r *http.Request) string {
+	remote := requestSource(r.RemoteAddr)
+	if !h.trusted(r.RemoteAddr) {
+		return remote
+	}
+	forwarded := strings.Join(r.Header.Values("X-Forwarded-For"), ",")
+	if forwarded == "" {
+		return remote
+	}
+	hops := strings.Split(forwarded, ",")
+	for i := len(hops) - 1; i >= 0; i-- {
+		candidate := strings.TrimSpace(hops[i])
+		if host, port, err := net.SplitHostPort(candidate); err == nil {
+			if port == "" || strings.Trim(port, "0123456789") != "" {
+				return remote
+			}
+			number, err := strconv.Atoi(port)
+			if err != nil || number < 1 || number > 65535 {
+				return remote
+			}
+			candidate = host
+		}
+		ip := net.ParseIP(candidate)
+		if ip == nil {
+			return remote
+		}
+		if !h.trustedIP(ip) {
+			return candidate
+		}
+	}
+	return remote
+}
+
 func (h *Handler) handlePasswordLogin(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	source := requestSource(r.RemoteAddr)
+	source := h.passwordSource(r)
 	if ok, wait := h.password.admit(source); !ok {
 		w.Header().Set("Retry-After", retryAfter(wait))
 		h.passwordRefusal(w, http.StatusTooManyRequests)

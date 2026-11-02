@@ -36,7 +36,7 @@ function fixture(request: typeof fetch, hash = "") {
   const api = new SecurityClient(request, () => "noisedeck_csrf=fixture");
   const session = new HttpApiClient();
   const controller = new WorkspaceSecurity(root as unknown as HTMLElement, session, {
-    admit: async () => { admitted++; }, detach: () => { detached++; },
+    admit: async () => { admitted++; return "admitted" as const; }, detach: () => { detached++; },
     manageMethods: async () => { managed++; return () => {}; },
   }, api);
   const actions = controller as unknown as {

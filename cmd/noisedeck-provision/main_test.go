@@ -540,6 +540,119 @@ func TestProvisionIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestProvisionKimiValidatesHookShapesBeforeWriting(t *testing.T) {
+	for name, contents := range map[string]string{
+		"scalar":        "hooks = true\n",
+		"plain table":   "[hooks]\nevent = \"Stop\"\n",
+		"empty array":   "hooks = []\n",
+		"inline tables": "hooks = [{event = \"Stop\", command = \"x\"}]\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			home := t.TempDir()
+			path := filepath.Join(home, ".kimi-code", "config.toml")
+			if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := provisionKimi(home); err == nil {
+				t.Fatal("incompatible hooks accepted")
+			}
+			after, err := os.ReadFile(path)
+			if err != nil || string(after) != contents {
+				t.Fatalf("config changed: %q, %v", after, err)
+			}
+			if _, err := os.Stat(path + ".noisedeck-bak"); !os.IsNotExist(err) {
+				t.Fatalf("refusal created a backup: %v", err)
+			}
+		})
+	}
+}
+
+func TestProvisionKimiParsesTheCompleteCandidateBeforeBackup(t *testing.T) {
+	for _, header := range []string{"[[ hooks ]]", "[[\"hooks\"]]"} {
+		t.Run(header, func(t *testing.T) {
+			home := t.TempDir()
+			path := filepath.Join(home, ".kimi-code", "config.toml")
+			if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			contents := header + "\nevent = \"Stop\"\ncommand = \"x\"\n"
+			if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := provisionKimi(home); err != nil {
+				t.Fatalf("valid array-of-tables refused: %v", err)
+			}
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var doc map[string]any
+			if err := toml.Unmarshal(raw, &doc); err != nil {
+				t.Fatalf("extended config does not parse: %v", err)
+			}
+			if hooks, _ := doc["hooks"].([]any); len(hooks) != 2 {
+				t.Fatalf("hooks = %v", hooks)
+			}
+		})
+	}
+
+	home := t.TempDir()
+	path := filepath.Join(home, ".kimi-code", "config.toml")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	contents := "# Example: [[hooks]]\nhooks = [{event = \"Stop\", command = \"x\"}]\n"
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := provisionKimi(home); err == nil {
+		t.Fatal("misleading comment allowed an invalid append")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || string(after) != contents {
+		t.Fatalf("config changed: %q, %v", after, err)
+	}
+	if _, err := os.Stat(path + ".noisedeck-bak"); !os.IsNotExist(err) {
+		t.Fatalf("refusal created a backup: %v", err)
+	}
+}
+
+func TestProvisionKimiBacksUpAndExtendsArrayOfTables(t *testing.T) {
+	home := t.TempDir()
+	path := filepath.Join(home, ".kimi-code", "config.toml")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	contents := "[[hooks]]\nevent = \"Stop\"\ncommand = \"x\"\n"
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := provisionKimi(home); err != nil {
+		t.Fatalf("provision: %v", err)
+	}
+	backup, err := os.ReadFile(path + ".noisedeck-bak")
+	if err != nil || string(backup) != contents {
+		t.Fatalf("backup = %q, %v", backup, err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := toml.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("post-provision TOML: %v", err)
+	}
+	if hooks, _ := doc["hooks"].([]any); len(hooks) != 2 {
+		t.Fatalf("hooks = %v", hooks)
+	}
+	if err := provisionKimi(home); err != nil {
+		t.Fatalf("idempotent provision: %v", err)
+	}
+}
+
 func TestProvisionKimiAppendsTheFlatHookOnce(t *testing.T) {
 	home := t.TempDir()
 	if err := run(home); err != nil {

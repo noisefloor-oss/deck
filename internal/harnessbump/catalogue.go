@@ -93,6 +93,10 @@ var Catalogue = []Harness{
 		// README names it in prose rather than a row.
 		Repeats: []Repeat{deployTest("crush_cli_package_test.go", "CRUSH_VERSION"), {Path: "docs/provider-contracts/README.md", Format: "ships Crush %s as", Required: true}}},
 	{Name: "mimo", Executable: "mimo", VersionArg: "MIMO_VERSION", Source: SourceNPM, Package: "@mimo-ai/cli",
+		Artifacts: []Artifact{
+			{Arch: "amd64", SHAArg: "MIMO_SHA256_AMD64", URL: mimoURL("x64-baseline")},
+			{Arch: "arm64", SHAArg: "MIMO_SHA256_ARM64", URL: mimoURL("arm64")},
+		},
 		Repeats: []Repeat{deployTest("mimo_code_cli_package_test.go", "MIMO_VERSION"), readmeRow("mimo")}},
 	{Name: "qoder", Executable: "qoder", VersionArg: "QODER_VERSION", Source: SourceNPM, Package: "@qoder-ai/qodercli",
 		Repeats: []Repeat{deployTest("qoder_cli_package_test.go", "QODER_VERSION"), readmeRow("qoder")}},
@@ -174,4 +178,11 @@ func devinURL(arch string) func(string) string {
 // loginVersion keeps executable admission aligned with the image, without a manual hold.
 func loginVersion(name string) Repeat {
 	return Repeat{Path: "internal/harnesslogin/versions.go", Format: name + `Version = "%s"`, Required: true}
+}
+
+// mimoURL uses the official release mirror of the npm launcher's binaries.
+func mimoURL(arch string) func(string) string {
+	return func(version string) string {
+		return "https://github.com/XiaomiMiMo/MiMo-Code/releases/download/v" + version + "/mimocode-linux-" + arch + ".tar.gz"
+	}
 }

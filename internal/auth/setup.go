@@ -71,7 +71,7 @@ func (h *Handler) setupAdmission(w http.ResponseWriter, r *http.Request) bool {
 }
 
 func (h *Handler) passwordAdmission(w http.ResponseWriter, r *http.Request) bool {
-	if ok, wait := h.password.admit(requestSource(r.RemoteAddr)); !ok {
+	if ok, wait := h.password.admit(h.passwordSource(r)); !ok {
 		w.Header().Set("Retry-After", retryAfter(wait))
 		http.Error(w, "password request failed", http.StatusTooManyRequests)
 		return false
@@ -87,12 +87,12 @@ func (h *Handler) handleSetupCheck(w http.ResponseWriter, r *http.Request) {
 	h.credentialMu.Lock()
 	defer h.credentialMu.Unlock()
 	if err := h.renewSetupURL(); err != nil {
-		h.password.record(requestSource(r.RemoteAddr), true)
+		h.password.record(h.passwordSource(r), true)
 		http.Error(w, "setup link could not be renewed", http.StatusInternalServerError)
 		return
 	}
 	valid := ok && validSetupToken(h.credentials, body.Token, h.now())
-	h.password.record(requestSource(r.RemoteAddr), valid)
+	h.password.record(h.passwordSource(r), valid)
 	if !valid {
 		http.Error(w, "setup link is missing, invalid, or expired", http.StatusUnauthorized)
 		return
@@ -127,16 +127,16 @@ func (h *Handler) handleSetup(w http.ResponseWriter, r *http.Request) {
 	h.credentialMu.Lock()
 	defer h.credentialMu.Unlock()
 	if len(h.credentials.PasswordHash) != 0 {
-		h.password.record(requestSource(r.RemoteAddr), true)
+		h.password.record(h.passwordSource(r), true)
 		http.NotFound(w, r)
 		return
 	}
 	if !ok || !validSetupToken(h.credentials, body.Token, h.now()) {
-		h.password.record(requestSource(r.RemoteAddr), false)
+		h.password.record(h.passwordSource(r), false)
 		http.Error(w, "setup link is missing, invalid, or expired", http.StatusUnauthorized)
 		return
 	}
-	h.password.record(requestSource(r.RemoteAddr), true)
+	h.password.record(h.passwordSource(r), true)
 	if !passwordLongEnough(body.Password) {
 		refuseShortPassword(w)
 		return
@@ -157,11 +157,11 @@ func (h *Handler) handlePasswordChange(w http.ResponseWriter, r *http.Request) {
 	h.credentialMu.Lock()
 	defer h.credentialMu.Unlock()
 	if !ok || bcrypt.CompareHashAndPassword(h.credentials.PasswordHash, []byte(body.CurrentPassword)) != nil {
-		h.password.record(requestSource(r.RemoteAddr), false)
+		h.password.record(h.passwordSource(r), false)
 		http.Error(w, "password change failed", http.StatusUnauthorized)
 		return
 	}
-	h.password.record(requestSource(r.RemoteAddr), true)
+	h.password.record(h.passwordSource(r), true)
 	if h.cfg.PasswordPinned {
 		http.Error(w, "Remove NOISEDECK_AUTH_PASSWORD_HASH from your service configuration and restart Deck before changing your password.", http.StatusConflict)
 		return

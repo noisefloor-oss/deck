@@ -162,3 +162,69 @@ func TestSettleRetainsPriorQueueDecisionOnLaterError(t *testing.T) {
 		})
 	}
 }
+
+func TestSettleReconcilesQueueTerminalStates(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		read      int
+		state     string
+		merge     string
+		intent    bool
+		queued    bool
+		movedHead bool
+		want      Action
+		wantError bool
+	}{
+		{"merged after open list", 1, "MERGED", "merged-commit", true, false, false, ActionMerged, false},
+		{"merged before enqueue", 2, "MERGED", "merged-commit", false, false, false, ActionMerged, false},
+		{"closed after open list", 1, "CLOSED", "", false, false, false, ActionHandOff, false},
+		{"closed before enqueue", 2, "CLOSED", "", false, false, false, ActionMerge, true},
+		{"ejected from queue", 1, "OPEN", "", true, false, false, ActionHandOff, false},
+		{"still queued", 1, "OPEN", "", true, true, false, ActionQueued, false},
+		{"merged different head", 1, "MERGED", "merged-commit", true, false, true, ActionWait, false},
+		{"different head before enqueue", 2, "MERGED", "merged-commit", false, false, true, ActionMerge, true},
+		{"missing state", 1, "", "", true, false, false, "", true},
+		{"unknown state", 1, "UNKNOWN", "", true, false, false, "", true},
+		{"merged without commit", 1, "MERGED", "", true, false, false, "", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := prJSON(1, "harness-bump/codex-1.2.3", "aaa", "APPROVED", "aaa", "SUCCESS", "CLEAN")
+			var calls []string
+			inner := fakeGH([]map[string]any{p}, &calls)
+			reads := 0
+			gh := func(ctx context.Context, args ...string) ([]byte, error) {
+				joined := strings.Join(args, " ")
+				if strings.Contains(joined, "query="+bumpQueueQuery) {
+					reads++
+					if reads == tc.read {
+						p["state"], p["queueIntent"], p["queued"] = tc.state, tc.intent, tc.queued
+						if tc.merge != "" {
+							p["mergeCommit"] = map[string]any{"oid": tc.merge}
+							p["queueBase"] = tc.merge
+						}
+						if tc.movedHead {
+							p["headRefOid"] = "different-head"
+						}
+					}
+				}
+				return inner(ctx, args...)
+			}
+			always := func(context.Context, Harness, string, string) (bool, error) { return true, nil }
+			got, err := Settle(t.Context(), gh, "o/r", "noise-review", 1, true, always, always)
+			if (err != nil) != tc.wantError {
+				t.Fatalf("decisions %+v, error %v", got, err)
+			}
+			if tc.want != "" && (len(got) != 1 || got[0].Action != tc.want || got[0].Applied) {
+				t.Fatalf("decisions %+v, want %s without mutation", got, tc.want)
+			}
+			if tc.name == "closed after open list" && !strings.Contains(got[0].Reason, "closed without merging") {
+				t.Fatalf("closed state was not reconciled: %+v", got)
+			}
+			for _, call := range calls {
+				if strings.Contains(call, "--method") || strings.Contains(call, "mutation(") {
+					t.Fatalf("terminal or uncertain state caused a mutation: %s", call)
+				}
+			}
+		})
+	}
+}

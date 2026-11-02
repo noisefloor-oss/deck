@@ -232,6 +232,7 @@ func (h *Handler) logout() http.Handler {
 				}
 			}
 		}
+		h.auth.RevokeLogin(login)
 		for _, name := range []string{invitationCookie, enrollmentCookie, "__Host-deck_workspace"} {
 			http.SetCookie(w, &http.Cookie{Name: name, Path: "/", MaxAge: -1, Secure: true, HttpOnly: true, SameSite: http.SameSiteStrictMode})
 		}

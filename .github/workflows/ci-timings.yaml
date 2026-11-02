@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   summarize:
-    runs-on: ${{ github.repository == 'noisefloor-oss/deck' && github.event.repository.visibility == 'public' && 'ubuntu-24.04' || fromJSON('["self-hosted","Linux","native-linux"]') }}
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 5
     steps:
       - name: Check out trusted default-branch source

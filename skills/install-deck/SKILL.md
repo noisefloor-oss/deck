@@ -117,8 +117,8 @@ steps; state facts where they change a choice.
 - **Runtime user** `id -u`:`id -g`, so Deck's files are yours (not root).
 - **Source organization**, only if you named a fork you trust: its
   organization is OWNER, `NOISEDECK_SOURCE_ORG=OWNER` goes in the env file,
-  and Deck, Tasks, SDLC and Visual Diff all come from it, at the commits Deck
-  pins. Otherwise `noisefloor-oss`.
+  and Deck, a2a, Tasks, SDLC and Visual Diff all come from it, at
+  the commits Deck pins. Otherwise `noisefloor-oss`.
 - **Port** 18082, or the next free one. **Version** `vX.Y.Z` and its commit.
 - **What you run first**, only what is missing:
   - Mac without Docker: `brew install --cask docker`, then open Docker once.

@@ -472,7 +472,7 @@ func TestAssemblyRequiresMethodProofAndLogoutClosesOnlyItsBrowser(t *testing.T) 
 	default:
 	}
 	_ = eb.Body.Close()
-	a.call("GET", "/api/sessions", nil, 403, nil)
+	a.call("GET", "/api/sessions", nil, 401, nil)
 }
 
 func TestAssemblyDuplicateStartupPreservesLiveBrowser(t *testing.T) {

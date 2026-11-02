@@ -20,6 +20,8 @@
 export interface CopyKeyInput {
   type: string;
   key: string;
+  code?: string;
+  isComposing?: boolean;
   metaKey: boolean;
   ctrlKey: boolean;
   altKey: boolean;
@@ -27,6 +29,12 @@ export interface CopyKeyInput {
 }
 
 export type ClipboardPlan = "copy-selection" | "copy-viewport" | "paste" | null;
+
+function clipboardKey(event: CopyKeyInput): string {
+  if (event.code === "KeyC") return "c";
+  if (event.code === "KeyV") return "v";
+  return event.key.length === 1 ? event.key.toLowerCase() : event.key;
+}
 
 // planClipboardKey: which clipboard action this keydown is, or null when the
 // key is the pane's (or the browser's). isMac selects the chord set.
@@ -42,9 +50,9 @@ export type ClipboardPlan = "copy-selection" | "copy-viewport" | "paste" | null;
 //            without ⌘: the viewport with no selection; with one, native on
 //            a Mac and the selection elsewhere.
 export function planClipboardKey(event: CopyKeyInput, hasSelection: boolean, isMac: boolean): ClipboardPlan {
-  if (event.type !== "keydown") return null;
+  if (event.type !== "keydown" || event.isComposing || event.key === "Process" || event.key === "Dead") return null;
   if (event.altKey) return null;
-  const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+  const key = clipboardKey(event);
   const insert = key === "Insert" && event.ctrlKey && !event.metaKey && !event.shiftKey;
   if (isMac) {
     const command = key === "c" && event.metaKey && !event.ctrlKey && !event.shiftKey;
@@ -66,8 +74,8 @@ export function planClipboardKey(event: CopyKeyInput, hasSelection: boolean, isM
 // Returning from xterm's key handler without preventDefault lets the browser
 // raise copy/paste instead of xterm sending Ctrl+C or Ctrl+V to the CLI.
 export function nativeClipboardKey(event: CopyKeyInput, hasSelection: boolean, windows: boolean): boolean {
-  if (!windows || event.type !== "keydown" || !event.ctrlKey || event.metaKey || event.altKey) return false;
-  const key = event.key.toLowerCase();
+  if (!windows || event.type !== "keydown" || event.isComposing || event.key === "Process" || event.key === "Dead" || !event.ctrlKey || event.metaKey || event.altKey) return false;
+  const key = clipboardKey(event);
   return key === "v" || (key === "c" && !event.shiftKey && hasSelection);
 }
 

@@ -39,11 +39,7 @@ func TestFastChecksWorkflowContract(t *testing.T) {
 		if !ok {
 			t.Fatalf("fast checks workflow has no %s job", jobName)
 		}
-		wantRunner := privateCIRunner
-		if nativeLinuxJob(jobName) {
-			wantRunner = strings.Replace(wantRunner, `"ARM64"`, `"native-linux"`, 1)
-		}
-		assertRunnerName(t, jobName, job, wantRunner)
+		assertRunnerName(t, jobName, job, hostedCIRunner)
 		assertJobHasStep(t, jobName, job, "Check out source")
 	}
 	gate, ok := jobs["fast-checks"].(map[string]any)
@@ -143,7 +139,7 @@ func TestFastChecksWorkflowContract(t *testing.T) {
 		}
 	}
 	for _, required := range []string{
-		`GOMAXPROCS: "4"`,
+		`echo "GOMAXPROCS=${capacity}" >> "$GITHUB_ENV"`,
 		"go install golang.org/x/vuln/cmd/govulncheck@v1.8.0",
 		"govulncheck ./...",
 		`--new-from-rev "${lint_base}"`,
@@ -153,12 +149,13 @@ func TestFastChecksWorkflowContract(t *testing.T) {
 		// so repeat runs pay neither compilation nor apt.
 		"GOLANGCI_LINT_VERSION: v2.6.2",
 		"golangci-lint-${{ env.GOLANGCI_LINT_VERSION }}-go-1.26.10-${{ runner.arch }}",
-		`deck-go-${{ runner.arch }}-1.26.10-${{ hashFiles('go.sum') }}`,
-		"restore-keys: deck-go-${{ runner.arch }}-1.26.10-",
+		`deck-go-${{ runner.arch }}-1.26.10-${{ github.job }}-${{ hashFiles('go.sum') }}-${{ github.sha }}`,
+		"deck-go-${{ runner.arch }}-1.26.10-",
+		"deck-go-baseline-${{ runner.arch }}-1.26.10-",
 		"~/.cache/go-build",
 		"~/go/pkg/mod",
 		// The tmux-backed and timing-sensitive packages stay serialized in
-		// their own job; the rest run at -p 4 in parallel with it.
+		// their own job; the rest use the available CPU budget in parallel with it.
 		// -count=1 everywhere: the shared build cache would otherwise replay
 		// cached green test results across runs, hollowing out the gate.
 		`GOMAXPROCS=1 python3 -B .github/scripts/test_metrics.py run --suite go-serialized --output "$RUNNER_TEMP/test-metrics/go-serialized.json" -- go test -count=1 -p 1 \`,
@@ -169,9 +166,9 @@ func TestFastChecksWorkflowContract(t *testing.T) {
 		`./internal/reconciler/... \`,
 		`./internal/tasks/...`,
 		`grep -vE '/(deploy|internal/(session|terminal|tmux|acceptance|reconciler|tasks))(/|$)'`,
-		`go test -count=1 -p 4 "${parallel_packages[@]}"`,
-		`go build -p 4 ./cmd/noisedeck ./cmd/noisedeck-provision`,
-		`GOMAXPROCS=4 python3 -B .github/scripts/test_metrics.py run --suite deploy-suite --output "$RUNNER_TEMP/test-metrics/deploy-suite.json" -- go test -count=1 -p 1 ./deploy/`,
+		`go test -count=1 -p "$GOMAXPROCS" "${parallel_packages[@]}"`,
+		`go build -p "$GOMAXPROCS" ./cmd/noisedeck ./cmd/noisedeck-provision`,
+		`python3 -B .github/scripts/test_metrics.py run --suite deploy-suite --output "$RUNNER_TEMP/test-metrics/deploy-suite.json" -- go test -count=1 -p 1 ./deploy/`,
 		`name: Save test metrics`,
 		`retention-days: 3`,
 		`name: test-metrics-source-export-${{ matrix.suite }}-${{ github.run_attempt }}`,
@@ -242,7 +239,7 @@ func TestSourceExportGate(t *testing.T) {
 	}
 	commands := map[string]string{
 		"Extract the curated source archive": "git archive HEAD | tar --extract --directory",
-		"Build and vet the extracted source": "go build ./...\ngo vet ./...",
+		"Build and vet the extracted source": `go build -p "$GOMAXPROCS" ./...` + "\n" + `go vet -p "$GOMAXPROCS" ./...`,
 		"Test the extracted source":          "packages=$(go list ./...)",
 	}
 	for name, command := range commands {
@@ -726,7 +723,7 @@ func TestJailProbeGate(t *testing.T) {
 	if !ok {
 		t.Fatal("fast workflow has no jail-probe job")
 	}
-	assertRunnerName(t, "jail-probe", job, privateCIRunner)
+	assertRunnerName(t, "jail-probe", job, hostedCIRunner)
 	assertJobHasStep(t, "jail-probe", job, "Run the hostile probe inside the real jail with canary credentials")
 	text := string(raw)
 	for _, required := range []string{"GH_TOKEN: canary-not-a-token", "NOISE_REVIEW_PRIVATE_KEY: canary-not-a-key", "OPENAI_API_KEY=sk-canary-",

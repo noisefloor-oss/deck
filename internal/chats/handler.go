@@ -36,8 +36,8 @@ var (
 	statusTTL         = 15 * time.Second
 )
 
-// harnessNames maps Deck's provider ids to the harness names a2a derives a
-// handle from (deploy/a2a/a2a.py, HARNESS_COMMS).
+// harnessNames maps Deck's provider ids to the harness names the standalone
+// a2a client derives a handle from (HARNESS_COMMS).
 var harnessNames = map[string]string{
 	"claude":   "claude",
 	"codex":    "codex",

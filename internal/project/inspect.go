@@ -26,6 +26,9 @@ type Inspection struct {
 	// destination. Canonical when it exists, cleaned when it does not.
 	Path   string `json:"path"`
 	Exists bool   `json:"exists"`
+	// Empty distinguishes an existing empty clone destination from one whose
+	// files or hidden directories are omitted from the display entries.
+	Empty bool `json:"empty,omitempty"`
 	// Remote and Head describe a repository root or linked worktree, in the
 	// host form you would recognise (github.com/owner/repo) and the
 	// one-line summary that tells two checkouts of one repository apart.
@@ -219,6 +222,9 @@ func (in inspector) clone(v, base string) (*Inspection, error) {
 	out := &Inspection{Kind: KindClone, Path: dest, Exists: exists, Entries: []string{}, CloneURL: cloneURL(trimmed)}
 	if exists {
 		out.Entries = in.entries(dest)
+		if children, err := allowedReadDir(dest, in.roots); err == nil {
+			out.Empty = len(children) == 0
+		}
 		if top, ok := in.toplevel(dest); ok && top == dest {
 			// The typed form may be shorter than the stored remote
 			// (fable/deck against github.com/fable/deck), so the remote must

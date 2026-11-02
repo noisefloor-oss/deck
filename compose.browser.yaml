@@ -29,6 +29,7 @@ services:
       target: browser
       args:
         NOISE_TASKS_REPO: ${NOISE_TASKS_REPO:-https://github.com/${NOISEDECK_SOURCE_ORG:-noisefloor-oss}/tasks.git}
+        NOISE_A2A_REPO: ${NOISE_A2A_REPO:-https://github.com/${NOISEDECK_SOURCE_ORG:-noisefloor-oss}/a2a.git}
         NOISE_SDLC_REPO: ${NOISE_SDLC_REPO:-https://github.com/${NOISEDECK_SOURCE_ORG:-noisefloor-oss}/sdlc.git}
         NOISE_VISUAL_DIFF_REPO: ${NOISE_VISUAL_DIFF_REPO:-https://github.com/${NOISEDECK_SOURCE_ORG:-noisefloor-oss}/visual-diff.git}
     # The repo-owned entrypoint uses Playwright's public launchServer API and

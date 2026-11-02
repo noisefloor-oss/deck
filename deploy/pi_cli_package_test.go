@@ -16,7 +16,7 @@ func TestDockerfileInstallsPinnedPiHarness(t *testing.T) {
 	}
 	body := string(raw)
 	for _, required := range []string{
-		"ARG PI_VERSION=1.4.0",
+		"ARG PI_VERSION=1.5.0",
 		`"@earendil-works/pi-coding-agent@${PI_VERSION}"`,
 		"npm install --global --ignore-scripts",
 		`test "$(pi --version)" = "${PI_VERSION}"`,

@@ -13,7 +13,7 @@ func TestDockerfilePinsQwenCodeCLI(t *testing.T) {
 	}
 	dockerfile := string(raw)
 	for _, required := range []string{
-		"ARG QWEN_VERSION=0.26.1",
+		"ARG QWEN_VERSION=0.26.5",
 		`"@qwen-code/qwen-code@${QWEN_VERSION}"`,
 		`test "$(qwen --version)" = "${QWEN_VERSION}"`,
 		"qwen probe --help",

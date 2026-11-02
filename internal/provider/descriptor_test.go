@@ -205,36 +205,6 @@ func TestKimiUnmeasuredInjectionContractStaysUnverified(t *testing.T) {
 	}
 }
 
-func TestRegistryReportsAvailableProviders(t *testing.T) {
-	reg, err := NewRegistry(mustClaude(t), mustCodex(t), mustKimi(t))
-	if err != nil {
-		t.Fatalf("NewRegistry: %v", err)
-	}
-
-	// All three first-release providers are available.
-	available := reg.Available()
-	if len(available) != 3 {
-		t.Errorf("Available() = %v, want all three", names(available))
-	}
-
-	for _, n := range []Name{Claude, Codex, Kimi} {
-		if _, err := reg.Lookup(n); err != nil {
-			t.Errorf("Lookup(%s): %v", n, err)
-		}
-	}
-	if _, err := reg.Lookup("gpt"); err == nil {
-		t.Error("Lookup succeeded for an unknown provider")
-	}
-}
-
-func TestRegistryRejectsDuplicates(t *testing.T) {
-	a := mustClaude(t)
-	b := mustClaude(t)
-	if _, err := NewRegistry(a, b); err == nil {
-		t.Error("NewRegistry accepted two descriptors for the same provider")
-	}
-}
-
 func TestStopSignalsAreProviderPolicy(t *testing.T) {
 	d := mustClaude(t)
 	if d.GracefulStopSignal() != syscall.SIGTERM {
@@ -546,14 +516,6 @@ func TestFutureIdentityCaptureMechanismsAreRepresentable(t *testing.T) {
 	if IdentityCaptureHostAttestedZeroArgTool == IdentityCaptureDocumentedAPI {
 		t.Fatal("future capture mechanisms must remain distinguishable")
 	}
-}
-
-func names(ds []Descriptor) []Name {
-	out := make([]Name, 0, len(ds))
-	for _, d := range ds {
-		out = append(out, d.Name())
-	}
-	return out
 }
 
 // Nothing in /proc identifies an interpreted provider. Every shortcut this

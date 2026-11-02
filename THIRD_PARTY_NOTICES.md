@@ -94,7 +94,7 @@ SOFTWARE.
 
 The terminal in the browser build is
 [xterm.js](https://github.com/xtermjs/xterm.js): `@xterm/xterm` 6.0.0 and
-`@xterm/addon-web-links` 0.12.0 (the only runtime dependencies of the web
+`@xterm/addon-web-links` 0.12.0 (runtime dependencies of the web
 frontend, pinned in `web/pnpm-lock.yaml`). Both are under the MIT License:
 
 ```

@@ -324,13 +324,12 @@ SOCKET_TEXT = f"[a2a#synthetic] fixture says (chat-fixture): {INVITE_BODY} over 
 
 
 def load_real_client():
-    """The a2a client under test: A2A_PROBE_CLIENT when set, then the
-    worktree copy beside this probe, then the image's installed
-    /usr/local/bin/a2a. The installed client has no .py extension, so the
-    loader is named explicitly: a bare spec_from_file_location returns None
-    for it and the import dies before the socket check."""
-    here = Path(__file__).resolve()
-    candidates = [here.parents[1] / "a2a" / "a2a.py", Path("/usr/local/bin/a2a")]
+    """The standalone a2a client under test: A2A_PROBE_CLIENT when set,
+    then the image's installed /usr/local/bin/a2a. The installed client has
+    no .py extension, so the loader is named explicitly: a bare
+    spec_from_file_location returns None for it and the import dies before
+    the socket check."""
+    candidates = [Path("/usr/local/bin/a2a")]
     override = os.environ.get("A2A_PROBE_CLIENT")
     if override:
         candidates.insert(0, Path(override))

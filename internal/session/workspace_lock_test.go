@@ -66,7 +66,7 @@ func TestWorkspaceLockWedgedTmuxObservationIsBoundedWithoutFabricatingDeath(t *t
 	}
 	t.Cleanup(func() { _ = syscall.Kill(serverPID, syscall.SIGCONT) })
 	mgr.lifecycleHooks = &lifecycleTestHooks{workspaceLockMarked: func() {
-		applied, err := repo.MarkInterrupted(ctx, s.ID, "test fixture loses the controller while its process stays live")
+		applied, err := repo.MarkInterruptedObserved(ctx, s, "test fixture loses the controller while its process stays live")
 		if err != nil || !applied {
 			t.Fatalf("mark terminal session mid-lock: applied=%v err=%v", applied, err)
 		}

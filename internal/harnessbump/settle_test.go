@@ -24,7 +24,7 @@ func prJSON(number int, branch, head, verdictState, verdictAt, gate, state strin
 	pr := map[string]any{
 		"number": number, "title": "chore(provider): pin " + name + " 1.2.3", "headRefName": branch, "headRefOid": head,
 		"baseRefName": "main", "isCrossRepository": false, "files": files, "author": map[string]any{"login": "bump-token-owner"},
-		"mergeable": "MERGEABLE", "mergeStateStatus": state,
+		"state": "OPEN", "mergeable": "MERGEABLE", "mergeStateStatus": state,
 		"reviews":           []any{},
 		"statusCheckRollup": []any{map[string]any{"name": "lint", "conclusion": "SUCCESS"}},
 	}
@@ -103,7 +103,7 @@ func fakeGH(prs []map[string]any, calls *[]string) GH {
 					if pr["queued"] == true {
 						entry = map[string]any{"id": "queue-1"}
 					}
-					return json.Marshal(map[string]any{"data": map[string]any{"repository": map[string]any{"ref": map[string]any{"target": map[string]any{"oid": base}}, "pullRequest": map[string]any{"id": "PR-" + number, "headRefOid": pr["headRefOid"], "baseRefOid": "recorded-merge-base", "mergeQueueEntry": entry}}}})
+					return json.Marshal(map[string]any{"data": map[string]any{"repository": map[string]any{"ref": map[string]any{"target": map[string]any{"oid": base}}, "pullRequest": map[string]any{"id": "PR-" + number, "headRefOid": pr["headRefOid"], "baseRefOid": "recorded-merge-base", "state": pr["state"], "mergeCommit": pr["mergeCommit"], "mergeQueueEntry": entry}}}})
 				}
 			}
 			pages := threadsByPR[number]

@@ -339,6 +339,8 @@ async function run(platform) {
     inputFrames(selectDragStart).length === 0 && mouseFrames(selectDragStart).length === 0,
     `the select-text drag still reached the application: ${JSON.stringify(frames.slice(selectDragStart))}`,
   );
+
+  await page.evaluate(() => new Promise(requestAnimationFrame));
   await screen.click({ button: "right", position: { x: 200, y: 300 } });
   await menu.waitFor();
   assert.equal(
@@ -358,6 +360,123 @@ async function run(platform) {
     !copiedSelection.includes(LINES[1]),
     "the selection copy took the screen instead of the dragged cells",
   );
+
+  // Select text forces selection on the primary button only: middle and
+  // right presses reach the application as the SGR reports it asked for,
+  // while the selection the drag made survives for the menu's Copy.
+  const otherButtonsStart = frames.length;
+  await page.mouse.move(box.x + 200, box.y + 280);
+  for (const button of ["middle", "right"]) {
+    await page.mouse.down({ button });
+    await page.mouse.up({ button });
+  }
+  const reports = mouseFrames(otherButtonsStart).map((frame) => Buffer.from(frame.data, "base64").toString());
+  assert.ok(reports.some((data) => data.startsWith("\u001b[<1;")), "the middle press reaches the application as its own report");
+  assert.ok(reports.some((data) => data.startsWith("\u001b[<2;")), "the right press reaches the application as its own report");
+  assert.ok(!reports.some((data) => data.startsWith("\u001b[<32;")), "the drag's cells are not replayed as motion reports");
+  // The right press opened this menu after both reports. Its Copy row proves
+  // the selection survived without sending unrelated input to the terminal.
+  await menu.waitFor();
+  await page.evaluate(() => navigator.clipboard.writeText("before-presses-copy"));
+  assert.equal(
+    await menu.locator("[data-terminal-menu-copy]").innerText(),
+    "Copy",
+    "non-primary presses must not clear the selection",
+  );
+  await menu.locator("[data-terminal-menu-copy]").click();
+  await menu.waitFor({ state: "detached" });
+  const stillSelected = await waitForClipboard(page, (text) => text !== "before-presses-copy");
+  assert.ok(LINES[0].includes(stillSelected.trim()), "the copy after the presses still takes the dragged cells");
+
+  // Non-primary gestures keep xterm's modifiers, releases, drag reports and
+  // negotiated encodings. Only the primary button is diverted to selection.
+  emitOutput("\u001b[?1002h");
+  await page.waitForTimeout(50);
+  await dragOverFirstLine();
+  const sgrDragStart = frames.length;
+  await page.mouse.move(box.x + 24, box.y + 280);
+  await page.keyboard.down("Control");
+  await page.mouse.down({ button: "middle" });
+  await page.mouse.move(box.x + 48, box.y + 280, { steps: 2 });
+  await page.mouse.up({ button: "middle" });
+  await page.keyboard.up("Control");
+  const sgrDrag = mouseFrames(sgrDragStart).map((frame) => Buffer.from(frame.data, "base64").toString());
+  assert.ok(sgrDrag.some((data) => /^\u001b\[<17;\d+;\d+M$/.test(data)), `Ctrl+middle press: ${JSON.stringify(sgrDrag)}`);
+  assert.ok(sgrDrag.some((data) => /^\u001b\[<49;\d+;\d+M$/.test(data)), `Ctrl+middle drag: ${JSON.stringify(sgrDrag)}`);
+  assert.ok(sgrDrag.some((data) => /^\u001b\[<17;\d+;\d+m$/.test(data)), `Ctrl+middle release: ${JSON.stringify(sgrDrag)}`);
+  await screen.click({ button: "right", position: { x: 200, y: 300 } });
+  await menu.waitFor();
+  assert.equal(await menu.locator("[data-terminal-menu-copy]").innerText(), "Copy", "a non-primary drag preserves its starting selection");
+  await menu.locator("[data-terminal-menu-copy]").click();
+  await menu.waitFor({ state: "detached" });
+
+  emitOutput("\u001b[?1006l");
+  await page.waitForTimeout(50);
+  const legacyStart = frames.length;
+  await page.keyboard.down("Control");
+  await page.mouse.down({ button: "middle" });
+  await page.mouse.up({ button: "middle" });
+  await page.keyboard.up("Control");
+  const legacy = frames.slice(legacyStart).filter((frame) => frame.type === "reply")
+    .map((frame) => Buffer.from(frame.data, "base64").toString());
+  assert.ok(legacy.some((data) => data.startsWith("\u001b[M") && data.charCodeAt(3) === 49), `legacy Ctrl+middle: ${JSON.stringify(legacy)}`);
+
+  emitOutput("\u001b[?1006h\u001b[?1016h");
+  await page.waitForTimeout(50);
+  const pixelStart = frames.length;
+  await page.mouse.move(box.x + 100, box.y + 100);
+  await page.keyboard.down("Control");
+  await page.mouse.down({ button: "middle" });
+  await page.mouse.up({ button: "middle" });
+  await page.keyboard.up("Control");
+  const pixels = mouseFrames(pixelStart).map((frame) => Buffer.from(frame.data, "base64").toString());
+  assert.ok(pixels.includes("\u001b[<17;100;100M"), `pixel Ctrl+middle: ${JSON.stringify(pixels)}`);
+  emitOutput("\u001b[?1002l\u001b[?1016l\u001b[?1000h\u001b[?1006h");
+  await page.waitForTimeout(50);
+
+  // Input delivered while a report restoration is still pending cancels it.
+  await dragOverFirstLine();
+  await page.evaluate(() => {
+    const target = document.querySelector("[data-live-terminal] .xterm-screen");
+    target.dispatchEvent(new MouseEvent("mousedown", { button: 2, buttons: 2, bubbles: true, cancelable: true }));
+    document.dispatchEvent(new MouseEvent("mouseup", { button: 2, buttons: 0, bubbles: true, cancelable: true }));
+    document.querySelector(".xterm-helper-textarea").dispatchEvent(new KeyboardEvent("keydown", {
+      key: "a", code: "KeyA", keyCode: 65, which: 65, bubbles: true, cancelable: true,
+    }));
+  });
+  await screen.click({ button: "right", position: { x: 200, y: 300 } });
+  await menu.waitFor();
+  assert.equal(await menu.locator("[data-terminal-menu-copy]").innerText(), "Copy screen", "typing invalidates the saved mouse-report range");
+  await page.keyboard.press("Escape");
+  await menu.waitFor({ state: "detached" });
+
+  await dragOverFirstLine();
+  await page.evaluate(() => {
+    const target = document.querySelector("[data-live-terminal] .xterm-screen");
+    target.dispatchEvent(new MouseEvent("mousedown", { button: 2, buttons: 2, bubbles: true, cancelable: true }));
+    document.dispatchEvent(new MouseEvent("mouseup", { button: 2, buttons: 0, bubbles: true, cancelable: true }));
+    const clipboardData = new DataTransfer();
+    clipboardData.setData("text/plain", "pending-paste");
+    document.querySelector(".xterm-helper-textarea").dispatchEvent(new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }));
+  });
+  await screen.click({ button: "right", position: { x: 200, y: 300 } });
+  await menu.waitFor();
+  assert.equal(await menu.locator("[data-terminal-menu-copy]").innerText(), "Copy screen", "pasting invalidates the saved mouse-report range");
+  await page.keyboard.press("Escape");
+  await menu.waitFor({ state: "detached" });
+
+  // A range from the normal buffer is not a selection in the alternate buffer.
+  await dragOverFirstLine();
+  emitOutput("\u001b[?1049h");
+  await page.waitForTimeout(50);
+  await screen.click({ button: "right", position: { x: 200, y: 300 } });
+  await menu.waitFor();
+  assert.equal(await menu.locator("[data-terminal-menu-copy]").innerText(), "Copy screen", "buffer switching invalidates the saved mouse-report range");
+  await page.keyboard.press("Escape");
+  await menu.waitFor({ state: "detached" });
+  emitOutput("\u001b[?1049l");
+  await page.waitForTimeout(50);
+
   await chip.click();
   await chip.waitFor({ state: "hidden" });
   const offDragStart = frames.length;

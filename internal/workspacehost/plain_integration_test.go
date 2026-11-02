@@ -298,7 +298,7 @@ func TestPlainAssemblyLogoutPreservesOtherBrowserAndRuntime(t *testing.T) {
 	a.call("POST", "/auth/logout", nil, 204, nil)
 	requireClosedSocket(t, wa)
 	requireClosedEvents(t, ea)
-	a.call("GET", "/api/sessions", nil, 403, nil)
+	a.call("GET", "/api/sessions", nil, 401, nil)
 	b.call("GET", "/api/sessions", nil, 200, nil)
 	if p.calls != 1 || f.native.callCount() != 0 {
 		t.Fatal("sign out restarted or stopped the workspace")

@@ -483,19 +483,85 @@ export function createTerminal(
   element.addEventListener("touchmove", touchMove, { passive: false, capture: true });
   element.addEventListener("touchend", touchEnd, { passive: false, capture: true });
   element.addEventListener("touchcancel", touchCancel);
-  // xterm decides between reporting a press to the application and starting
-  // a native selection when the press lands, and the modifier it reads for
-  // the native path while mouse reporting is on is the platform's
-  // force-selection one. A DOM modifier is a read-only getter, so the press
-  // is marked by shadowing that property with an own getter in the capture
-  // phase — before xterm sees it — and only presses over an application
-  // that asked for mouse reports are marked, so nothing changes when
-  // nothing tracks the mouse.
+  let reportedSelection: ReturnType<Terminal["getSelectionPosition"]>;
+  let reportedSelectionText: string | undefined;
+  let selectionReport = 0;
+  let expectedSelectionClear = false;
+  let restoringSelection = false;
+  let reportingMouseGesture = false;
+  const invalidateReportedSelection = (): void => {
+    selectionReport++;
+    reportedSelection = undefined;
+    reportedSelectionText = undefined;
+    expectedSelectionClear = false;
+    reportingMouseGesture = false;
+  };
+  const selectionSubscription = terminal.onSelectionChange(() => {
+    if (restoringSelection) return;
+    if (expectedSelectionClear) {
+      expectedSelectionClear = false;
+      return;
+    }
+    invalidateReportedSelection();
+  });
+  const dataSubscription = terminal.onData((data) => {
+    const mouseReport = data.startsWith("\x1b[<") || data.startsWith("\x1b[M");
+    const selectionPaste = reportingMouseGesture && data === `\x1b[200~${reportedSelectionText}\x1b[201~`;
+    if (!mouseReport && !selectionPaste) invalidateReportedSelection();
+  });
+  const bufferSubscription = terminal.buffer.onBufferChange(invalidateReportedSelection);
+  const restoreSelection = (selection: NonNullable<typeof reportedSelection>): void => {
+    if (terminal.hasSelection()) return;
+    const length = (selection.end.y - selection.start.y) * terminal.cols + selection.end.x - selection.start.x;
+    restoringSelection = true;
+    try {
+      terminal.select(selection.start.x, selection.start.y, length);
+    } finally {
+      restoringSelection = false;
+    }
+  };
+  // Only primary drags are forced into xterm's native selection path. Other
+  // buttons retain xterm's negotiated mouse encoding and complete gesture.
   const selectPress = (event: MouseEvent): void => {
-    if (!selectText || event.type !== "mousedown" || terminal.modes.mouseTrackingMode === "none") return;
-    Object.defineProperty(event, forceSelectionModifier(navigator.platform), { get: () => true });
+    if (!selectText || terminal.modes.mouseTrackingMode === "none") return;
+    const primary = event.type === "mousemove" ? event.buttons <= 1 : event.button === 0;
+    if (primary) {
+      if (event.type === "mousedown") {
+        invalidateReportedSelection();
+        Object.defineProperty(event, forceSelectionModifier(navigator.platform), { get: () => true });
+      }
+      return;
+    }
+    // A second report can arrive before the previous event's restoration
+    // timer. Reinstate its range before xterm handles this report.
+    if (reportedSelection) restoreSelection(reportedSelection);
+    const selection = terminal.getSelectionPosition();
+    if (!selection) return;
+    const report = ++selectionReport;
+    reportedSelection = selection;
+    reportedSelectionText = terminal.getSelection();
+    expectedSelectionClear = true;
+    reportingMouseGesture = true;
+    // xterm clears its selection after reporting any mouse event. Restore the
+    // same public buffer range after xterm's listener for this event so the
+    // application report cannot consume the text the context menu will copy.
+    const restore = () => {
+      if (selectionReport !== report || reportedSelection !== selection) return;
+      expectedSelectionClear = false;
+      reportingMouseGesture = false;
+      restoreSelection(selection);
+    };
+    if (event.type === "mousedown") {
+      element.addEventListener(event.type, restore, { once: true });
+    } else {
+      // xterm stops release and drag propagation immediately, so their
+      // restoration runs after the event rather than in a later listener.
+      element.ownerDocument.defaultView!.setTimeout(restore, 0);
+    }
   };
   element.addEventListener("mousedown", selectPress, true);
+  element.ownerDocument.addEventListener("mouseup", selectPress, true);
+  element.ownerDocument.addEventListener("mousemove", selectPress, true);
   const viewportSubscription = terminal.onScroll(() => {
     if (terminal.buffer.active.type !== "normal") return;
     scrollbackSubscriber?.(
@@ -549,6 +615,7 @@ export function createTerminal(
     setSelectText: (on) => {
       endGesture();
       selectText = on;
+      if (!on) invalidateReportedSelection();
       return selectText;
     },
     jumpToLive: () => {
@@ -573,6 +640,12 @@ export function createTerminal(
       viewportSubscription.dispose();
       parent.removeEventListener("copy", copyWrappedUrl, true);
       element.removeEventListener("mousedown", selectPress, true);
+      element.ownerDocument.removeEventListener("mouseup", selectPress, true);
+      element.ownerDocument.removeEventListener("mousemove", selectPress, true);
+      invalidateReportedSelection();
+      selectionSubscription.dispose();
+      dataSubscription.dispose();
+      bufferSubscription.dispose();
       ratioWatch.dispose();
       softKeyInput.dispose();
       delete parent.dataset.terminalScrollbackLines;

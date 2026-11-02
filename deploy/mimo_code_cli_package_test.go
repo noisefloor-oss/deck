@@ -14,6 +14,8 @@ func TestDockerfilePinsMimoCodeCLI(t *testing.T) {
 	dockerfile := string(raw)
 	for _, required := range []string{
 		"ARG MIMO_VERSION=0.1.16",
+		"ARG MIMO_SHA256_AMD64=2eb7863354a222d20d3319f5876711df85ef07b5e89bb644fdceaf3f81fd884a",
+		"ARG MIMO_SHA256_ARM64=220c621eb61a175ba0bc8e9c45c217abfed8dace1f17111c3717bceb95ad2ab3",
 		`"@mimo-ai/cli@${MIMO_VERSION}"`,
 		`test "$(mimo --version)" = "${MIMO_VERSION}"`,
 		"mimo --help >/tmp/mimo-help 2>&1",

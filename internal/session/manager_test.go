@@ -859,7 +859,7 @@ func TestRecordPaneExitWithoutEvidenceIsInterrupted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if applied, err := repo.MarkInterrupted(ctx, s.ID,
+	if applied, err := repo.MarkInterruptedObserved(ctx, s,
 		"test dead pane without exit evidence"); err != nil || !applied {
 		t.Fatalf("record interrupted: applied=%v err=%v", applied, err)
 	}
@@ -900,7 +900,7 @@ func TestStoppedDeadPaneWithoutEvidenceIsNotResumeCandidate(t *testing.T) {
 	if err := repo.FinishStopAttempt(ctx, attempt, "test stop gesture completed before a signal", true); err != nil {
 		t.Fatalf("FinishStopAttempt: %v", err)
 	}
-	if applied, err := repo.MarkInterrupted(ctx, s.ID,
+	if applied, err := repo.MarkInterruptedObserved(ctx, s,
 		"test stopped dead pane without exit evidence"); err != nil || !applied {
 		t.Fatalf("record interrupted: applied=%v err=%v", applied, err)
 	}

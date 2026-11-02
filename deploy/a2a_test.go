@@ -6,19 +6,6 @@ import (
 	"testing"
 )
 
-func TestA2AChat(t *testing.T) {
-	python, err := exec.LookPath("python3")
-	if err != nil {
-		t.Skip("python3 is unavailable")
-	}
-	command := exec.Command(python, "-B", "-m", "unittest", "-v", "test_a2a.py")
-	command.Dir = filepath.Join("a2a")
-	output, err := command.CombinedOutput()
-	if err != nil {
-		t.Fatalf("a2a chat tests failed: %v\n%s", err, output)
-	}
-}
-
 func TestA2APiHook(t *testing.T) {
 	node, err := exec.LookPath("node")
 	if err != nil {

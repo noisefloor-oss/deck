@@ -8,8 +8,8 @@ idle recipient is not guaranteed to wake. Automatic chat never writes into
 the terminal editor.
 
 This document is the reference for the design. The skill that agents read
-is `deploy/mempalace/skills/a2a-chat/SKILL.md`; the code is
-`deploy/a2a/a2a.py`.
+is `deploy/mempalace/skills/a2a-chat/SKILL.md`; the standalone client and
+its suite live in https://github.com/noisefloor-oss/a2a.
 
 ## CLI guidance and output
 
@@ -298,7 +298,7 @@ binds to the pane whose Codex process command line names the payload's
 thread, falling back to a unique process cwd match. A pane naming a different
 resume thread is never bound by cwd; ambiguous or missing matches retain the
 hook environment's identity. Owner lookups are cached for ten minutes while
-the owner PID still runs Codex. The courier also reads
+the owner PID still runs Codex with the same start time. The courier also reads
 `codex resume <uuid>` command lines as a fallback native session ID, so
 resumed panes can receive through the queue before a hook runs. Signed
 hook presence remains authoritative over that scanned ID.
@@ -629,8 +629,8 @@ in "What the console reads" or add a terminal input path for the courier.
 
 | Path | Role |
 |---|---|
-| `deploy/a2a/a2a.py` | The client, hooks and courier. Installed as `/usr/local/bin/a2a`. |
-| `deploy/a2a/test_a2a.py` | Protocol, inbox, roster and courier tests against an in-memory Logstream. |
+| https://github.com/noisefloor-oss/a2a | The standalone client, hooks, courier and their protocol suite. Deck installs its pinned artifact as `/usr/local/bin/a2a`. |
+| `deploy/a2a/relay_fixture.py` | The local in-memory Logstream used by Deck's integration fixtures. |
 | `deploy/mempalace/skills/a2a-chat/` | The skill every harness receives. |
 | `deploy/mempalace/hooks/a2a-hook.sh` | Claude Code lifecycle hook. |
 | `deploy/mempalace/hooks/a2a-pi-hook.js` | Pi and omp extension: presence plus in-process delivery. |

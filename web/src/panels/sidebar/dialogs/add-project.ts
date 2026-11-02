@@ -75,7 +75,7 @@ export function addProjectView(state: AddProjectState): AddProjectView {
   // the stopped state's fact, not a refusal's.
   const stopped = job?.status === "stopped" || (job?.status === "failed" && job.failure === "network");
   const done = job?.status === "done";
-  const failed = job?.status === "failed" && !stopped;
+  const failed = job?.status === "failed" && !stopped && job.url === (ins?.clone_url ?? raw);
   const editing = !running && !stopped && !done;
 
   let kind: AddProjectKind = "empty";
@@ -100,8 +100,11 @@ export function addProjectView(state: AddProjectState): AddProjectView {
   const nested = parent !== null && kind !== "worktree" && kind !== "dup";
   const parentKnown = parent === null ? null : state.projects.find((p) => p.path === parent.path) ?? null;
   const sameClone = kind === "url" && ins?.same_clone === true;
-  const collide = kind === "url" && !sameClone && (ins?.exists === true || (failed && job?.failure === "dest_not_empty"));
-  const blocked = kind === "empty" || kind === "dup" || collide || failed || state.inspectError !== "" || state.inspecting;
+  // Only the failed clone's own empty destination can be retried. Display
+  // entries omit files and hidden directories, so the server reports emptiness.
+  const retry = failed && job?.destination === path && ins?.empty === true;
+  const collide = kind === "url" && !sameClone && (ins?.exists === true || (failed && job?.failure === "dest_not_empty")) && !retry;
+  const blocked = kind === "empty" || kind === "dup" || collide || state.inspectError !== "" || state.inspecting;
   const hasParent = parent !== null;
   const storePath = ins?.store_path ?? "";
   // A job knows its own name; before one exists the name is the path's.

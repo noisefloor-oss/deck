@@ -73,7 +73,7 @@ func createInterrupted(t *testing.T, mgr *Manager, projectID string) *Session {
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
-	applied, err := mgr.repo.MarkInterrupted(ctx, s.ID, "test fixture records no exit evidence")
+	applied, err := mgr.repo.MarkInterruptedObserved(ctx, s, "test fixture records no exit evidence")
 	if err != nil || !applied {
 		t.Fatalf("mark interrupted fixture: applied=%v err=%v", applied, err)
 	}

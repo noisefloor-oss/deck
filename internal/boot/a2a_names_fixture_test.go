@@ -25,7 +25,7 @@ import (
 )
 
 // Opt-in acceptance over the real backend, native credential-free Kimi,
-// built browser UI, and source a2a CLI. Each run owns its database, home,
+// built browser UI, and standalone a2a CLI. Each run owns its database, home,
 // socket, keys, and in-memory relay; the relay refuses chat writes.
 // This verifies live process identity, never provider authentication/readiness.
 // Build web/dist first, then set NOISEDECK_A2A_NAMES_FIXTURE=1.
@@ -56,9 +56,12 @@ func TestA2ASessionNamesPropagateThroughLiveKimi(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sourceA2A := filepath.Join(repo, "deploy", "a2a", "a2a.py")
+	sourceA2A := os.Getenv("A2A_PROBE_CLIENT")
+	if sourceA2A == "" {
+		sourceA2A = "/usr/local/bin/a2a"
+	}
 	if _, err := os.Stat(sourceA2A); err != nil {
-		t.Skipf("source a2a client missing: %v", err)
+		t.Skipf("standalone a2a client missing: %v", err)
 	}
 	relayScript := filepath.Join(repo, "deploy", "a2a", "relay_fixture.py")
 	if _, err := os.Stat(relayScript); err != nil {

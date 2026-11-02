@@ -459,44 +459,6 @@ func (e ExecutableIdentity) Sufficient() bool { return !e.Interpreted }
 // ErrUnavailable is the sentinel for a provider that may not be used.
 var ErrUnavailable = errors.New("provider unavailable")
 
-// Registry holds the descriptors this build knows about.
-type Registry struct {
-	byName map[Name]Descriptor
-}
-
-// NewRegistry builds a registry from descriptors.
-func NewRegistry(descriptors ...Descriptor) (*Registry, error) {
-	r := &Registry{byName: make(map[Name]Descriptor, len(descriptors))}
-	for _, d := range descriptors {
-		if _, dup := r.byName[d.Name()]; dup {
-			return nil, fmt.Errorf("provider: duplicate descriptor for %q", d.Name())
-		}
-		r.byName[d.Name()] = d
-	}
-	return r, nil
-}
-
-// Lookup returns the descriptor for a provider name.
-func (r *Registry) Lookup(name Name) (Descriptor, error) {
-	d, ok := r.byName[name]
-	if !ok {
-		return nil, fmt.Errorf("provider: no descriptor for %q", name)
-	}
-	return d, nil
-}
-
-// Available returns the descriptors that may currently be used, sorted by name.
-func (r *Registry) Available() []Descriptor {
-	var out []Descriptor
-	for _, d := range r.byName {
-		if d.Availability() == nil {
-			out = append(out, d)
-		}
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name() < out[j].Name() })
-	return out
-}
-
 // AvailableNames reports, sorted, the names in a boot-built registry. Boot
 // registers only the harnesses whose executable resolved, so the registry is
 // what this image can actually launch. Every consumer of that answer — the
@@ -511,12 +473,3 @@ func AvailableNames(registry map[Name]Descriptor) []string {
 	sort.Strings(out)
 	return out
 }
-
-// There is deliberately no Unavailable accessor. It existed to let a caller
-// render a diagnostic for each unusable provider, on the rule that the UI
-// must show one "rather than hiding the provider". That rule is now the
-// opposite of the product's: Deck ships in more than one image, a harness
-// the image does not contain is not a fault to report, and an unavailable
-// harness is not offered anywhere. Nothing ever called it — a method with no
-// consumer, describing a contract nothing implements and the product
-// contradicts, is worse than its absence.

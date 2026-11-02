@@ -2,10 +2,10 @@ package provider
 
 // First-run workspace trust.
 //
-// Claude, Codex and Kimi each record, in their own state, whether a directory
-// has been trusted. This reads that record for one project so a caller can
-// see which harnesses are provisioned for it, and which file carries the
-// answer.
+// Each harness whose workspace-trust gate has been measured records, in its
+// own state, whether a directory has been trusted. This reads that record for
+// one project so a caller can see which harnesses are provisioned for it, and
+// which file carries the answer.
 //
 // It reports. Nothing here gates a launch, and no result asserts anything
 // about a session: a config file cannot establish whether a CLI will stop at
@@ -19,12 +19,12 @@ package provider
 // rather than a working launch.
 //
 // The gates, and how each one decides, are recorded in the contracts
-// (docs/provider-contracts/{claude,codex,kimi}.yaml) with the versions they
-// were measured on. Three properties this code depends on:
+// (docs/provider-contracts/{claude,codex,devin,kimi}.yaml) with the versions
+// they were measured on. Three properties this code depends on:
 //
-//   - Claude and Codex INHERIT: a directory under a trusted one launches
-//     without a modal, and Codex also carries the decision from a linked
-//     worktree's main checkout, which is not an ancestor of it. So an
+//   - Claude, Codex and Devin INHERIT: a directory under a trusted one
+//     launches without a modal, and Codex also carries the decision from a
+//     linked worktree's main checkout, which is not an ancestor of it. So an
 //     exact-key miss is not evidence of a modal: the candidates are the
 //     path, every directory above it, and the main checkout of a worktree
 //     it lives in.

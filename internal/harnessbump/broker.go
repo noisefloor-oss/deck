@@ -260,7 +260,7 @@ func admit(raw []byte, policy BrokerPolicy) ([]byte, string) {
 	}
 	if raw, ok := req["max_output_tokens"]; ok {
 		var n int
-		if err := json.Unmarshal(raw, &n); err != nil || n > policy.MaxOutputTokens {
+		if err := json.Unmarshal(raw, &n); err != nil || n <= 0 || n > policy.MaxOutputTokens {
 			return nil, "max_output_tokens exceeds the round's bound"
 		}
 	}

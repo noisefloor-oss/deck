@@ -239,6 +239,7 @@ func TestNoRuntimeStageCopiesAToolchainIntoTheImage(t *testing.T) {
 		"/opt/npm-harnesses/":                            true,
 		"/out/noise-deck":                                true,
 		"/out/noisedeck-provision":                       true,
+		"/out/a2a":                                       true,
 		"/out/usr/local/bin/tmux":                        true,
 		"/out/usr/local/bin/noise":                       true,
 		"/out/usr/local/bin/noise-tasks":                 true,

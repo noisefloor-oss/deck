@@ -17,6 +17,7 @@ services:
         # Font choice belongs to the installation (see docs/fonts.md).
         NOISEDECK_FONTS: ${NOISEDECK_FONTS:-auto}
         NOISE_TASKS_REPO: ${NOISE_TASKS_REPO:-https://github.com/${NOISEDECK_SOURCE_ORG:-noisefloor-oss}/tasks.git}
+        NOISE_A2A_REPO: ${NOISE_A2A_REPO:-https://github.com/${NOISEDECK_SOURCE_ORG:-noisefloor-oss}/a2a.git}
         NOISE_SDLC_REPO: ${NOISE_SDLC_REPO:-https://github.com/${NOISEDECK_SOURCE_ORG:-noisefloor-oss}/sdlc.git}
         NOISE_VISUAL_DIFF_REPO: ${NOISE_VISUAL_DIFF_REPO:-https://github.com/${NOISEDECK_SOURCE_ORG:-noisefloor-oss}/visual-diff.git}
     user: "${NOISEDECK_RUNTIME_UID:-1026}:${NOISEDECK_RUNTIME_GID:-100}"

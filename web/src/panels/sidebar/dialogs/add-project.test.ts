@@ -203,13 +203,54 @@ test("a stopped clone keeps its partial directory as a state with resume and dis
 });
 
 test("bad and private are one refusal; a refused key names the fix", () => {
-  const refused = addProjectModalHtml(state("fable/missing", { kind: "clone", path: "/workspace/missing", exists: false, entries: [], clone_url: "https://github.com/fable/missing" }, { job: job({ status: "failed", failure: "bad_or_private", stderr: "remote: Repository not found." }) }));
+  const refused = addProjectModalHtml(state("fable/missing", { kind: "clone", path: "/workspace/missing", exists: false, entries: [], clone_url: "https://github.com/fable/missing" }, { job: job({ url: "https://github.com/fable/missing", status: "failed", failure: "bad_or_private", stderr: "remote: Repository not found." }) }));
   assert.ok(refused.includes("No repository there, or it is private."));
   assert.ok(refused.includes("Use the SSH URL for a private repository."));
-  const auth = addProjectModalHtml(state("git@github.com:fable/private.git", { kind: "clone", path: "/workspace/private", exists: false, entries: [], clone_url: "git@github.com:fable/private.git" }, { job: job({ status: "failed", failure: "auth", stderr: "Permission denied (publickey)." }) }));
+  const auth = addProjectModalHtml(state("git@github.com:fable/private.git", { kind: "clone", path: "/workspace/private", exists: false, entries: [], clone_url: "git@github.com:fable/private.git" }, { job: job({ url: "git@github.com:fable/private.git", status: "failed", failure: "auth", stderr: "Permission denied (publickey)." }) }));
   assert.ok(auth.includes("The server refused this machine's key."));
   assert.ok(auth.includes("ssh -T git@github.com"));
   assert.equal(addProjectView(state("x", null, { job: job({ status: "failed", failure: "auth" }) })).editing, true, "a failure returns to the field");
+});
+
+test("a successful re-inspection enables retry of the same failed clone", () => {
+  const failedJob = job({ status: "failed", failure: "bad_or_private", stderr: "remote: Repository not found." });
+  const s = state("fable/tasks-engine", { kind: "clone", path: "/workspace/tasks-engine", exists: false, entries: [], clone_url: failedJob.url }, { job: failedJob, inspecting: true });
+  assert.equal(addProjectView(s).failed, true);
+  assert.equal(addProjectView(s).primaryDisabled, true);
+
+  s.inspecting = false;
+  s.input = "fable/other-project";
+  s.inspection = { kind: "clone", path: "/workspace/other-project", exists: false, entries: [], clone_url: "https://github.com/fable/other-project" };
+  assert.equal(addProjectView(s).failed, false);
+  assert.equal(addProjectView(s).primaryDisabled, false);
+  assert.ok(!addProjectModalHtml(s).includes("No repository there, or it is private."));
+
+  s.input = "fable/tasks-engine";
+  s.inspection = { kind: "clone", path: "/workspace/tasks-engine", exists: true, empty: true, entries: [], clone_url: failedJob.url };
+  const retry = addProjectView(s);
+  assert.equal(retry.failed, true, "the failure remains visible while retry is available");
+  assert.equal(retry.collide, false);
+  assert.equal(retry.primaryDisabled, false);
+
+  s.inspection = { kind: "clone", path: "/workspace/tasks-engine", exists: true, entries: [], clone_url: failedJob.url };
+  assert.equal(addProjectView(s).primaryDisabled, true, "files and hidden directories omitted from entries still block retry");
+
+  s.input = "other/deck";
+  s.inspection = { kind: "clone", path: "/workspace/deck", exists: true, entries: [".git", "src"], clone_url: "https://github.com/other/deck" };
+  assert.equal(addProjectView(s).collide, true, "a different occupied destination stays blocked");
+  assert.equal(addProjectView(s).primaryDisabled, true);
+
+  s.inspection = { kind: "clone", path: "/workspace/deck", exists: true, empty: true, entries: [], clone_url: "https://github.com/other/deck" };
+  assert.equal(addProjectView(s).primaryDisabled, true, "a different repository's existing empty destination stays blocked");
+
+  s.input = "fable/other-tasks-engine";
+  s.inspection = { kind: "clone", path: "/workspace/other-tasks-engine", exists: true, empty: true, entries: [], clone_url: failedJob.url };
+  assert.equal(addProjectView(s).primaryDisabled, true, "the same repository at a different existing destination stays blocked");
+
+  s.input = failedJob.url;
+  s.inspection = { kind: "clone", path: "/workspace/tasks-engine", exists: true, entries: [".git", "src"], clone_url: failedJob.url };
+  assert.equal(addProjectView(s).collide, true, "the failed repository's occupied destination stays blocked");
+  assert.equal(addProjectView(s).primaryDisabled, true);
 });
 
 test("a finished clone offers an empty board and asks for no PRD", () => {

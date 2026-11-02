@@ -45,16 +45,19 @@ func TestComposeForwardsDependencyRepositoryLocations(t *testing.T) {
 			}{
 				{nil, map[string]string{
 					"NOISE_TASKS_REPO":       "https://github.com/noisefloor-oss/tasks.git",
+					"NOISE_A2A_REPO":         "https://github.com/noisefloor-oss/a2a.git",
 					"NOISE_SDLC_REPO":        "https://github.com/noisefloor-oss/sdlc.git",
 					"NOISE_VISUAL_DIFF_REPO": "https://github.com/noisefloor-oss/visual-diff.git",
 				}},
 				{map[string]string{"NOISEDECK_SOURCE_ORG": "my-fork"}, map[string]string{
 					"NOISE_TASKS_REPO":       "https://github.com/my-fork/tasks.git",
+					"NOISE_A2A_REPO":         "https://github.com/my-fork/a2a.git",
 					"NOISE_SDLC_REPO":        "https://github.com/my-fork/sdlc.git",
 					"NOISE_VISUAL_DIFF_REPO": "https://github.com/my-fork/visual-diff.git",
 				}},
 				{map[string]string{"NOISEDECK_SOURCE_ORG": "my-fork", "NOISE_SDLC_REPO": "https://github.com/mirror/sdlc.git"}, map[string]string{
 					"NOISE_TASKS_REPO":       "https://github.com/my-fork/tasks.git",
+					"NOISE_A2A_REPO":         "https://github.com/my-fork/a2a.git",
 					"NOISE_SDLC_REPO":        "https://github.com/mirror/sdlc.git",
 					"NOISE_VISUAL_DIFF_REPO": "https://github.com/my-fork/visual-diff.git",
 				}},
@@ -105,10 +108,27 @@ func TestImageWorkflowsForwardDependencyRepositoryVariables(t *testing.T) {
 		if err := yaml.Unmarshal(raw, &workflow); err != nil {
 			t.Fatal(err)
 		}
-		for _, variable := range []string{"NOISE_TASKS_REPO", "NOISE_SDLC_REPO"} {
+		for _, variable := range []string{"NOISE_TASKS_REPO", "NOISE_A2A_REPO", "NOISE_SDLC_REPO"} {
 			if workflow.Env[variable] != "${{ vars."+variable+" }}" {
 				t.Errorf("%s does not forward repository variable %s", name, variable)
 			}
+		}
+	}
+}
+
+func TestHarnessBumpBuildForwardsDependencyRepositories(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", ".github", "workflows", "harness-bump.yaml"))
+	if os.IsNotExist(err) {
+		t.Skip("private harness workflow is absent from the public export")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(raw)
+	for _, variable := range []string{"NOISE_A2A_REPO", "NOISE_TASKS_REPO", "NOISE_SDLC_REPO", "NOISE_VISUAL_DIFF_REPO"} {
+		want := "--build-arg " + variable + `="${{ vars.` + variable + " ||"
+		if !strings.Contains(body, want) {
+			t.Errorf("harness bump does not forward %s to the direct Docker build", variable)
 		}
 	}
 }

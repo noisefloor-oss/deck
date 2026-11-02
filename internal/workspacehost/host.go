@@ -109,6 +109,11 @@ func (h *Host) mountWithPlain(ctx context.Context, assets fs.FS, buildID string,
 		return ErrUnavailable
 	}
 	gatewayConfig := cfg.Gateway()
+	epochStore, err := workspacegateway.NewLogoutEpochStore(ctx, h.db)
+	if err != nil {
+		return ErrUnavailable
+	}
+	gatewayConfig.Auth.EpochStore = epochStore
 	keys, err := workspacekeys.New(ctx, h.db, workspacekeys.Config{InstanceID: gatewayConfig.InstanceID,
 		Origin: gatewayConfig.Origin, RPID: gatewayConfig.RPID, Preparation: h.grants, EncryptionPolicy: cfg.policy()})
 	if err != nil || h.grants.BindRegistry(keys) != nil {

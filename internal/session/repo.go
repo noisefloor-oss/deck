@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/noisefloor-oss/deck/internal/db"
@@ -248,60 +247,6 @@ func optionalStoredTime(t *time.Time) any {
 		return nil
 	}
 	return db.FormatTime(*t)
-}
-
-// RecordExit stores observed exit evidence. Exactly one of code and signal
-// must be present — a process exits with a status or on a signal, never both
-// — and the schema enforces the same rule redundantly. Guarded on the row
-// still being active: two observers of the same corpse race benignly, and
-// the loser must not double-write. applied is false for the loser.
-func (r *Repository) RecordExit(ctx context.Context, id string, code *int, signal *string, observedAt time.Time) (bool, error) {
-	if (code == nil) == (signal == nil) {
-		return false, fmt.Errorf("session: exit evidence for %s must be exactly one of code or signal", id)
-	}
-	applied := false
-	err := r.db.WithTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		applied = false
-		res, err := tx.ExecContext(ctx, `
-			UPDATE sessions SET status = ?, exit_code = ?, exit_signal = ?,
-				exited_at = ?, resume_probation_until = NULL, updated_at = ?
-			WHERE id = ? AND (status IN (?, ?)
-			  OR (status = ? AND stop_requested_at IS NOT NULL))`,
-			StatusExited, code, signal,
-			db.FormatTime(observedAt), db.FormatTime(time.Now()), id,
-			// A parked row is a caller only via the exactly verified force
-			// stop, which stamps the stop first — reconciliation
-			// observing a dead pane must not silently un-park a row.
-			StatusStarting, StatusRunning, StatusNeedsAttention,
-		)
-		if err != nil {
-			return fmt.Errorf("session: record exit %s: %w", id, err)
-		}
-		n, err := res.RowsAffected()
-		if err != nil {
-			return err
-		}
-		if n == 0 {
-			var one int
-			if scanErr := tx.QueryRowContext(ctx,
-				`SELECT 1 FROM sessions WHERE id = ?`, id).Scan(&one); scanErr != nil {
-				if errors.Is(scanErr, sql.ErrNoRows) {
-					return fmt.Errorf("session %s: %w", id, ErrNotFound)
-				}
-				return scanErr
-			}
-			return nil
-		}
-		applied = true
-		detail := "signal=" + deref(signal)
-		if code != nil {
-			detail = fmt.Sprintf("code=%d", *code)
-		}
-		return db.AppendAudit(ctx, tx, db.AuditEvent{
-			SessionID: &id, Type: AuditExited, Details: detail,
-		})
-	})
-	return applied, err
 }
 
 // RecordExitObserved records exit evidence only while the row still names the
@@ -861,16 +806,6 @@ func (r *Repository) ListByProject(ctx context.Context, projectID string) ([]*Se
 	return out, nil
 }
 
-// MarkInterrupted records loss of Deck's exact controller attachment without
-// claiming that an unverifiable predecessor died. It is
-// deliberately distinct from exited, whose evidence requirements the schema
-// enforces. Guarded on the row still being running: a concurrent actor that
-// already recorded a real exit must not have it rewritten into evidence-free
-// interruption.
-func (r *Repository) MarkInterrupted(ctx context.Context, id, reason string) (bool, error) {
-	return r.transition(ctx, id, StatusInterrupted, AuditInterrupted, reason, StatusRunning)
-}
-
 // MarkInterruptedObserved records an evidence-free death only for the exact
 // runtime generation whose absence or dead pane the caller observed.
 func (r *Repository) MarkInterruptedObserved(ctx context.Context, s *Session, reason string) (bool, error) {
@@ -931,52 +866,6 @@ func (r *Repository) AppendOrphanEvent(ctx context.Context, details string) erro
 			Type: AuditUnknownPane, Details: details,
 		})
 	})
-}
-
-// transition is a compare-and-swap: the row must still be in one of the
-// caller's observed `from` statuses, or nothing — including the audit
-// event — is written. Every caller acts on a snapshot, and an unconditional
-// write would let a stale snapshot overwrite a fresher truth (a recorded
-// exit rewritten as an evidence-free interruption, for instance). With no
-// `from` the row must merely exist.
-func (r *Repository) transition(ctx context.Context, id string, to Status, auditType, details string, from ...Status) (bool, error) {
-	applied := false
-	err := r.db.WithTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		applied = false
-		q := `UPDATE sessions SET status = ?, resume_probation_until = NULL, updated_at = ? WHERE id = ?`
-		args := []any{to, db.FormatTime(time.Now()), id}
-		if len(from) > 0 {
-			q += ` AND status IN (?` + strings.Repeat(", ?", len(from)-1) + `)`
-			for _, f := range from {
-				args = append(args, f)
-			}
-		}
-		res, err := tx.ExecContext(ctx, q, args...)
-		if err != nil {
-			return fmt.Errorf("session: transition %s to %s: %w", id, to, err)
-		}
-		n, err := res.RowsAffected()
-		if err != nil {
-			return err
-		}
-		if n == 0 {
-			// Distinguish "row moved on" from "row does not exist".
-			var one int
-			if scanErr := tx.QueryRowContext(ctx,
-				`SELECT 1 FROM sessions WHERE id = ?`, id).Scan(&one); scanErr != nil {
-				if errors.Is(scanErr, sql.ErrNoRows) {
-					return fmt.Errorf("session %s: %w", id, ErrNotFound)
-				}
-				return scanErr
-			}
-			return nil // superseded: no write, no audit
-		}
-		applied = true
-		return db.AppendAudit(ctx, tx, db.AuditEvent{
-			SessionID: &id, Type: auditType, Details: details,
-		})
-	})
-	return applied, err
 }
 
 func (r *Repository) transitionObserved(ctx context.Context, s *Session, to Status,

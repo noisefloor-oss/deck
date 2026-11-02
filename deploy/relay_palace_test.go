@@ -84,16 +84,6 @@ func TestOnlyA2AReachesTheRelayAndNothingPeersThePrivatePalace(t *testing.T) {
 			t.Errorf("%s no longer targets the private palace", path)
 		}
 	}
-	client, err := os.ReadFile(filepath.Join("a2a", "a2a.py"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(client), `os.environ.get("A2A_MCP_URL", "http://127.0.0.1:8766/mcp")`) {
-		t.Error("the a2a client's default is not the relay palace")
-	}
-	if !strings.Contains(string(client), `headers["Authorization"] = f"Bearer {token}"`) {
-		t.Error("the a2a client does not present A2A_MCP_TOKEN")
-	}
 }
 
 // The relay settings reach the container through the Compose deployment,

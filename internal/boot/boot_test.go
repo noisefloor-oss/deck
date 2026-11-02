@@ -1000,7 +1000,7 @@ func TestDiagnosticsReportRecordedObservedAndFleetState(t *testing.T) {
 		t.Fatalf("create exited row: %v", err)
 	}
 	exitCode := 0
-	if _, err := h.Sessions.RecordExit(ctx, exited.ID, &exitCode, nil, time.Now()); err != nil {
+	if _, err := h.Sessions.RecordExitObserved(ctx, exited, &exitCode, nil, time.Now()); err != nil {
 		t.Fatalf("record exited row: %v", err)
 	}
 	removed := newRow("diag-removed")
@@ -1128,7 +1128,7 @@ func TestDiagnosticsReportRecordedObservedAndFleetState(t *testing.T) {
 
 	liveExitCode := 23
 	liveExitedAt := time.Now().UTC().Truncate(time.Millisecond)
-	if _, err := h.Sessions.RecordExit(ctx, live.ID, &liveExitCode, nil, liveExitedAt); err != nil {
+	if _, err := h.Sessions.RecordExitObserved(ctx, live, &liveExitCode, nil, liveExitedAt); err != nil {
 		t.Fatalf("record live discrepancy: %v", err)
 	}
 	code, body = authenticatedGet(t, base+"/api/sessions/"+live.ID+"/status")

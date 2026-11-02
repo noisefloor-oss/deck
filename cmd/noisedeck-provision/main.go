@@ -627,17 +627,33 @@ func provisionKimi(home string) error {
 		if err := toml.Unmarshal(raw, &doc); err != nil {
 			return fmt.Errorf("%s does not parse as TOML: %w", confPath, err)
 		}
-		hooks, _ := doc["hooks"].([]any)
-		for _, entry := range hooks {
-			table, _ := entry.(map[string]any)
-			if table["event"] == "SessionStart" {
-				if cmd, _ := table["command"].(string); strings.TrimSpace(cmd) != "" {
-					return nil // a SessionStart hook already exists
+		value, hasHooks := doc["hooks"]
+		if hasHooks {
+			hooks, ok := value.([]any)
+			if !ok {
+				return fmt.Errorf("%s hooks must be an array of tables", confPath)
+			}
+			for _, entry := range hooks {
+				table, ok := entry.(map[string]any)
+				if !ok {
+					return fmt.Errorf("%s hooks must be an array of tables", confPath)
+				}
+				if table["event"] == "SessionStart" {
+					if cmd, _ := table["command"].(string); strings.TrimSpace(cmd) != "" {
+						return nil // a SessionStart hook already exists
+					}
 				}
 			}
 		}
+		var candidate map[string]any
+		if err := toml.Unmarshal(append(raw, []byte(kimiHookTOML)...), &candidate); err != nil {
+			return fmt.Errorf("%s cannot be extended without producing invalid TOML: %w", confPath, err)
+		}
+		if err := os.WriteFile(confPath+".noisedeck-bak", raw, 0o600); err != nil {
+			return fmt.Errorf("back up %s: %w", confPath, err)
+		}
 	}
-	// Appending a table cannot disturb existing content.
+	// Only an actual array-of-tables can be extended by appending.
 	// #nosec G304 -- sibling of the provisioned hooks file, same justification.
 	f, err := os.OpenFile(confPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
@@ -652,12 +668,12 @@ func provisionKimi(home string) error {
 
 // Workspace trust, per project.
 //
-// Claude, Codex and Kimi each stop a launch in a directory they have not been
-// trusted for, and each remembers the answer in its own state
-// (docs/provider-contracts). A person at the pane answers three modals per
-// project; provisioning owns provider configuration, so it can write those
-// three records instead — one command per project rather than one modal per
-// harness per project.
+// Each harness whose workspace-trust gate has been measured stops a launch in
+// a directory it has not been trusted for, and remembers the answer in its
+// own state (docs/provider-contracts). A person at the pane answers one modal
+// per harness per project; provisioning owns provider configuration, so it
+// can write those records instead — one command per project rather than one
+// modal per harness per project.
 //
 // What this does NOT do is decide. Trusting a directory is the user's
 // call, and this only carries a decision they have already made by naming the

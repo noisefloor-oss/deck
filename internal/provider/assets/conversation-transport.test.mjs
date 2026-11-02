@@ -75,7 +75,7 @@ test("shipped Pi settles only after a native queued continuation", { skip: !proc
   let directory = dirname(await realpath(executable)); let qualified = false;
   for (let i = 0; i < 6; i++, directory = dirname(directory)) {
     const pkg = await readFile(join(directory, "package.json"), "utf8").then(JSON.parse, () => null);
-    if (pkg?.name === "@earendil-works/pi-coding-agent") { assert.equal(pkg.version, "1.4.0"); qualified = true; break; }
+    if (pkg?.name === "@earendil-works/pi-coding-agent") { assert.equal(pkg.version, "1.5.0"); qualified = true; break; }
   }
   assert.ok(qualified, "native executable must be the pinned Pi package");
   const root = await mkdtemp("/tmp/deck-native-attention-");

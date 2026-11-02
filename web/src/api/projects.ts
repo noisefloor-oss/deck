@@ -49,6 +49,7 @@ export interface Inspection {
   kind: "absent" | "plain" | "repository" | "worktree" | "clone";
   path: string;
   exists: boolean;
+  empty?: boolean;
   remote?: string;
   head?: string;
   parent?: ParentRepository;

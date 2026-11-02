@@ -272,7 +272,7 @@ def commit_identity_failures(commits: object, expected: object) -> list[str]:
     cannot disagree with the mechanism it guards against."""
     if not isinstance(commits, list) or not commits:
         return ["no commits were returned for the pull request's head"]
-    login = expected if isinstance(expected, str) else None
+    login = expected if isinstance(expected, str) and expected else None
     failures: list[str] = []
     for commit in commits:
         if not isinstance(commit, dict):
@@ -290,13 +290,25 @@ def commit_identity_failures(commits: object, expected: object) -> list[str]:
     return failures
 
 
+def pr_identity_failures(number: int, owner: str, name: str) -> list[str]:
+    # Use REST account logins for both sides. gh pr view formats App bots
+    # as app/<slug>, while REST maps their commits to <slug>[bot].
+    data = gh("api", f"repos/{owner}/{name}/pulls/{number}")
+    author = data.get("user") if isinstance(data, dict) else None
+    login = author.get("login") if isinstance(author, dict) else None
+    if not isinstance(login, str) or not login:
+        return ["the pull request author has no GitHub account mapping"]
+    commits = gh("api", f"repos/{owner}/{name}/pulls/{number}/commits", "--paginate")
+    return commit_identity_failures(commits, login)
+
+
 def check_pr(number: int, reviewer: str, owner: str, name: str) -> list[str]:
     data = gh(
         "pr",
         "view",
         str(number),
         "--json",
-        "state,isDraft,headRefOid,baseRefOid,mergeable,mergeStateStatus,statusCheckRollup,author",
+        "state,isDraft,headRefOid,baseRefOid,mergeable,mergeStateStatus,statusCheckRollup",
     )
     assert isinstance(data, dict)
     failures: list[str] = []
@@ -315,8 +327,7 @@ def check_pr(number: int, reviewer: str, owner: str, name: str) -> list[str]:
     # the PR author into a mainline "Co-authored-by:" trailer at merge time,
     # from commit metadata no review of the PR surface ever sees, so foreign
     # authorship fails closed here.
-    commits = gh("api", f"repos/{owner}/{name}/pulls/{number}/commits", "--paginate")
-    failures.extend(commit_identity_failures(commits, (data.get("author") or {}).get("login")))
+    failures.extend(pr_identity_failures(number, owner, name))
 
     failures.extend(check_failures(data.get("statusCheckRollup") or [], str(head or ""), number, owner, name))
 
@@ -389,10 +400,7 @@ def main() -> int:
     for number in args.prs:
         try:
             if args.identity_only:
-                data = gh("pr", "view", str(number), "--json", "author")
-                assert isinstance(data, dict)
-                commits = gh("api", f"repos/{owner}/{name}/pulls/{number}/commits", "--paginate")
-                failures = commit_identity_failures(commits, (data.get("author") or {}).get("login"))
+                failures = pr_identity_failures(number, owner, name)
             else:
                 failures = check_pr(number, args.reviewer, owner, name)
         except (RuntimeError, AssertionError, KeyError, TypeError, ValueError) as exc:
