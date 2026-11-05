@@ -99,7 +99,8 @@ type Event struct {
 	// speaking for the pane — an omp subagent inherits the pane's capture
 	// token and fires its own session_start — and ignores it when a hook
 	// does not report one.
-	PID string `json:"pid"`
+	PID      string `json:"pid"`
+	Sequence int64  `json:"sequence"`
 }
 
 // Grant contains the non-secret correlation persisted before spawn. TokenHash

@@ -284,13 +284,13 @@ class PreflightTest(unittest.TestCase):
     def test_marker_file_and_environment_are_ignored(self):
         fx = self.luks_host(encrypted=False)
         write(fx.root / "host" / "data" / ".encrypted", "trust me")
-        os.environ["NOISEDECK_REQUIRE_ENCRYPTED_STATE"] = "false"
+        os.environ["NOISEDECK_SEALED_REQUIRE_ENCRYPTED_STATE"] = "false"
         os.environ["NOISEDECK_STATE_IS_ENCRYPTED"] = "yes"
         try:
             with self.assertRaises(sp.PreflightError):
                 sp.qualify(fx.host, sp.PROFILE_OWN, fx.stores(), None)
         finally:
-            del os.environ["NOISEDECK_REQUIRE_ENCRYPTED_STATE"]
+            del os.environ["NOISEDECK_SEALED_REQUIRE_ENCRYPTED_STATE"]
             del os.environ["NOISEDECK_STATE_IS_ENCRYPTED"]
 
     # --- the report --------------------------------------------------
@@ -500,9 +500,10 @@ class PreflightTest(unittest.TestCase):
 
         with unittest.mock.patch("subprocess.run", side_effect=fake_run):
             self.assertEqual(sp.container_init_pid("docker", "c1"), 4242)
-            self.assertEqual(sp.container_short_id("podman", "c1"), "abcdef012345")
+            self.assertEqual(sp.container_hostname("podman", "c1"), "abcdef0123456789")
         self.assertEqual(calls[0][0], "docker")
         self.assertEqual(calls[1][0], "podman")
+        self.assertEqual(calls[1][3], "{{.Config.Hostname}}")
 
     def test_env_file_without_a_state_root_refuses(self):
         with self.assertRaises(sp.PreflightError):
@@ -535,6 +536,13 @@ class PreflightTest(unittest.TestCase):
         env = sp.parse_env_file(str(env_path))
         q = sp.qualify(fx.host, env["NOISEDECK_SEALED_PROFILE"], sp.stores_from_env(env), int(env["NOISEDECK_RUNTIME_UID"]))
         self.assertEqual(q.stores["gh-config"].backing, sp.BACKING_GOCRYPTFS)
+
+    def test_swap_policy_environment_prefers_canonical_then_legacy(self):
+        self.assertEqual(sp.swap_policy_from_env({"NOISEDECK_SWAP_POLICY": "paranoid"}), "paranoid")
+        self.assertEqual(sp.swap_policy_from_env({
+            "NOISEDECK_SWAP_POLICY": "paranoid",
+            "NOISEDECK_SEALED_SWAP_POLICY": "personal",
+        }), "personal")
 
     def test_mountinfo_parser_handles_escapes_and_longest_prefix(self):
         mounts = sp.parse_mountinfo(

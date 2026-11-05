@@ -69,7 +69,6 @@ func openTaskRoot(projectPath string, afterAnchor func()) (*taskRoot, error) {
 	keep = true
 	return &taskRoot{
 		path: projectPath, anchor: anchor, root: root,
-		stateRoot: ".taskmaster", backlogPath: ".taskmaster/tasks/tasks.json",
 		docsDir: ".taskmaster/docs", initialized: true, writable: true,
 	}, nil
 }

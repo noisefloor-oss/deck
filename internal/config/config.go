@@ -471,9 +471,15 @@ func applyEnv(c *Config) error {
 	boolean("NOISEDECK_EXPERIMENTS_FONT_BENCH", &c.Experiments.FontBench)
 	boolean("NOISEDECK_EXPERIMENTS_DEV_PREVIEW", &c.Experiments.DevPreview)
 	str("NOISEDECK_EXPERIMENTS_DEV_PREVIEW_UPSTREAM", &c.Experiments.DevPreviewUpstream)
-	boolean("NOISEDECK_REQUIRE_ENCRYPTED_STATE", &c.Sealed.RequireEncryptedState)
+	boolean("NOISEDECK_SEALED_REQUIRE_ENCRYPTED_STATE", &c.Sealed.RequireEncryptedState)
+	if _, ok := os.LookupEnv("NOISEDECK_SEALED_REQUIRE_ENCRYPTED_STATE"); !ok {
+		boolean("NOISEDECK_REQUIRE_ENCRYPTED_STATE", &c.Sealed.RequireEncryptedState)
+	}
 	str("NOISEDECK_SEALED_PROFILE", &c.Sealed.Profile)
-	str("NOISEDECK_SWAP_POLICY", &c.Sealed.SwapPolicy)
+	str("NOISEDECK_SEALED_SWAP_POLICY", &c.Sealed.SwapPolicy)
+	if _, ok := os.LookupEnv("NOISEDECK_SEALED_SWAP_POLICY"); !ok {
+		str("NOISEDECK_SWAP_POLICY", &c.Sealed.SwapPolicy)
+	}
 	str("NOISEDECK_SEALED_REPORT_PATH", &c.Sealed.ReportPath)
 	str("NOISEDECK_LOGGING_LEVEL", &c.Logging.Level)
 	str("NOISEDECK_LOGGING_FORMAT", &c.Logging.Format)
@@ -805,8 +811,13 @@ func (c *Config) Validate() error {
 			continue
 		}
 		if p := u.Port(); p != "" {
-			if n, portErr := strconv.Atoi(p); portErr != nil || n < 1 || n > 65535 {
+			n, portErr := strconv.Atoi(p)
+			if portErr != nil || n < 1 || n > 65535 {
 				add("server.allowed_origins: %q: invalid port", o)
+				continue
+			}
+			if (u.Scheme == "https" && n == 443) || (u.Scheme == "http" && n == 80) {
+				add("server.allowed_origins: %q: omit the default port — browsers never send it in the Origin header", o)
 				continue
 			}
 		}

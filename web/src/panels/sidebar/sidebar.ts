@@ -21,7 +21,6 @@ import type { HarnessUsageReport, SessionSummary } from "../../api/sessions.ts";
 import { ApiError } from "../../api/http.ts";
 import { lucideIcon } from "../../ui/icons.ts";
 import { escapeHtml } from "../../lib/escape.ts";
-import { isAppleClient } from "../../lib/platform.ts";
 import { formatSince } from "../../lib/format.ts";
 import { isVerifiedRunningSession, sessionNeedsAttention, sessionStaysListed } from "../../ui/session-status.ts";
 import { applyAutoColors } from "../../lib/auto-color.ts";
@@ -139,13 +138,6 @@ export function sessionMetaHtml(session: SessionSummary, streaming: boolean, cha
   return `${conversation}${mark}${attention}${slot}`;
 }
 
-// modKeyLabel maps the platform to the shortcut chip's label:
-// ⌘ on Apple platforms, Ctrl elsewhere. The userAgentData platform wins
-// when present AND non-empty — an empty string must fall through to the
-// userAgent.
-export function modKeyLabel(uaDataPlatform: string | undefined, userAgent: string): string {
-  return isAppleClient({ userAgentData: { platform: uaDataPlatform }, userAgent }) ? "⌘K" : "Ctrl K";
-}
 // There is deliberately no hardcoded provider list here. Which harnesses
 // exist is a property of the image Deck is running in, not of the bundle the
 // browser was served, and only the process that resolved the executables can

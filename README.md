@@ -91,20 +91,20 @@ Code and Codex. Crush is bundled as a CLI, but has no Deck conversation picker.
 <!-- harness-pins:start -->
 | Harness | Pinned version | Pinned on (UTC) | Agent chat | Login helper | Attention badges |
 | --- | --- | --- | --- | --- | --- |
-| `claude` | `2.1.316` | 2026-10-31 | Live | None | Unknown |
+| `claude` | `2.1.318` | 2026-11-04 | Live | None | Unknown |
 | `codex` | `0.166.0` | 2026-10-29 | Live | Browser callback | Unknown |
-| `kimi` | `2.4.1` | 2026-10-30 | Next turn | None | Unknown |
+| `kimi` | `2.5.1` | 2026-11-05 | Next turn | None | Unknown |
 | `opencode` | `1.19.5` | 2026-10-28 | Live | None | Unknown |
-| `command-code` | `1.88.2` | 2026-10-29 | Manual | None | Unknown |
+| `command-code` | `1.88.3` | 2026-11-05 | Manual | None | Unknown |
 | `cline` | `3.0.74` | 2026-10-27 | Manual | None | Unknown |
-| `kilo` | `7.8.18` | 2026-10-27 | Manual | None | Unknown |
-| `qwen` | `0.26.5` | 2026-11-01 | Manual | None | Unknown |
+| `kilo` | `7.8.27` | 2026-11-05 | Manual | None | Unknown |
+| `qwen` | `0.26.7` | 2026-11-04 | Manual | None | Unknown |
 | `mimo` | `0.1.16` | 2026-10-27 | Manual | None | Unknown |
-| `qoder` | `1.1.81` | 2026-10-29 | Manual | None | Unknown |
-| `cursor-agent` | `2026.10.22-27dcf5f` | 2026-10-23 | Manual | None | Unknown |
+| `qoder` | `1.1.83` | 2026-11-04 | Manual | None | Unknown |
+| `cursor-agent` | `2026.11.05-86047df` | 2026-11-05 | Manual | None | Unknown |
 | `devin` | `3000.11.234` | 2026-10-30 | Manual | None | Unknown |
 | `grok` | `1.0.70` | 2026-10-25 | Manual | None | Unknown |
-| `omp` | `18.15.0` | 2026-11-01 | Live | None | Unknown |
+| `omp` | `18.16.0` | 2026-11-03 | Live | None | Unknown |
 | `pi` | `1.5.0` | 2026-11-02 | Live | ChatGPT, Anthropic | Input, ended turn |
 | `crush` | `0.99.0` | 2026-10-29 | Manual | None | Unknown |
 <!-- harness-pins:end -->

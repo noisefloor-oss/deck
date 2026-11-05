@@ -13,10 +13,8 @@ package tasks
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -76,14 +74,11 @@ type TagFile struct {
 // taskRoot keeps both the project directory and its os.Root traversal guard
 // alive. The separate anchor descriptor binds the engine's working directory:
 // a renamed project remains the same directory.
-// storePath and preferencesPath are set only on engine-selected roots; the
-// legacy stateRoot/backlogPath defaults serve the low-level access tests.
+// storePath and preferencesPath are set only on engine-selected roots.
 type taskRoot struct {
 	path            string
 	anchor          *os.File
 	root            *os.Root
-	stateRoot       string
-	backlogPath     string
 	docsDir         string
 	storePath       string
 	preferencesPath string
@@ -262,39 +257,7 @@ func (r *taskRoot) detectProject() (*ProjectInfo, error) {
 			DocsPath:   filepath.Join(r.path, r.docsDir),
 		}, nil
 	}
-	if !r.initialized {
-		return nil, ErrNotTaskmasterProject
-	}
-	info, err := r.stat(r.stateRoot)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, ErrNotTaskmasterProject
-		}
-		if errors.Is(err, ErrUnsafeTree) {
-			return nil, err
-		}
-		return nil, fmt.Errorf("taskmaster: stat task state root: %w", err)
-	}
-	if !info.IsDir() {
-		return nil, ErrNotTaskmasterProject
-	}
-	dir := filepath.Join(r.path, r.stateRoot)
-	return &ProjectInfo{
-		Path:       r.path,
-		ConfigPath: filepath.Join(dir, "config.json"),
-		TasksPath:  filepath.Join(r.path, filepath.Dir(r.backlogPath)),
-		DocsPath:   filepath.Join(r.path, r.docsDir),
-	}, nil
-}
-
-// DetectProject checks the legacy layout for low-level access tests.
-func DetectProject(projectPath string) (*ProjectInfo, error) {
-	root, err := openTaskRoot(projectPath, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer root.Close()
-	return root.detectProject()
+	return nil, ErrNotTaskmasterProject
 }
 
 func DetectProjectWithEngine(ctx context.Context, executable, projectPath string) (*ProjectInfo, error) {
@@ -304,24 +267,6 @@ func DetectProjectWithEngine(ctx context.Context, executable, projectPath string
 	}
 	defer func() { _ = root.Close() }()
 	return root.detectProject()
-}
-
-// ReadTasks reads a retired projection fixture for low-level path tests. No
-// production caller uses this surface; runtime reads use ReadTasksWithEngine.
-func ReadTasks(projectPath string) (map[string]TagFile, error) {
-	return readTasks(projectPath, taskAccessHooks{})
-}
-
-func readTasks(projectPath string, hooks taskAccessHooks) (map[string]TagFile, error) {
-	root, err := openTaskRoot(projectPath, hooks.rootAnchored)
-	if err != nil {
-		return nil, err
-	}
-	defer root.Close()
-	if _, err := root.detectProject(); err != nil {
-		return nil, err
-	}
-	return readTasksFromRoot(root, hooks)
 }
 
 func ReadTasksWithEngine(ctx context.Context, executable, projectPath string) (map[string]TagFile, error) {
@@ -334,50 +279,6 @@ func ReadTasksWithEngine(ctx context.Context, executable, projectPath string) (m
 		return nil, err
 	}
 	return readLiveTasks(ctx, executable, root)
-}
-
-func readTasksFromRoot(root *taskRoot, hooks taskAccessHooks) (map[string]TagFile, error) {
-	if _, err := root.detectProject(); err != nil {
-		return nil, err
-	}
-	f, err := root.openFile(root.backlogPath, os.O_RDONLY, 0)
-	if err != nil {
-		if errors.Is(err, ErrUnsafeTree) {
-			return nil, err
-		}
-		return nil, fmt.Errorf("taskmaster: read tasks.json: %w", err)
-	}
-	defer f.Close()
-	if hooks.targetOpened != nil {
-		hooks.targetOpened()
-	}
-	raw, err := io.ReadAll(f)
-	if err != nil {
-		return nil, fmt.Errorf("taskmaster: read tasks.json: %w", err)
-	}
-	var tags map[string]TagFile
-	if err := json.Unmarshal(raw, &tags); err != nil {
-		return nil, fmt.Errorf("taskmaster: parse tasks.json: %w", err)
-	}
-	return tags, nil
-}
-
-// ListPRDFiles lists eligible PRD filenames under the selected docs root:
-// markdown files only, sorted for a stable UI.
-func ListPRDFiles(projectPath string) ([]string, error) {
-	return listPRDFiles(projectPath, taskAccessHooks{})
-}
-
-func listPRDFiles(projectPath string, hooks taskAccessHooks) ([]string, error) {
-	root, err := openTaskRoot(projectPath, hooks.rootAnchored)
-	if err != nil {
-		return nil, err
-	}
-	defer root.Close()
-	if _, err := root.detectProject(); err != nil {
-		return nil, err
-	}
-	return root.listPRDFiles(hooks)
 }
 
 func ListPRDFilesWithEngine(ctx context.Context, executable, projectPath string) ([]string, error) {
@@ -426,27 +327,6 @@ func (root *taskRoot) listPRDFiles(hooks taskAccessHooks) ([]string, error) {
 		prds = []string{}
 	}
 	return prds, nil
-}
-
-// WritePRDFile adds a PRD document to a project. The name must be a single
-// .md component. The default write is exclusive-create (an existing PRD is
-// never overwritten); replace=true overwrites an existing file, used only after the user has
-// confirmed a collision in the UI. Both paths resolve the target inside the
-// registered root, so a replace never follows a symlink out; a
-// project with no docs root yet gets the skeleton directories — that is the
-// point of onboarding. Task state itself is never seeded: the engine's store
-// is created only by its own setup/init commands.
-func WritePRDFile(projectPath, name, content string, replace bool) error {
-	return writePRDFile(projectPath, name, content, replace, taskAccessHooks{})
-}
-
-func writePRDFile(projectPath, name, content string, replace bool, hooks taskAccessHooks) error {
-	root, err := openTaskRoot(projectPath, hooks.rootAnchored)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = root.Close() }()
-	return writePRDFileAtRoot(root, name, content, replace, hooks)
 }
 
 func WritePRDFileWithEngine(ctx context.Context, executable, projectPath, name, content string, replace bool) error {

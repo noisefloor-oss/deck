@@ -22,7 +22,7 @@ const inspectFormat = `{"id":{{json .Id}},"running":{{.State.Running}},"pid":{{.
 
 // Only selected nonsecret transport markers leave the engine. Its environment
 // also holds OIDC configuration, which must never be copied into diagnostics.
-const transportFormat = `{{range .Config.Env}}{{if eq . "NOISEDECK_SERVER_BIND="}}b{{end}}{{if eq . "NOISEDECK_SERVER_UNIX_SOCKET=/data/gateway/backend.sock"}}s{{end}}{{if eq . "NOISEDECK_PROJECT_PREVIEWS_BIND="}}p{{end}}{{if eq . "NOISEDECK_EXPERIMENTS_UNCONFINED_CAPACITY_ROUTING=false"}}c{{end}}{{if eq . "NOISEDECK_AUTH_MODE=oidc"}}a{{end}}{{if eq . "NOISEDECK_REQUIRE_ENCRYPTED_STATE=false"}}u{{end}}{{end}}`
+const transportFormat = `{{$canonical := false}}{{$u := false}}{{range .Config.Env}}{{if eq . "NOISEDECK_SERVER_BIND="}}b{{end}}{{if eq . "NOISEDECK_SERVER_UNIX_SOCKET=/data/gateway/backend.sock"}}s{{end}}{{if eq . "NOISEDECK_PROJECT_PREVIEWS_BIND="}}p{{end}}{{if eq . "NOISEDECK_EXPERIMENTS_UNCONFINED_CAPACITY_ROUTING=false"}}c{{end}}{{if eq . "NOISEDECK_AUTH_MODE=oidc"}}a{{end}}{{if eq (printf "%.41s" .) "NOISEDECK_SEALED_REQUIRE_ENCRYPTED_STATE="}}{{$canonical = true}}{{end}}{{if eq . "NOISEDECK_SEALED_REQUIRE_ENCRYPTED_STATE=false"}}{{$u = true}}{{end}}{{end}}{{if $u}}u{{else if not $canonical}}{{range .Config.Env}}{{if eq . "NOISEDECK_REQUIRE_ENCRYPTED_STATE=false"}}u{{end}}{{end}}{{end}}`
 
 var containerID = regexp.MustCompile(`^[a-f0-9]{64}$`)
 

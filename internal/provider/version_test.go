@@ -9,6 +9,13 @@ import (
 	"testing"
 )
 
+func TestCommandCodeVersionProbeSuppressesAutoUpdate(t *testing.T) {
+	args := VersionProbeArgs(CommandCode)
+	if len(args) != 2 || args[0] != "--no-auto-update" || args[1] != "--version" {
+		t.Fatalf("VersionProbeArgs(CommandCode) = %v, want --no-auto-update --version", args)
+	}
+}
+
 func TestEveryProviderHasAVersionProbeOrReason(t *testing.T) {
 	file, err := parser.ParseFile(token.NewFileSet(), "descriptor.go", nil, 0)
 	if err != nil {

@@ -12,9 +12,11 @@ const sessionID = "synthetic-native-session"
 const directory = "/synthetic/project with spaces/雪"
 // omp's hook names its reporting process so the capture endpoint can reject
 // subagent session_starts; here that process is this test runner.
-const expectedBody = (name) => name === "omp" || name === "pi"
-  ? { hook_event_name: "SessionStart", session_id: sessionID, cwd: directory, source: "startup", pid: String(process.pid) }
-  : { hook_event_name: "SessionStart", session_id: sessionID, cwd: directory, source: "startup" }
+const expectedBody = (name) => name === "omp"
+  ? { hook_event_name: "SessionStart", session_id: sessionID, cwd: directory, source: "startup", sequence: 1, pid: String(process.pid) }
+  : name === "pi"
+    ? { hook_event_name: "SessionStart", session_id: sessionID, cwd: directory, source: "startup", pid: String(process.pid) }
+    : { hook_event_name: "SessionStart", session_id: sessionID, cwd: directory, source: "startup" }
 
 async function loadHook(name, filename) {
   const raw = await readFile(new URL(filename, import.meta.url))
@@ -71,12 +73,20 @@ for (const [name, filename] of [["opencode", "opencode-hook.js"], ["kilo", "kilo
       process.env.NOISEDECK_SESSION_HOOK_SOCKET = socket
       responder = (_request, response) => { response.writeHead(204); response.end() }
     }
+    let lastSequence = 0
     const assertRequest = (request) => {
       assert.equal(request.method, "POST")
       assert.equal(request.path, "/api/hooks/capture?synthetic=1")
       assert.equal(request.headers["x-noisedeck-hook-token"], token)
       assert.equal(request.headers["content-type"], "application/json")
-      assert.deepEqual(JSON.parse(request.body), expectedBody(name))
+      const body = JSON.parse(request.body)
+      if (name === "omp") {
+        assert.equal(typeof body.sequence, "number")
+        assert.ok(Number.isSafeInteger(body.sequence) && body.sequence >= lastSequence)
+        lastSequence = body.sequence
+        body.sequence = 1
+      }
+      assert.deepEqual(body, expectedBody(name))
     }
     try {
       await t.test("configured socket carries exact payload without TCP", async () => {

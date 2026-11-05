@@ -7,7 +7,7 @@ services:
     userns_mode: "keep-id:uid=${NOISEDECK_RUNTIME_UID:-1026},gid=${NOISEDECK_RUNTIME_GID:-100}"
     ports: !reset []
     environment:
-      NOISEDECK_REQUIRE_ENCRYPTED_STATE: "false"
+      NOISEDECK_SEALED_REQUIRE_ENCRYPTED_STATE: "false"
       NOISEDECK_SEALED_PROFILE: ""
       NOISEDECK_SEALED_REPORT_PATH: ""
       ANTHROPIC_API_KEY: ""

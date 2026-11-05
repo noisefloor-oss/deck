@@ -105,15 +105,16 @@ func (r *Repository) AcceptIdentityCapture(ctx context.Context, tokenHash string
 			sessionID, provider, marker, workDir, expiresRaw, state string
 			generation                                              int
 			acceptedHash, expectedNativeIDHash                      *string
+			acceptedSequence                                        int64
 		)
 		err := tx.QueryRowContext(ctx, `
 			SELECT session_id, provider, generation, identity_marker,
 				canonical_work_dir, expected_native_id_sha256,
-				expires_at, state, accepted_event_sha256
+				expires_at, state, accepted_event_sha256, accepted_sequence
 			FROM provider_identity_capture_grants WHERE token_sha256 = ?`,
 			tokenHash).Scan(&sessionID, &provider, &generation, &marker,
 			&workDir, &expectedNativeIDHash, &expiresRaw,
-			&state, &acceptedHash)
+			&state, &acceptedHash, &acceptedSequence)
 		if errors.Is(err, sql.ErrNoRows) {
 			outcome = hookcapture.ErrUnknownToken
 			return nil
@@ -198,6 +199,17 @@ func (r *Repository) AcceptIdentityCapture(ctx context.Context, tokenHash string
 		// this grant changes nothing, so a lost response costs nothing.
 		eventHash := hookcapture.AcceptedEventHash(provider, workDir, ev)
 		if acceptedHash != nil && *acceptedHash == eventHash {
+			if ev.Sequence > acceptedSequence {
+				if _, err := tx.ExecContext(ctx, `UPDATE provider_identity_capture_grants
+					SET accepted_sequence = ?, updated_at = ?
+					WHERE token_sha256 = ? AND state IN (?, ?)`,
+					ev.Sequence, db.FormatTime(now), tokenHash, capturePending, captureConsumed); err != nil {
+					return fmt.Errorf("session %s: advance identity capture sequence: %w", sessionID, err)
+				}
+			}
+			return nil
+		}
+		if ev.Sequence > 0 && acceptedSequence > 0 && ev.Sequence <= acceptedSequence {
 			return nil
 		}
 		// The requested conversation is a fact about the resume this grant
@@ -339,9 +351,10 @@ func recordReportedIdentityTx(ctx context.Context, tx *sql.Tx, tokenHash,
 	res, err := tx.ExecContext(ctx, `
 		UPDATE provider_identity_capture_grants
 		SET state = ?, accepted_event_sha256 = ?,
+			accepted_sequence = MAX(accepted_sequence, ?),
 			closed_at = COALESCE(closed_at, ?), updated_at = ?
 		WHERE token_sha256 = ? AND state IN (?, ?)`,
-		captureConsumed, eventHash, storedNow, storedNow, tokenHash,
+		captureConsumed, eventHash, ev.Sequence, storedNow, storedNow, tokenHash,
 		capturePending, captureConsumed)
 	if err != nil {
 		return fmt.Errorf("session %s: consume identity capture grant: %w", sessionID, err)

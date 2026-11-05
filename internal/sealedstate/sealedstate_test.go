@@ -449,7 +449,7 @@ func TestLocalAndReportDisagreementIsRefused(t *testing.T) {
 // state is encrypted are not inputs.
 func TestMarkerFilesAndEnvironmentAreNeverConsulted(t *testing.T) {
 	t.Setenv("NOISEDECK_STATE_IS_ENCRYPTED", "yes")
-	t.Setenv("NOISEDECK_REQUIRE_ENCRYPTED_STATE", "false")
+	t.Setenv("NOISEDECK_SEALED_REQUIRE_ENCRYPTED_STATE", "false")
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "encrypted"), []byte("trust me"), 0o600); err != nil {
 		t.Fatal(err)

@@ -27,9 +27,9 @@ services:
     # lock and unlock. Required, distinct per Deck on a shared machine.
     hostname: ${NOISEDECK_SEALED_HOSTNAME:?set this Deck's stable host name, the name peers pin}
     environment:
-      NOISEDECK_REQUIRE_ENCRYPTED_STATE: "true"
+      NOISEDECK_SEALED_REQUIRE_ENCRYPTED_STATE: "true"
       NOISEDECK_SEALED_PROFILE: ${NOISEDECK_SEALED_PROFILE:-shared-host}
-      NOISEDECK_SWAP_POLICY: ${NOISEDECK_SWAP_POLICY:-personal}
+      NOISEDECK_SEALED_SWAP_POLICY: ${NOISEDECK_SEALED_SWAP_POLICY:-${NOISEDECK_SWAP_POLICY:-personal}}
       NOISEDECK_SEALED_REPORT_PATH: /run/noisedeck/sealed-state/report.json
     volumes: !override
       - type: bind

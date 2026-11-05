@@ -462,7 +462,7 @@ func (c *Controller) environment() []string {
 	path := filepath.Dir(c.cfg.PodmanPath) + ":/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 	env := []string{"PATH=" + path, "HOME=" + c.cfg.HomeDir, "XDG_RUNTIME_DIR=" + c.cfg.RuntimeDir, "LANG=C.UTF-8",
 		"COMPOSE_PROJECT_NAME=" + c.cfg.ComposeProject, "NOISEDECK_SEALED_PROFILE=shared-host",
-		"NOISEDECK_SWAP_POLICY=" + string(c.cfg.SwapPolicy.Effective()),
+		"NOISEDECK_SEALED_SWAP_POLICY=" + string(c.cfg.SwapPolicy.Effective()),
 		"NOISEDECK_SEALED_STATE_ROOT=" + c.cfg.MountPoint, "NOISEDECK_COMPOSE_COMMAND=podman compose"}
 	if c.cfg.WorkspaceGateway {
 		env = append(env, "NOISEDECK_WORKSPACE_GATEWAY=true")

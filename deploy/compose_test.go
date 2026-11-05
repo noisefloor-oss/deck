@@ -863,6 +863,26 @@ func TestBrowserOverlayTagMatchesPlaywrightClient(t *testing.T) {
 		t.Fatal("Dockerfile has no browser stage")
 	}
 	browserStage, _, _ = strings.Cut(browserStage, "FROM golang:")
+	for _, required := range []string{
+		"apt-get -o Acquire::Retries=0 update",
+		"apt-get -o Acquire::Retries=0 install -y --no-install-recommends apt libapt-pkg6.0t64",
+		`dpkg --compare-versions "$(dpkg-query -W -f='${Version}' apt)" ge 2.8.4ubuntu0.1`,
+		`dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libapt-pkg6.0t64)" ge 2.8.4ubuntu0.1`,
+		"apt-get purge -y --allow-remove-essential apt libapt-pkg6.0t64",
+		"hash -r", "! command -v apt", "! command -v apt-get", "! dpkg-query -W apt libapt-pkg6.0t64",
+	} {
+		if !strings.Contains(browserStage, required) {
+			t.Errorf("browser APT security contract missing %q", required)
+		}
+	}
+	purgeAt := strings.Index(browserStage, "apt-get purge -y --allow-remove-essential apt libapt-pkg6.0t64")
+	lastInstallAt := strings.LastIndex(browserStage, "apt-get install")
+	if purgeAt < 0 || lastInstallAt < 0 || purgeAt <= lastInstallAt {
+		t.Error("browser APT removal must follow its final package installation")
+	}
+	if !strings.Contains(browserStage[purgeAt+1:], "ldd /opt/noise-browser/chrome/chrome") {
+		t.Error("Chromium library closure must be checked after APT removal")
+	}
 	if strings.Contains(browserStage, "COPY --from=web-build /src/web/node_modules") || !strings.Contains(browserStage, `cp -RL "${client}" "${client}/../playwright-core"`) {
 		t.Error("browser must copy only the frozen-lockfile Playwright runtime closure")
 	}

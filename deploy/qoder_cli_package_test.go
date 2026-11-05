@@ -13,7 +13,7 @@ func TestDockerfilePinsQoderCLI(t *testing.T) {
 	}
 	dockerfile := string(raw)
 	for _, required := range []string{
-		"ARG QODER_VERSION=1.1.81",
+		"ARG QODER_VERSION=1.1.83",
 		`"@qoder-ai/qodercli@${QODER_VERSION}"`,
 		`test "$(qoder --version)" = "${QODER_VERSION}"`,
 		"qoder --help >/tmp/qoder-help",

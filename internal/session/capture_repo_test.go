@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -661,5 +662,56 @@ func TestCaptureExpiryMarksOnlyStartupIdentityLost(t *testing.T) {
 	resumeStored, _ := resumeRepo.Get(ctx, resumeSource.ID)
 	if resumeStored.IdentityCaptureLostAt != nil {
 		t.Fatal("resume-attestation expiry poisoned the already captured source identity")
+	}
+}
+
+func TestOlderSequencedCaptureCannotRollBackNewerIdentity(t *testing.T) {
+	const movedID = "22345678-1234-4abc-8abc-123456789abc"
+	repo, row, workDir := startingCaptureFixture(t)
+	ctx := context.Background()
+	service, err := hookcapture.NewService(repo, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := service.RegisterFenced(ctx, row.ID, row.Provider, workDir,
+		row.Generation, *row.IdentityMarker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	event := func(id string, sequence int64) string {
+		return fmt.Sprintf(`{"hook_event_name":"SessionSwitch","session_id":%q,"cwd":%q,"source":"startup","sequence":%d}`,
+			id, workDir, sequence)
+	}
+	if got := postCapture(t, service, token, event(capturedCodexID, 1)); got != http.StatusNoContent {
+		t.Fatalf("first capture = %d, want 204", got)
+	}
+	if got := postCapture(t, service, token, event(movedID, 3)); got != http.StatusNoContent {
+		t.Fatalf("newer capture = %d, want 204", got)
+	}
+	afterNewer, err := repo.Get(ctx, row.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	revisionAfterNewer := afterNewer.ControllerRevision
+	if got := postCapture(t, service, token, event(capturedCodexID, 2)); got != http.StatusNoContent {
+		t.Fatalf("delayed older capture = %d, want an idempotent 204", got)
+	}
+	stored, err := repo.Get(ctx, row.ID)
+	if err != nil || stored.NativeSessionID == nil || *stored.NativeSessionID != movedID {
+		t.Fatalf("identity rolled back to %v, want newest %s", stored.NativeSessionID, movedID)
+	}
+	if stored.ControllerRevision != revisionAfterNewer {
+		t.Fatalf("controller revision advanced on delayed duplicate: %d -> %d", revisionAfterNewer, stored.ControllerRevision)
+	}
+	if got := countAuditType(t, repo, row.ID, AuditIdentityCaptured); got != 2 {
+		t.Fatalf("identity-captured audits = %d, want only the first and newer identities", got)
+	}
+	var acceptedSequence int64
+	if err := repo.db.Reader().QueryRow(`SELECT accepted_sequence
+		FROM provider_identity_capture_grants WHERE session_id = ?`, row.ID).Scan(&acceptedSequence); err != nil {
+		t.Fatal(err)
+	}
+	if acceptedSequence != 3 {
+		t.Fatalf("accepted sequence = %d, want 3", acceptedSequence)
 	}
 }

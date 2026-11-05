@@ -586,6 +586,21 @@ func TestSecureCookiesHasNoIndependentConfigKey(t *testing.T) {
 	}
 }
 
+func TestAllowedOriginsRejectDefaultPorts(t *testing.T) {
+	validEnv(t)
+	for _, origin := range []string{"https://console.example.test:443", "http://console.example.test:80"} {
+		t.Setenv("NOISEDECK_SERVER_ALLOWED_ORIGINS", origin)
+		if _, err := Load(""); err == nil || !strings.Contains(err.Error(), "omit the default port") {
+			t.Fatalf("origin %q with a default port must be rejected, got: %v", origin, err)
+		}
+	}
+	t.Setenv("NOISEDECK_SERVER_ALLOWED_ORIGINS", "https://console.example.test:8443")
+	t.Setenv("NOISEDECK_AUTH_GOOGLE_REDIRECT_URL", "https://console.example.test:8443/auth/callback")
+	if _, err := Load(""); err != nil {
+		t.Fatalf("a non-default port must remain valid: %v", err)
+	}
+}
+
 func TestNonLoopbackBindWithConfiguredBuiltinPasses(t *testing.T) {
 	validEnv(t)
 	t.Setenv("NOISEDECK_SERVER_BIND", "0.0.0.0:8837")

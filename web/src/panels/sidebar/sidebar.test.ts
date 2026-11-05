@@ -14,7 +14,6 @@ import {
   dismissOnSelect,
   startsCollapsed,
   escapeHtml,
-  modKeyLabel,
   sessionMetaHtml,
   sessionRowMetaHtml,
 } from "./sidebar.ts";
@@ -1357,17 +1356,6 @@ test("renameProject failure stays in-band and does not fire onRenameProject", as
   assert.equal(await m.renameProject("p1", "x"), false);
   assert.match(m.error ?? "", /project not found/);
   assert.deepEqual(renamed, []);
-});
-
-test("modKeyLabel follows the platform, with the empty-string fallback", () => {
-  assert.equal(modKeyLabel("macOS", ""), "⌘K");
-  // An empty userAgentData platform must not hide a Mac
-  // userAgent (was ??, which only falls back on undefined).
-  assert.equal(modKeyLabel("", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"), "⌘K");
-  assert.equal(modKeyLabel(undefined, "Mozilla/5.0 (Macintosh; Intel Mac OS X)"), "⌘K");
-  assert.equal(modKeyLabel("Windows", ""), "Ctrl K");
-  assert.equal(modKeyLabel("Linux", "X11; Linux x86_64"), "Ctrl K");
-  assert.equal(modKeyLabel(undefined, "X11; Linux x86_64"), "Ctrl K");
 });
 
 test("providerDisplayName renders every provider lowercase", () => {

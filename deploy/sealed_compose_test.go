@@ -142,14 +142,22 @@ func TestSealedOverlayKeepsTheInvokingUsersIdentity(t *testing.T) {
 func TestSealedOverlayRequiresEncryptedState(t *testing.T) {
 	overlay := loadSealedOverlay(t)
 	env := overlay.Services["app"].Environment
-	if env["NOISEDECK_REQUIRE_ENCRYPTED_STATE"] != "true" {
-		t.Errorf("NOISEDECK_REQUIRE_ENCRYPTED_STATE = %q, want \"true\"", env["NOISEDECK_REQUIRE_ENCRYPTED_STATE"])
+	if env["NOISEDECK_SEALED_REQUIRE_ENCRYPTED_STATE"] != "true" {
+		t.Errorf("NOISEDECK_SEALED_REQUIRE_ENCRYPTED_STATE = %q, want \"true\"", env["NOISEDECK_SEALED_REQUIRE_ENCRYPTED_STATE"])
 	}
 	if env["NOISEDECK_SEALED_REPORT_PATH"] != "/run/noisedeck/sealed-state/report.json" {
 		t.Errorf("NOISEDECK_SEALED_REPORT_PATH = %q", env["NOISEDECK_SEALED_REPORT_PATH"])
 	}
 	if !strings.Contains(env["NOISEDECK_SEALED_PROFILE"], "shared-host") {
 		t.Errorf("the default profile must be shared-host, got %q", env["NOISEDECK_SEALED_PROFILE"])
+	}
+}
+
+func TestSealedOverlaySwapPolicyFallsBackToLegacy(t *testing.T) {
+	env := loadSealedOverlay(t).Services["app"].Environment
+	const want = "${NOISEDECK_SEALED_SWAP_POLICY:-${NOISEDECK_SWAP_POLICY:-personal}}"
+	if env["NOISEDECK_SEALED_SWAP_POLICY"] != want {
+		t.Errorf("swap policy interpolation = %q, want canonical then legacy then personal", env["NOISEDECK_SEALED_SWAP_POLICY"])
 	}
 }
 

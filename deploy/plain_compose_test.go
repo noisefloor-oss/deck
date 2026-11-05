@@ -100,7 +100,7 @@ func TestPlainOverlayHasNoEncryptedClaimOrPublishedPort(t *testing.T) {
 	if app.Ports.Tag != "!reset" || len(app.Ports.Content) != 0 || app.Volumes.Tag != "!override" || cfg.Volumes.Tag != "!reset" {
 		t.Fatal("plain overlay retained inherited volumes or ports")
 	}
-	if app.Environment["NOISEDECK_REQUIRE_ENCRYPTED_STATE"] != "false" || app.Environment["NOISEDECK_SEALED_REPORT_PATH"] != "" {
+	if app.Environment["NOISEDECK_SEALED_REQUIRE_ENCRYPTED_STATE"] != "false" || app.Environment["NOISEDECK_SEALED_REPORT_PATH"] != "" {
 		t.Fatal("plain overlay claims encrypted state")
 	}
 	if !strings.HasPrefix(app.UsernsMode, "keep-id:") {
@@ -154,7 +154,7 @@ func TestRenderedPlainGatewayProfile(t *testing.T) {
 		}
 	}
 	app := cfg.Services["app"]
-	for k, want := range map[string]string{"NOISEDECK_REQUIRE_ENCRYPTED_STATE": "false", "NOISEDECK_SERVER_BIND": "", "NOISEDECK_SERVER_UNIX_SOCKET": "/data/gateway/backend.sock", "NOISEDECK_AUTH_MODE": "oidc", "NOISEDECK_PROJECT_PREVIEWS_BIND": ""} {
+	for k, want := range map[string]string{"NOISEDECK_SEALED_REQUIRE_ENCRYPTED_STATE": "false", "NOISEDECK_SERVER_BIND": "", "NOISEDECK_SERVER_UNIX_SOCKET": "/data/gateway/backend.sock", "NOISEDECK_AUTH_MODE": "oidc", "NOISEDECK_PROJECT_PREVIEWS_BIND": ""} {
 		if app.Environment[k] != want {
 			t.Errorf("unexpected %s", k)
 		}

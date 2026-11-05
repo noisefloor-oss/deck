@@ -446,16 +446,16 @@ def container_init_pid(engine: str, container: str) -> int:
     return pid
 
 
-def container_short_id(engine: str, container: str) -> str:
+def container_hostname(engine: str, container: str) -> str:
+    """The configured stable hostname read by the in-container sealed check."""
     import subprocess
 
-    out = subprocess.run(
-        [engine, "inspect", "-f", "{{.Id}}", container],
+    return subprocess.run(
+        [engine, "inspect", "-f", "{{.Config.Hostname}}", container],
         check=True,
         capture_output=True,
         text=True,
     ).stdout.strip()
-    return out[:12]
 
 
 def build_report(host: Host, q: Qualification, pid: int, container_id: str) -> dict:
@@ -692,6 +692,10 @@ def effective_env(path: str) -> dict[str, str]:
     return {k: os.environ.get(k, v) for k, v in env.items()} | {k: v for k, v in os.environ.items() if k.startswith("NOISEDECK_") or k == "COMPOSE_PROJECT_NAME"}
 
 
+def swap_policy_from_env(env: dict[str, str]) -> str:
+    return env.get("NOISEDECK_SEALED_SWAP_POLICY") or env.get("NOISEDECK_SWAP_POLICY") or "personal"
+
+
 def stores_from_env(env: dict[str, str]) -> dict[str, str]:
     root = env.get("NOISEDECK_SEALED_STATE_ROOT", "")
     if not root:
@@ -728,7 +732,7 @@ def main(argv: list[str] | None = None) -> int:
     rep.add_argument("--container", required=True, help="container name or id")
     rep.add_argument("--report-dir", default=None, type=Path)
     rep.add_argument("--pid", type=int, default=None, help="container init pid (default: docker inspect)")
-    rep.add_argument("--container-id", default=None, help="container id (default: inspect through --engine)")
+    rep.add_argument("--container-id", default=None, help="configured container hostname (default: inspect through --engine)")
     rep.add_argument("--engine", default="docker", choices=("docker", "podman"), help="the engine that launched the container; inspection goes through the same one")
     env_cmd = sub.add_parser("env", help="print one value from a Compose dotenv file, parsed without a shell")
     env_cmd.add_argument("--env-file", required=True)
@@ -753,7 +757,7 @@ def main(argv: list[str] | None = None) -> int:
             # a host identity.
             partner_uid = os.getuid()
         stores = _parse_stores(args.store) if args.store else stores_from_env(env)
-        swap_policy = args.swap_policy or env.get("NOISEDECK_SWAP_POLICY") or "personal"
+        swap_policy = args.swap_policy or swap_policy_from_env(env)
         q = qualify(host, profile, stores, partner_uid, swap_policy)
         for name, c in sorted(q.stores.items()):
             print(f"{name:10} {q.host_paths[name]:40} {c.backing}")
@@ -764,7 +768,7 @@ def main(argv: list[str] | None = None) -> int:
         if report_dir is None:
             raise PreflightError("--report-dir or NOISEDECK_SEALED_REPORT_DIR is required")
         pid = args.pid if args.pid is not None else container_init_pid(args.engine, args.container)
-        cid = args.container_id if args.container_id else container_short_id(args.engine, args.container)
+        cid = args.container_id if args.container_id else container_hostname(args.engine, args.container)
         report = build_report(host, q, pid, cid)
         path = write_report(report, report_dir)
         print(f"report written to {path} for container {cid}")

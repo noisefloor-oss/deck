@@ -46,6 +46,12 @@ const DELIVERY_DEADLINE_MS = 8000;
 const ATTEMPT_TIMEOUT_MS = 2500;
 const MAX_DELIVERY_ATTEMPTS = 3;
 
+let identitySequence = 0;
+const nextIdentitySequence = () => {
+  identitySequence += 1;
+  return identitySequence;
+};
+
 async function deliver(url, token, body) {
   const socketPath = process.env.NOISEDECK_SESSION_HOOK_SOCKET
   const deadline = Date.now() + DELIVERY_DEADLINE_MS;
@@ -96,6 +102,7 @@ export default function (pi) {
         session_id: sessionId,
         cwd,
         source: "startup",
+        sequence: nextIdentitySequence(),
         pid: String(process.pid),
       });
       await deliver(url, token, body);
@@ -125,6 +132,7 @@ export default function (pi) {
         session_id: sessionId,
         cwd,
         source: "startup",
+        sequence: nextIdentitySequence(),
         pid: String(process.pid),
       });
       await deliver(url, token, body);

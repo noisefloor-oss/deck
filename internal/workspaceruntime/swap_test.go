@@ -34,7 +34,7 @@ func TestSwapPolicyControlsNativeAdmissionAndLaunchEnvironment(t *testing.T) {
 				if !wantPass && (!errors.Is(err, ErrUnsafeStorage) || len(f.mutations()) != 0) {
 					t.Fatal("unsafe swap caused native effects", err)
 				}
-				if !slices.Contains(f.c.environment(), "NOISEDECK_SWAP_POLICY="+string(policy.Effective())) {
+				if !slices.Contains(f.c.environment(), "NOISEDECK_SEALED_SWAP_POLICY="+string(policy.Effective())) {
 					t.Fatal("launch lost policy")
 				}
 				if wantPass {

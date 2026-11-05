@@ -87,75 +87,34 @@ const sampleTasks = `{"master": {"tasks": [
    "subtasks": [{"id": 1, "parentId": "2", "title": "sub", "status": "pending"}]}
 ]}}`
 
-func TestDetectProject(t *testing.T) {
-	root := t.TempDir()
-	if _, err := DetectProject(root); !errors.Is(err, ErrNotTaskmasterProject) {
-		t.Fatalf("empty dir: %v", err)
-	}
-	writeTM(t, root, sampleTasks)
-	info, err := DetectProject(root)
-	if err != nil {
-		t.Fatalf("detect: %v", err)
-	}
-	if info.TasksPath != filepath.Join(root, ".taskmaster", "tasks") {
-		t.Fatalf("tasks path = %q", info.TasksPath)
-	}
-}
-
-func TestReadTasks(t *testing.T) {
-	root := t.TempDir()
-	writeTM(t, root, sampleTasks)
-	tags, err := ReadTasks(root)
-	if err != nil {
-		t.Fatalf("read: %v", err)
-	}
-	master, ok := tags["master"]
-	if !ok || len(master.Tasks) != 2 {
-		t.Fatalf("tags = %+v", tags)
-	}
-	if master.Tasks[1].Subtasks[0].Title != "sub" {
-		t.Fatalf("subtask lost: %+v", master.Tasks[1].Subtasks)
-	}
-
-	// An external edit is visible on the next read, with no watch machinery
-	// and no cache invalidation.
-	writeTM(t, root, `{"master": {"tasks": [{"id": "9", "title": "edited", "status": "pending"}]}}`)
-	tags, err = ReadTasks(root)
-	if err != nil {
-		t.Fatalf("re-read: %v", err)
-	}
-	if tags["master"].Tasks[0].Title != "edited" {
-		t.Fatal("external edit not visible on re-read")
-	}
-}
-
 func TestTaskFileAccessPinsDescriptorsAcrossDirectorySwaps(t *testing.T) {
 	for _, swapRoot := range []bool{false, true} {
 		swapName := "descendant"
 		if swapRoot {
 			swapName = "project-root"
 		}
-		for _, operation := range []string{"read", "list", "create", "replace"} {
+		for _, operation := range []string{"list", "create", "replace"} {
 			t.Run(swapName+"/"+operation, func(t *testing.T) {
 				root, insideTree, outsideTree, swap := taskSwapFixture(t, swapRoot)
+				response := validContextResult(root)
+				response["initialized"] = true
+				response["docsPath"] = ".taskmaster/docs/PRD.md"
+				executable := writeContextResponse(t, response)
 				hooks := taskAccessHooks{}
 				if swapRoot {
 					hooks.rootAnchored = swap
 				} else {
 					hooks.targetOpened = swap
 				}
+				taskRoot, err := openEngineTaskRoot(context.Background(), executable, root, hooks.rootAnchored)
+				if err != nil {
+					t.Fatalf("open engine root: %v", err)
+				}
+				defer taskRoot.Close()
 
 				switch operation {
-				case "read":
-					tags, err := readTasks(root, hooks)
-					if err != nil {
-						t.Fatalf("read after swap: %v", err)
-					}
-					if got := tags["master"].Tasks[0].Title; got != "inside" {
-						t.Fatalf("read crossed the descriptor boundary: %q", got)
-					}
 				case "list":
-					prds, err := listPRDFiles(root, hooks)
+					prds, err := taskRoot.listPRDFiles(hooks)
 					if err != nil {
 						t.Fatalf("list after swap: %v", err)
 					}
@@ -163,13 +122,13 @@ func TestTaskFileAccessPinsDescriptorsAcrossDirectorySwaps(t *testing.T) {
 						t.Fatalf("listing crossed the descriptor boundary: %v", prds)
 					}
 				case "create":
-					if err := writePRDFile(root, "created.md", "# created inside", false, hooks); err != nil {
+					if err := writePRDFileAtRoot(taskRoot, "created.md", "# created inside", false, hooks); err != nil {
 						t.Fatalf("create after swap: %v", err)
 					}
 					assertFileBody(t, filepath.Join(insideTree(), "docs", "created.md"), "# created inside")
 					assertFileMissing(t, filepath.Join(outsideTree, "docs", "created.md"))
 				case "replace":
-					if err := writePRDFile(root, "inside.md", "# replaced inside", true, hooks); err != nil {
+					if err := writePRDFileAtRoot(taskRoot, "inside.md", "# replaced inside", true, hooks); err != nil {
 						t.Fatalf("replace after swap: %v", err)
 					}
 					assertFileBody(t, filepath.Join(insideTree(), "docs", "inside.md"), "# replaced inside")
@@ -185,10 +144,8 @@ func taskSwapFixture(t *testing.T, swapRoot bool) (string, func() string, string
 	container := t.TempDir()
 	root := filepath.Join(container, "project")
 	outsideRoot := filepath.Join(t.TempDir(), "outside")
-	insideJSON := `{"master":{"tasks":[{"id":"1","title":"inside","status":"pending"}]}}`
-	outsideJSON := `{"master":{"tasks":[{"id":"1","title":"outside","status":"pending"}]}}`
-	writeTM(t, root, insideJSON, "inside.md")
-	writeTM(t, outsideRoot, outsideJSON, "inside.md", "outside.md")
+	writeTM(t, root, `{"master":{"tasks":[]}}`, "inside.md")
+	writeTM(t, outsideRoot, `{"master":{"tasks":[]}}`, "inside.md", "outside.md")
 	if err := os.WriteFile(filepath.Join(root, ".taskmaster", "docs", "inside.md"), []byte("# inside"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -222,6 +179,52 @@ func taskSwapFixture(t *testing.T, swapRoot bool) (string, func() string, string
 	return root, insideTree, filepath.Join(outsideRoot, ".taskmaster"), swap
 }
 
+func TestWritePRDFileReplaceOverwritesAndRefusesEscape(t *testing.T) {
+	root := t.TempDir()
+	response := validContextResult(root)
+	response["initialized"] = true
+	response["docsPath"] = ".taskmaster/docs/PRD.md"
+	executable := writeContextResponse(t, response)
+	taskRoot, err := openEngineTaskRoot(context.Background(), executable, root, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer taskRoot.Close()
+	if err := writePRDFileAtRoot(taskRoot, "prd.md", "# original", false, taskAccessHooks{}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if err := writePRDFileAtRoot(taskRoot, "prd.md", "# replaced", true, taskAccessHooks{}); err != nil {
+		t.Fatalf("replace: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(root, ".taskmaster", "docs", "prd.md"))
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if !strings.Contains(string(data), "replaced") || strings.Contains(string(data), "original") {
+		t.Fatalf("replace did not overwrite: %s", data)
+	}
+
+	escRoot := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(escRoot, ".taskmaster", "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(t.TempDir(), "stolen.md")
+	if err := os.Symlink(outside, filepath.Join(escRoot, ".taskmaster", "docs", "prd.md")); err != nil {
+		t.Fatal(err)
+	}
+	escapeResponse := validContextResult(escRoot)
+	escapeResponse["initialized"] = true
+	escapeResponse["docsPath"] = ".taskmaster/docs/PRD.md"
+	escapeRoot, err := openEngineTaskRoot(context.Background(), writeContextResponse(t, escapeResponse), escRoot, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer escapeRoot.Close()
+	if err := writePRDFileAtRoot(escapeRoot, "prd.md", "content", true, taskAccessHooks{}); !errors.Is(err, ErrUnsafeTree) {
+		t.Fatalf("replace through escape: %v", err)
+	}
+}
+
 func assertFileBody(t *testing.T, path, want string) {
 	t.Helper()
 	body, err := os.ReadFile(path)
@@ -240,41 +243,6 @@ func assertFileMissing(t *testing.T, path string) {
 	}
 }
 
-func TestReadTasksMissing(t *testing.T) {
-	root := t.TempDir()
-	writeTM(t, root, sampleTasks)
-	if err := os.Remove(filepath.Join(root, ".taskmaster", "tasks", "tasks.json")); err != nil {
-		t.Fatalf("remove: %v", err)
-	}
-	if _, err := ReadTasks(root); err == nil || errors.Is(err, ErrNotTaskmasterProject) {
-		t.Fatalf("missing tasks.json: err = %v", err)
-	}
-}
-
-func TestListPRDFiles(t *testing.T) {
-	root := t.TempDir()
-	writeTM(t, root, sampleTasks, "b.md", "a.md", "not-a-prd.txt")
-	prds, err := ListPRDFiles(root)
-	if err != nil {
-		t.Fatalf("list: %v", err)
-	}
-	if len(prds) != 2 || prds[0] != "a.md" || prds[1] != "b.md" {
-		t.Fatalf("prds = %v", prds)
-	}
-
-	// No docs dir at all is an empty list, not an error.
-	root2 := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root2, ".taskmaster", "tasks"), 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	prds, err = ListPRDFiles(root2)
-	if err != nil || len(prds) != 0 {
-		t.Fatalf("no docs dir: %v %v", prds, err)
-	}
-}
-
-// The endpoints: registered project -> detection/tasks/prds; unregistered
-// -> 404; uninitialized store -> 404 with the distinct code.
 func TestHandlerEndpoints(t *testing.T) {
 	repo, p := newProjectEnv(t)
 	writeStore(t, p.CanonicalPath, "PRD.md")
@@ -397,54 +365,6 @@ func TestHandlerUploadPRDReplace(t *testing.T) {
 	}
 }
 
-// A .taskmaster tree that symlinks outside the registered project root is
-// refused, not followed; a symlink resolving inside the root is fine.
-func TestSymlinkEscape(t *testing.T) {
-	outside := t.TempDir()
-	writeTM(t, outside, `{"master": {"tasks": [{"id": "1", "title": "outside", "status": "pending"}]}}`, "OUT.md")
-
-	root := t.TempDir()
-	if err := os.Symlink(filepath.Join(outside, ".taskmaster"), filepath.Join(root, ".taskmaster")); err != nil {
-		t.Fatalf("symlink: %v", err)
-	}
-	if _, err := DetectProject(root); !errors.Is(err, ErrUnsafeTree) {
-		t.Fatalf("detect through escape: %v", err)
-	}
-	if _, err := ReadTasks(root); !errors.Is(err, ErrUnsafeTree) {
-		t.Fatalf("read through escape: %v", err)
-	}
-	if _, err := ListPRDFiles(root); !errors.Is(err, ErrUnsafeTree) {
-		t.Fatalf("list through escape: %v", err)
-	}
-
-	// A symlinked tasks.json inside a real .taskmaster is refused too.
-	root2 := t.TempDir()
-	writeTM(t, root2, sampleTasks)
-	if err := os.Remove(filepath.Join(root2, ".taskmaster", "tasks", "tasks.json")); err != nil {
-		t.Fatalf("remove: %v", err)
-	}
-	if err := os.Symlink(filepath.Join(outside, ".taskmaster", "tasks", "tasks.json"),
-		filepath.Join(root2, ".taskmaster", "tasks", "tasks.json")); err != nil {
-		t.Fatalf("symlink tasks.json: %v", err)
-	}
-	if _, err := ReadTasks(root2); !errors.Is(err, ErrUnsafeTree) {
-		t.Fatalf("read symlinked tasks.json: %v", err)
-	}
-
-	// A symlink that resolves INSIDE the root is followed normally.
-	root3 := t.TempDir()
-	writeTM(t, root3, sampleTasks)
-	if err := os.Rename(filepath.Join(root3, ".taskmaster"), filepath.Join(root3, "tm-real")); err != nil {
-		t.Fatalf("rename: %v", err)
-	}
-	if err := os.Symlink(filepath.Join(root3, "tm-real"), filepath.Join(root3, ".taskmaster")); err != nil {
-		t.Fatalf("symlink in-root: %v", err)
-	}
-	if _, err := ReadTasks(root3); err != nil {
-		t.Fatalf("in-root symlink must be followed: %v", err)
-	}
-}
-
 // The endpoints surface an unsafe tree as a refusal, not a 404 the panel
 // would silently hide on. Under the schema-4 contract the only worktree
 // path the console traverses is the engine-selected docs root.
@@ -478,69 +398,6 @@ func TestHandlerUnsafeTree(t *testing.T) {
 	}
 }
 
-// A DANGLING symlink still escapes: the link target's location decides,
-// so a missing destination must be ErrUnsafeTree, never absence (200/404).
-func TestDanglingSymlinkEscape(t *testing.T) {
-	outside := filepath.Join(t.TempDir(), "does-not-exist")
-
-	// .taskmaster -> outside/nonexistent
-	root := t.TempDir()
-	if err := os.Symlink(outside, filepath.Join(root, ".taskmaster")); err != nil {
-		t.Fatalf("symlink: %v", err)
-	}
-	if _, err := DetectProject(root); !errors.Is(err, ErrUnsafeTree) {
-		t.Fatalf("dangling .taskmaster escape: %v", err)
-	}
-
-	// .taskmaster -> outside REGULAR FILE: Stat succeeds through the link,
-	// so the escape check must run before the not-a-directory one.
-	outsideFile := filepath.Join(t.TempDir(), "plain-file")
-	if err := os.WriteFile(outsideFile, []byte("x"), 0o644); err != nil {
-		t.Fatalf("write: %v", err)
-	}
-	rootFile := t.TempDir()
-	if err := os.Symlink(outsideFile, filepath.Join(rootFile, ".taskmaster")); err != nil {
-		t.Fatalf("symlink file: %v", err)
-	}
-	if _, err := DetectProject(rootFile); !errors.Is(err, ErrUnsafeTree) {
-		t.Fatalf(".taskmaster -> outside regular file: %v", err)
-	}
-	// Same shape in-root: a regular file is plain absence, not an escape.
-	rootInFile := t.TempDir()
-	if err := os.WriteFile(filepath.Join(rootInFile, ".taskmaster"), []byte("x"), 0o644); err != nil {
-		t.Fatalf("write in-root file: %v", err)
-	}
-	if _, err := DetectProject(rootInFile); !errors.Is(err, ErrNotTaskmasterProject) {
-		t.Fatalf("in-root regular .taskmaster: %v", err)
-	}
-
-	// docs -> outside/nonexistent inside a real .taskmaster
-	root2 := t.TempDir()
-	writeTM(t, root2, sampleTasks)
-	if err := os.RemoveAll(filepath.Join(root2, ".taskmaster", "docs")); err != nil {
-		t.Fatalf("remove docs: %v", err)
-	}
-	if err := os.Symlink(outside, filepath.Join(root2, ".taskmaster", "docs")); err != nil {
-		t.Fatalf("symlink docs: %v", err)
-	}
-	if _, err := ListPRDFiles(root2); !errors.Is(err, ErrUnsafeTree) {
-		t.Fatalf("dangling docs escape: %v", err)
-	}
-
-	// tasks.json -> outside/nonexistent
-	root3 := t.TempDir()
-	writeTM(t, root3, sampleTasks)
-	if err := os.Remove(filepath.Join(root3, ".taskmaster", "tasks", "tasks.json")); err != nil {
-		t.Fatalf("remove tasks.json: %v", err)
-	}
-	if err := os.Symlink(outside, filepath.Join(root3, ".taskmaster", "tasks", "tasks.json")); err != nil {
-		t.Fatalf("symlink tasks.json: %v", err)
-	}
-	if _, err := ReadTasks(root3); !errors.Is(err, ErrUnsafeTree) {
-		t.Fatalf("dangling tasks.json escape: %v", err)
-	}
-}
-
 // The endpoints map a dangling escape to the same refusal as a live one.
 func TestHandlerDanglingEscape(t *testing.T) {
 	repo, p := newProjectEnv(t)
@@ -569,97 +426,6 @@ func TestHandlerDanglingEscape(t *testing.T) {
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("info with dangling docs: status = %d body %s", rec.Code, rec.Body)
-	}
-}
-
-// A Stat failure that is not "does not exist" must not become the
-// not-a-project state.
-func TestStatFailureIsNotAbsence(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("root ignores permission bits")
-	}
-	root := t.TempDir()
-	writeTM(t, root, sampleTasks)
-	// Locking the ROOT makes Stat(.taskmaster) fail with EACCES: stat on a
-	// path needs execute on its parent, not on the path itself.
-	if err := os.Chmod(root, 0o000); err != nil {
-		t.Fatalf("chmod: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(root, 0o755) })
-	if _, err := DetectProject(root); err == nil ||
-		errors.Is(err, ErrNotTaskmasterProject) || errors.Is(err, ErrUnsafeTree) {
-		t.Fatalf("permission failure misclassified: %v", err)
-	}
-}
-
-func TestWritePRDFileOnboardsAndRefuses(t *testing.T) {
-	root := t.TempDir()
-	// A project with no .taskmaster at all gets the skeleton and the file.
-	if err := WritePRDFile(root, "checkout-redesign.md", "# PRD\n\nDo the thing.", false); err != nil {
-		t.Fatalf("write: %v", err)
-	}
-	data, err := os.ReadFile(filepath.Join(root, ".taskmaster", "docs", "checkout-redesign.md"))
-	if err != nil || !strings.Contains(string(data), "PRD") {
-		t.Fatalf("file: %v", err)
-	}
-	// Never overwrite without the replace flag.
-	if err := WritePRDFile(root, "checkout-redesign.md", "other", false); !errors.Is(err, ErrPRDExists) {
-		t.Fatalf("overwrite: %v", err)
-	}
-	// Bad names and content.
-	for _, bad := range []string{"", "x.txt", "a/b.md", ".hidden.md", " lead.md"} {
-		if err := WritePRDFile(root, bad, "content", false); !errors.Is(err, ErrInvalidPRD) {
-			t.Errorf("name %q: %v", bad, err)
-		}
-	}
-	if err := WritePRDFile(root, "ok.md", "  ", false); !errors.Is(err, ErrInvalidPRD) {
-		t.Errorf("empty content: %v", err)
-	}
-	// A symlinked docs dir escaping the root is refused.
-	escape := t.TempDir()
-	linkRoot := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(linkRoot, ".taskmaster"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(escape, filepath.Join(linkRoot, ".taskmaster", "docs")); err != nil {
-		t.Fatal(err)
-	}
-	if err := WritePRDFile(linkRoot, "x.md", "content", false); !errors.Is(err, ErrUnsafeTree) {
-		t.Fatalf("symlink escape: %v", err)
-	}
-}
-
-// The replace flag overwrites an existing canonical prd.md, but
-// a symlinked prd.md pointing outside the root is still refused (replace
-// must never follow a link out of the project).
-func TestWritePRDFileReplaceOverwritesAndRefusesEscape(t *testing.T) {
-	root := t.TempDir()
-	if err := WritePRDFile(root, "prd.md", "# original", false); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
-	if err := WritePRDFile(root, "prd.md", "# replaced", true); err != nil {
-		t.Fatalf("replace: %v", err)
-	}
-	data, err := os.ReadFile(filepath.Join(root, ".taskmaster", "docs", "prd.md"))
-	if err != nil {
-		t.Fatalf("read: %v", err)
-	}
-	if !strings.Contains(string(data), "replaced") || strings.Contains(string(data), "original") {
-		t.Fatalf("replace did not overwrite: %s", data)
-	}
-
-	// A symlinked prd.md inside docs that escapes is refused even in
-	// replace mode — O_TRUNC must not write through an escaping link.
-	escRoot := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(escRoot, ".taskmaster", "docs"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	outside := filepath.Join(t.TempDir(), "stolen.md")
-	if err := os.Symlink(outside, filepath.Join(escRoot, ".taskmaster", "docs", "prd.md")); err != nil {
-		t.Fatal(err)
-	}
-	if err := WritePRDFile(escRoot, "prd.md", "content", true); !errors.Is(err, ErrUnsafeTree) {
-		t.Fatalf("replace through escape: %v", err)
 	}
 }
 

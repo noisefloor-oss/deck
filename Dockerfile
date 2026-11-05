@@ -9,22 +9,30 @@ ARG NOISE_SDLC_VERSION=0.4.1
 ARG NOISE_A2A_REF=4ebda82d51ae5c4c185c3a49f05dbb3074f01dc4
 ARG NOISE_A2A_VERSION=0.1.0
 
-ARG KIMI_VERSION=2.4.1
+ARG KIMI_VERSION=2.5.1
 ARG OPENCODE_VERSION=1.19.5
-ARG COMMAND_CODE_VERSION=1.88.2
+ARG COMMAND_CODE_VERSION=1.88.3
 # Lift this pin once Command Code accepts named-only semantic-conventions exports.
 # Until then 1.44 makes it fail before even --version.
 ARG COMMAND_CODE_SEMCONV_VERSION=1.43.0
 ARG CLINE_VERSION=3.0.74
-ARG KILO_VERSION=7.8.18
-ARG QWEN_VERSION=0.26.5
+ARG KILO_VERSION=7.8.27
+ARG QWEN_VERSION=0.26.7
 ARG CRUSH_VERSION=0.99.0
 
 # A local named context overrides this empty input stage when fonts are supplied.
 FROM scratch AS licensed-fonts
 COPY deploy/fonts-unsupplied /.no-licensed-fonts
 
-FROM node:26.12.1-bookworm-slim@sha256:28147155d47dc31abe0a46e0d12b59b2fb3d0a2dcc5dc65fce76a074180b16fe AS web-build
+# DSA-6607-1 fixes Bookworm APT package verification in 2.6.2.
+FROM node:26.12.1-bookworm-slim@sha256:28147155d47dc31abe0a46e0d12b59b2fb3d0a2dcc5dc65fce76a074180b16fe AS debian-security
+RUN apt-get -o Acquire::Retries=0 update \
+    && apt-get -o Acquire::Retries=0 install -y --no-install-recommends apt libapt-pkg6.0 \
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' apt)" ge 2.6.2 \
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libapt-pkg6.0)" ge 2.6.2 \
+    && rm -rf /var/lib/apt/lists/*
+
+FROM debian-security AS web-build
 
 WORKDIR /src/web
 RUN npm install --global pnpm@11.18.0 \
@@ -60,7 +68,11 @@ FROM mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b201
 # Remove the older bundled Chromium so it cannot be selected accidentally.
 COPY --from=chrome-archive /chrome.zip /tmp/chrome.zip
 # USN-8956-1 fixes the Brotli decoder in Noble (CVE-2026-111497).
-RUN apt-get update \
+# USN-8996-1 fixes APT package verification; disable vulnerable retries during the upgrade.
+RUN apt-get -o Acquire::Retries=0 update \
+    && apt-get -o Acquire::Retries=0 install -y --no-install-recommends apt libapt-pkg6.0t64 \
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' apt)" ge 2.8.4ubuntu0.1 \
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libapt-pkg6.0t64)" ge 2.8.4ubuntu0.1 \
     && apt-get install -y --no-install-recommends unzip libbrotli1 \
     && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libbrotli1)" ge 1.1.0-2ubuntu0.1 \
     && apt-get purge -y gstreamer1.0-plugins-bad libgstreamer-plugins-bad1.0-0 \
@@ -83,6 +95,7 @@ RUN sed -i '\|^mozilla/emSign_ECC_Root_CA_-_G3.crt$|s|^|!|' /etc/ca-certificates
     && test ! -e /etc/ssl/certs/emSign_ECC_Root_CA_-_G3.pem
 
 # Chromium reads local distrust from NSS, independently of the OS CA bundle.
+# APT is build-only in this immutable browser and is removed after NSS setup.
 COPY deploy/distrusted-emudhra-g3.crt /opt/noise-browser/distrusted-emudhra-g3.crt
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libnss3-tools \
@@ -92,7 +105,12 @@ RUN apt-get update \
     && certutil -N --empty-password -d "sql:/opt/noise-browser/nssdb" \
     && certutil -A -d "sql:/opt/noise-browser/nssdb" -n emudhra-g3-distrusted -t "p,p,p" -i /opt/noise-browser/distrusted-emudhra-g3.crt \
     && find "/opt/noise-browser/nssdb" -type f -exec chmod 0444 {} + \
-    && find "/opt/noise-browser/nssdb" -type d -exec chmod 0555 {} +
+    && find "/opt/noise-browser/nssdb" -type d -exec chmod 0555 {} + \
+    && apt-get purge -y --allow-remove-essential apt libapt-pkg6.0t64 \
+    && hash -r \
+    && ! command -v apt \
+    && ! command -v apt-get \
+    && ! dpkg-query -W apt libapt-pkg6.0t64 >/dev/null 2>&1
 
 COPY deploy/assert-tls-roots.mjs /tmp/assert-tls-roots.mjs
 RUN node /tmp/assert-tls-roots.mjs && rm /tmp/assert-tls-roots.mjs
@@ -109,6 +127,9 @@ COPY deploy/browser-versions.json /opt/noise-browser/browser-versions.json
 RUN test "$(node --version)" = "v24.22.1" \
     && test "$(node -p "require('/opt/noise-browser/node_modules/playwright/package.json').version")" = "1.64.1" \
     && node --check /opt/noise-browser/server.mjs \
+    && ldd /opt/noise-browser/chrome/chrome > /tmp/chrome-final-libraries \
+    && ! grep -q "not found" /tmp/chrome-final-libraries \
+    && rm /tmp/chrome-final-libraries \
     && chmod 0555 /opt/noise-browser/server.mjs
 
 FROM golang:1.26.10-bookworm@sha256:ee3901c61e423732605a51f1b8157c849ec01194ea0a274213b5202b2c11e7bf AS go-build
@@ -286,7 +307,7 @@ RUN set -eu; \
     test "$(/out/usr/local/bin/tmux -V)" = "tmux ${TMUX_VERSION}"
 
 # Install the large npm harness bundle while Deck and Noise tools compile.
-FROM node:26.12.1-bookworm-slim@sha256:28147155d47dc31abe0a46e0d12b59b2fb3d0a2dcc5dc65fce76a074180b16fe AS npm-harnesses
+FROM debian-security AS npm-harnesses
 
 ARG TARGETARCH
 ARG KIMI_VERSION
@@ -366,7 +387,7 @@ RUN --mount=type=cache,target=/root/.npm,sharing=locked \
 
 # Shared Deck runtime, utilities, and Noise tools. Go remains a build
 # dependency; optional runtime toolchains use derived images.
-FROM node:26.12.1-bookworm-slim@sha256:28147155d47dc31abe0a46e0d12b59b2fb3d0a2dcc5dc65fce76a074180b16fe AS core
+FROM debian-security AS core
 
 ARG NOISE_TASKS_VERSION
 ARG NOISE_VISUAL_DIFF_VERSION
@@ -581,9 +602,9 @@ FROM core AS slim
 ARG TARGETARCH
 ARG NOISEDECK_RUNTIME_UID=1026
 ARG NOISEDECK_RUNTIME_GID=100
-ARG CLAUDE_CODE_VERSION=2.1.316
-ARG CLAUDE_BINARY_SHA256_AMD64=fd13c70000fec3f2116dfbcbb6121210b4a29328bf0e46210a59dd594a67d824
-ARG CLAUDE_BINARY_SHA256_ARM64=55cdb8e162d190432696ea54010e0fca2e18d06fa7a7127fd563b9ffd4f22624
+ARG CLAUDE_CODE_VERSION=2.1.318
+ARG CLAUDE_BINARY_SHA256_AMD64=708c77b204db30086ff6f1ed34577bda03e1be74ced80557cbf7b54249ebf0bd
+ARG CLAUDE_BINARY_SHA256_ARM64=53a0d7e219d7b0804ecba5dbc002745e89f786cc946d2de85a6470d5b2d1fb06
 # These are the exact artifacts shipped by the image. Each descriptor's
 # comments record the last behavioral measurement for that provider, which is
 # not always the version pinned here.
@@ -658,14 +679,14 @@ ARG QWEN_VERSION
 ARG MIMO_VERSION=0.1.16
 ARG MIMO_SHA256_AMD64=2eb7863354a222d20d3319f5876711df85ef07b5e89bb644fdceaf3f81fd884a
 ARG MIMO_SHA256_ARM64=220c621eb61a175ba0bc8e9c45c217abfed8dace1f17111c3717bceb95ad2ab3
-ARG QODER_VERSION=1.1.81
-ARG CURSOR_AGENT_VERSION=2026.10.22-27dcf5f
-ARG CURSOR_AGENT_SHA256_AMD64=85296944e4600a83c4b764f578d1502bf9c416db200d33a593e8f3ecabfdc294
-ARG CURSOR_AGENT_SHA256_ARM64=22a36df9720830668ccd4d707e5190204ab9c8a0efb2f068cc914895f804d3ec
+ARG QODER_VERSION=1.1.83
+ARG CURSOR_AGENT_VERSION=2026.11.05-86047df
+ARG CURSOR_AGENT_SHA256_AMD64=170b77786cbf4c93064d64fff12b71a178b968730561c64afc2e8e752535442e
+ARG CURSOR_AGENT_SHA256_ARM64=131554bfdbf683d8ebfef83a2bb46ac4e5d060f198711040b07ed063c2471871
 ARG GROK_VERSION=1.0.70
 # Oh My Pi 18.13.3 requires Bun 1.4.4 or later.
 ARG BUN_VERSION=1.4.4
-ARG OMP_VERSION=18.15.0
+ARG OMP_VERSION=18.16.0
 ARG CRUSH_VERSION
 ARG PI_VERSION=1.5.0
 ARG DEVIN_VERSION=3000.11.234
@@ -898,7 +919,7 @@ USER ${NOISEDECK_RUNTIME_UID}:${NOISEDECK_RUNTIME_GID}
 # inherit the Deck server, Tasks engine, application healthcheck, or build
 # toolchain. Provider artifacts are added by a separately pinned profile image;
 # the trusted materializer supplies its exact argv and environment.
-FROM node:26.12.1-bookworm-slim@sha256:28147155d47dc31abe0a46e0d12b59b2fb3d0a2dcc5dc65fce76a074180b16fe AS task-workload-substrate
+FROM debian-security AS task-workload-substrate
 
 ARG NOISEDECK_TASK_UID=1026
 ARG NOISEDECK_TASK_GID=100

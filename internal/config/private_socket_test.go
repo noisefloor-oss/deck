@@ -67,7 +67,7 @@ func TestPrivateSocketEnvironment(t *testing.T) {
 	validEnv(t)
 	t.Setenv("NOISEDECK_SERVER_UNIX_SOCKET", "/data/gateway/backend.sock")
 	t.Setenv("NOISEDECK_SERVER_GATEWAY_UID", "1000")
-	t.Setenv("NOISEDECK_REQUIRE_ENCRYPTED_STATE", "true")
+	t.Setenv("NOISEDECK_SEALED_REQUIRE_ENCRYPTED_STATE", "true")
 	t.Setenv("NOISEDECK_AUTH_GOOGLE_REDIRECT_URL", "https://deck.example.test/auth/callback")
 	path := writeConfig(t, "server:\n  bind: ''\n  allowed_origins: ['https://deck.example.test']\n")
 	cfg := mustLoad(t, path)

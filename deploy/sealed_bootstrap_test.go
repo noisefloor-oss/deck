@@ -32,7 +32,7 @@ func TestBootstrapsGateOnSealedCheckBeforeAnythingWrites(t *testing.T) {
 				t.Errorf("%s starts %q before the sealed-check gate", path, later)
 			}
 		}
-		if strings.Contains(script, `NOISEDECK_REQUIRE_ENCRYPTED_STATE:-false}" = "true"`) {
+		if strings.Contains(script, `NOISEDECK_SEALED_REQUIRE_ENCRYPTED_STATE:-false}" = "true"`) {
 			t.Errorf("%s decides the requirement in shell instead of through the config the gate loads", path)
 		}
 		if !strings.Contains(script[gate:], "exit 78") {
