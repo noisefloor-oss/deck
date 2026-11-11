@@ -17,7 +17,7 @@ func TestGoRecipeIsPinnedDerivedImage(t *testing.T) {
 
 	for _, required := range []string{
 		"# syntax=docker/dockerfile:1.7@sha256:",
-		"FROM golang:1.26.10-bookworm@sha256:",
+		"FROM golang:1.26.11-bookworm@sha256:",
 		"FROM deck-base AS runtime",
 		"COPY --from=go-toolchain --chown=root:root /usr/local/go /usr/local/go",
 		"GOTOOLCHAIN=local",

@@ -79,12 +79,12 @@ rm -rf "$BOOT" "$SYS" "$OUT"
 mkdir -p "$SRC" "$BOOT" "$SYS" "$OUT/rootfs" "$OUT/bin" "$TMPDIR"
 
 fetch() {
-  url=$1; want=$2; shift 2; file="$SRC/$(basename "$url")"
+  max_time=$1; retries=$2; url=$3; want=$4; shift 4; file="$SRC/$(basename "$url")"
   if [ ! -f "$file" ]; then
     fetched=
     for candidate in "$url" "$@"; do
-      if curl --fail --location --silent --show-error --retry 2 --retry-all-errors \
-        --connect-timeout 10 --max-time 90 "$candidate" --output "$file"; then
+      if curl --fail --location --silent --show-error --retry "$retries" --retry-all-errors \
+        --connect-timeout 10 --max-time "$max_time" "$candidate" --output "$file"; then
         fetched=1
         break
       fi
@@ -108,7 +108,7 @@ PY
 # libcap at this version at all - its packaging skips 2.66 to 2.73 - so the
 # pool below is a per-project answer, not a per-distro one. Each fallback is
 # verified against its own hash rather than assumed from the pattern.
-fetch "https://github.com/containers/bubblewrap/releases/download/v${BUBBLEWRAP_VERSION}/bubblewrap-${BUBBLEWRAP_VERSION}.tar.xz" "$BUBBLEWRAP_SHA256" \
+fetch 90 2 "https://github.com/containers/bubblewrap/releases/download/v${BUBBLEWRAP_VERSION}/bubblewrap-${BUBBLEWRAP_VERSION}.tar.xz" "$BUBBLEWRAP_SHA256" \
   "https://deb.debian.org/debian/pool/main/b/bubblewrap/bubblewrap_${BUBBLEWRAP_VERSION}.orig.tar.xz"
 # The second fallback is deliberately off kernel.org's own infrastructure.
 # kernel.org redirects to mirrors.edge.kernel.org, so a "different"
@@ -116,13 +116,17 @@ fetch "https://github.com/containers/bubblewrap/releases/download/v${BUBBLEWRAP_
 # a CI run has already been observed timing out on that redirect target.
 # mirrorservice.org is a separate site that carries ftp.kernel.org's tree,
 # and it serves these exact bytes.
-fetch "https://kernel.org/pub/linux/libs/security/linux-privs/libcap2/libcap-${LIBCAP_VERSION}.tar.xz" "$LIBCAP_SHA256" \
+fetch 90 2 "https://kernel.org/pub/linux/libs/security/linux-privs/libcap2/libcap-${LIBCAP_VERSION}.tar.xz" "$LIBCAP_SHA256" \
   "https://cdn.kernel.org/pub/linux/libs/security/linux-privs/libcap2/libcap-${LIBCAP_VERSION}.tar.xz" \
   "https://www.mirrorservice.org/sites/ftp.kernel.org/pub/linux/libs/security/linux-privs/libcap2/libcap-${LIBCAP_VERSION}.tar.xz"
-fetch "https://ftp.gnu.org/gnu/make/make-${MAKE_VERSION}.tar.gz" "$MAKE_SHA256" \
+fetch 90 2 "https://ftp.gnu.org/gnu/make/make-${MAKE_VERSION}.tar.gz" "$MAKE_SHA256" \
   "https://mirrors.ocf.berkeley.edu/gnu/make/make-${MAKE_VERSION}.tar.gz" \
   "https://mirror.csclub.uwaterloo.ca/gnu/make/make-${MAKE_VERSION}.tar.gz"
-fetch "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz" "$ZIG_SHA256" \
+# Zig is about 49 MB: at the observed 170 KB/s it needs nearly five minutes.
+# Give each source one complete transfer rather than repeatedly discarding a
+# healthy partial download at 90 seconds. Hash verification remains mandatory.
+# The workflow still bounds the entire two-build proof to 15 minutes.
+fetch 300 0 "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz" "$ZIG_SHA256" \
   "https://pkg.machengine.org/zig/zig-x86_64-linux-${ZIG_VERSION}.tar.xz"
 
 # Bootstrap GNU make for libcap's build. The pinned release ships build.sh so

@@ -148,10 +148,10 @@ func TestFastChecksWorkflowContract(t *testing.T) {
 		// The linter binary, the Go build/module caches, and tmux are cached
 		// so repeat runs pay neither compilation nor apt.
 		"GOLANGCI_LINT_VERSION: v2.6.2",
-		"golangci-lint-${{ env.GOLANGCI_LINT_VERSION }}-go-1.26.10-${{ runner.arch }}",
-		`deck-go-${{ runner.arch }}-1.26.10-${{ github.job }}-${{ hashFiles('go.sum') }}-${{ github.sha }}`,
-		"deck-go-${{ runner.arch }}-1.26.10-",
-		"deck-go-baseline-${{ runner.arch }}-1.26.10-",
+		"golangci-lint-${{ env.GOLANGCI_LINT_VERSION }}-go-1.26.11-${{ runner.arch }}",
+		`deck-go-${{ runner.arch }}-1.26.11-${{ github.job }}-${{ hashFiles('go.sum') }}-${{ github.sha }}`,
+		"deck-go-${{ runner.arch }}-1.26.11-",
+		"deck-go-baseline-${{ runner.arch }}-1.26.11-",
 		"~/.cache/go-build",
 		"~/go/pkg/mod",
 		// The tmux-backed and timing-sensitive packages stay serialized in
@@ -353,7 +353,7 @@ func TestReleaseAcceptanceWorkflowContract(t *testing.T) {
 	if !ok {
 		t.Fatal("release acceptance workflow has no bwrap-proof job")
 	}
-	assertRunnerName(t, "bwrap-proof", bwrapProof, `${{ github.repository == 'noisefloor-oss/deck' && github.event.repository.visibility == 'public' && 'ubuntu-24.04' || fromJSON('["self-hosted","Linux","X64"]') }}`)
+	assertRunnerName(t, "bwrap-proof", bwrapProof, "ubuntu-24.04")
 	for _, step := range []string{
 		"Check out source",
 		"Prove the pinned Bubblewrap executable identity",
@@ -430,7 +430,7 @@ func TestReleaseAcceptanceWorkflowContract(t *testing.T) {
 		"if: always()",
 		"down --volumes --remove-orphans",
 		`deploy/bwrap/build-bwrap.sh amd64 "/proof/build-${run}"`,
-		`golang:1.26.10-bookworm@sha256:ee3901c61e423732605a51f1b8157c849ec01194ea0a274213b5202b2c11e7bf`,
+		`golang:1.26.11-bookworm@sha256:dc40a13b61304647ed7e5d581d246b86413dfc29d63c6d018310feb93cd98fc0`,
 		`for run in 1 2`,
 		`test "$(grep 'executable-sha256' "${proof_root}/amd64" | awk '{print $3}' | sort -u | awk 'END {print NR}')" = 1`,
 		`test "$(grep 'rootfs-tar-sha256' "${proof_root}/amd64" | awk '{print $3}' | sort -u | awk 'END {print NR}')" = 1`,

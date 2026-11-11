@@ -11,7 +11,7 @@ import (
 
 // reconstructBatch reads candidate pins as data, applies them to trusted main's
 // merge base, then compares the entire tree. No candidate code is executed.
-func reconstructBatch(ctx context.Context, root string, resolver *Resolver, id, head string) (bool, error) {
+func reconstructBatch(ctx context.Context, root string, id, head string, digestsFor artifactDigests) (bool, error) {
 	git := func(args ...string) ([]byte, error) {
 		return exec.CommandContext(ctx, "git", append([]string{"-C", root}, args...)...).Output()
 	}
@@ -59,9 +59,12 @@ func reconstructBatch(ctx context.Context, root string, resolver *Resolver, id, 
 		if h.Source == SourceManual {
 			return false, nil
 		}
-		// Ownership is tied to the published snapshot, not a moving latest
-		// tag. Settlement separately requires exact-head build/probe evidence.
-		digests, err := resolver.Digests(ctx, h, to)
+		// The producer resolves upstream bytes; settlement uses recorded pins
+		// and separately requires trusted exact-head build/probe evidence.
+		digests, err := digestsFor(ctx, h, to, target)
+		if errors.Is(err, errCandidatePins) {
+			return false, nil
+		}
 		if err != nil {
 			return false, err
 		}

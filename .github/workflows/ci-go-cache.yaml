@@ -49,8 +49,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: deck-go-baseline-${{ runner.arch }}-1.26.10-${{ hashFiles('go.sum') }}-${{ github.sha }}
-          restore-keys: deck-go-baseline-${{ runner.arch }}-1.26.10-${{ hashFiles('go.sum') }}-
+          key: deck-go-baseline-${{ runner.arch }}-1.26.11-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: deck-go-baseline-${{ runner.arch }}-1.26.11-${{ hashFiles('go.sum') }}-
 
       - name: Compile packages and test dependencies without executing tests
         if: steps.baseline.outputs.cache-hit != 'true'

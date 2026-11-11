@@ -18,9 +18,34 @@ import (
 // someone else's. git's credentials come from the environment the caller
 // sets up; nothing is passed here.
 func Reconstruct(root string, resolver *Resolver) Deterministic {
+	return reconstruct(root, func(ctx context.Context, h Harness, version string, _ map[string]string) (map[string]string, error) {
+		return resolver.Digests(ctx, h, version)
+	})
+}
+
+// ReconstructRecorded checks generated edits using the recorded pins as data.
+// Consumers must also require trusted producer evidence for this exact head;
+// the producer itself uses Reconstruct to verify the upstream artifact bytes.
+func ReconstructRecorded(root string) Deterministic {
+	return reconstruct(root, func(_ context.Context, h Harness, _ string, pins map[string]string) (map[string]string, error) {
+		digests, err := candidateDigests(pins, h)
+		if err != nil {
+			return nil, errCandidatePins
+		}
+		return digests, nil
+	})
+}
+
+var errCandidatePins = errors.New("harnessbump: invalid recorded candidate pins")
+
+// artifactDigests uses errCandidatePins for a candidate refusal; upstream
+// failures remain operational errors.
+type artifactDigests func(context.Context, Harness, string, map[string]string) (map[string]string, error)
+
+func reconstruct(root string, digestsFor artifactDigests) Deterministic {
 	return func(ctx context.Context, h Harness, version, head string) (bool, error) {
 		if h.Name == "all" {
-			return reconstructBatch(ctx, root, resolver, version, head)
+			return reconstructBatch(ctx, root, version, head, digestsFor)
 		}
 		if h.Source == SourceManual {
 			// No index, no job-made bump: the pin moves by hand.
@@ -58,7 +83,14 @@ func Reconstruct(root string, resolver *Resolver) Deterministic {
 			// have done, so nothing the head could be.
 			return false, nil
 		}
-		digests, err := resolver.Digests(ctx, h, version)
+		raw, err := git(root, "show", head+":Dockerfile")
+		if err != nil {
+			return false, err
+		}
+		digests, err := digestsFor(ctx, h, version, ReadPins([]byte(raw)))
+		if errors.Is(err, errCandidatePins) {
+			return false, nil
+		}
 		if err != nil {
 			return false, err
 		}
@@ -96,4 +128,18 @@ func ReconstructRoot(root string) (string, error) {
 		return "", fmt.Errorf("harnessbump: %s is not the repository root", abs)
 	}
 	return abs, nil
+}
+
+// candidateDigests reads pins as data; only exact-head producer evidence can
+// establish that their bytes passed the download, image and probe gates.
+func candidateDigests(pins map[string]string, h Harness) (map[string]string, error) {
+	digests := make(map[string]string, len(h.Artifacts))
+	for _, a := range h.Artifacts {
+		d := pins[a.SHAArg]
+		if !hexDigest.MatchString(d) {
+			return nil, fmt.Errorf("harnessbump: candidate %s is not sha256 hex", a.SHAArg)
+		}
+		digests[a.SHAArg] = d
+	}
+	return digests, nil
 }

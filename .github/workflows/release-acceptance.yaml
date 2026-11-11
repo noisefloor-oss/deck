@@ -80,9 +80,11 @@ jobs:
           echo "sha=${SOURCE}" >>"${GITHUB_OUTPUT}"
 
   bwrap-proof:
+    # Keep this source/build proof on the hosted pool: the private runner's
+    # slow toolchain downloads exhausted the proof deadline.
     needs: source
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ${{ github.repository == 'noisefloor-oss/deck' && github.event.repository.visibility == 'public' && 'ubuntu-24.04' || fromJSON('["self-hosted","Linux","X64"]') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
 
     steps:
@@ -94,11 +96,11 @@ jobs:
 
       - name: Prove the pinned Bubblewrap executable identity
         run: |
-          set -eu
+          set -euo pipefail
           proof_root="${RUNNER_TEMP}/bwrap-proof-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           install -d -m 0700 "${proof_root}"
           echo "BWRAP_PROOF_ROOT=${proof_root}" >>"${GITHUB_ENV}"
-          image="golang:1.26.10-bookworm@sha256:ee3901c61e423732605a51f1b8157c849ec01194ea0a274213b5202b2c11e7bf"
+          image="golang:1.26.11-bookworm@sha256:dc40a13b61304647ed7e5d581d246b86413dfc29d63c6d018310feb93cd98fc0"
           : > "${proof_root}/amd64"
           for run in 1 2; do
             docker run --rm \
@@ -142,7 +144,7 @@ jobs:
           if [ -z "${BWRAP_PROOF_ROOT:-}" ] || [ ! -d "${BWRAP_PROOF_ROOT}" ]; then
             exit 0
           fi
-          image="golang:1.26.10-bookworm@sha256:ee3901c61e423732605a51f1b8157c849ec01194ea0a274213b5202b2c11e7bf"
+          image="golang:1.26.11-bookworm@sha256:dc40a13b61304647ed7e5d581d246b86413dfc29d63c6d018310feb93cd98fc0"
           docker run --rm --volume "${BWRAP_PROOF_ROOT}:/proof:Z" \
             "${image}" sh -c 'find /proof -mindepth 1 -delete'
           rmdir "${BWRAP_PROOF_ROOT}"
@@ -326,7 +328,7 @@ jobs:
 
       - name: Verify disposable mount access
         run: |
-          image="golang:1.26.10-bookworm@sha256:ee3901c61e423732605a51f1b8157c849ec01194ea0a274213b5202b2c11e7bf"
+          image="golang:1.26.11-bookworm@sha256:dc40a13b61304647ed7e5d581d246b86413dfc29d63c6d018310feb93cd98fc0"
           docker run --rm --user 1000:1000 \
             --volume "${CI_ROOT}/projects:/workspace:Z" \
             --volume "${CI_ROOT}/gh:/home/agent/.config/gh:Z" \
@@ -461,7 +463,7 @@ jobs:
             command -v jq
             test "$(command -v go)" = /usr/local/go/bin/go
             test "$(/bin/bash -lc "command -v go")" = /usr/local/go/bin/go
-            test "$(go version | awk "{print \$3}")" = go1.26.10
+            test "$(go version | awk "{print \$3}")" = go1.26.11
             test "$(go env GOTOOLCHAIN)" = local
             test ! -w /usr/local/go/bin/go
             command -v cc

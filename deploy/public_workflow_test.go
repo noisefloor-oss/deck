@@ -338,6 +338,10 @@ print(json.dumps(eval(expression,{"__builtins__":{}},{"repo":repo,"visibility":v
 					if file == "ci-fast.yaml" {
 						want = hostedCIRunner
 					}
+					// The toolchain proof uses the hosted x64 pool for private CI too.
+					if file == "release-acceptance.yaml" && name == "bwrap-proof" {
+						want = "ubuntu-24.04"
+					}
 					if !reflect.DeepEqual(actual, want) {
 						t.Errorf("%s/%s %s/%s arch %s: got %v want %v", file, name, scenario.repo, scenario.visibility, arch, actual, want)
 					}

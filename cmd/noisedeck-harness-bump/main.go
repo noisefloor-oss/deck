@@ -421,7 +421,7 @@ func settle(ctx context.Context, args []string, stdout io.Writer) error {
 		return errors.New("-wait requires -apply and a nonnegative duration")
 	}
 	settleOnce := func(ctx context.Context) ([]harnessbump.Decision, error) {
-		return harnessbump.Settle(ctx, harnessbump.ExecGH, *repo, *bot, *only, *apply, harnessbump.Reconstruct(rootDir, harnessbump.NewResolver()), harnessbump.WithMergeLift(rootDir, harnessbump.RunEvidence(*repo)))
+		return harnessbump.Settle(ctx, harnessbump.ExecGH, *repo, *bot, *only, *apply, harnessbump.ReconstructRecorded(rootDir), harnessbump.WithMergeLift(rootDir, harnessbump.RunEvidence(*repo)))
 	}
 	var decisions []harnessbump.Decision
 	if *wait > 0 {

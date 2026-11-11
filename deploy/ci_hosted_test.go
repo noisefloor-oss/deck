@@ -37,6 +37,13 @@ func TestHostedCIRouting(t *testing.T) {
 			t.Errorf("%s must use %s", name, want)
 		}
 		for _, step := range job.Steps {
+			for _, install := range []string{"apt-get", "--with-deps"} {
+				fetch := strings.Index(step.Run, install)
+				setup := strings.Index(step.Run, "ubuntu-mirror.sh")
+				if fetch >= 0 && (setup < 0 || setup > fetch) {
+					t.Errorf("%s fetches Ubuntu dependencies before mirror setup", name)
+				}
+			}
 			if !strings.HasPrefix(step.Uses, "actions/cache@") {
 				continue
 			}
@@ -69,10 +76,10 @@ func TestHostedCIRouting(t *testing.T) {
 		t.Fatal("private fork code must not enter the scope; the aggregate must always run and fail when scope is skipped")
 	}
 	for _, expected := range []string{
-		"deck-go-${{ runner.arch }}-1.26.10-",
-		"deck-browser-go-${{ runner.arch }}-1.26.10-",
+		"deck-go-${{ runner.arch }}-1.26.11-",
+		"deck-browser-go-${{ runner.arch }}-1.26.11-",
 		"playwright-chromium-${{ runner.arch }}-",
-		"-go-1.26.10-${{ runner.arch }}",
+		"-go-1.26.11-${{ runner.arch }}",
 		"-linux-${{ runner.arch }}",
 	} {
 		if !strings.Contains(string(raw), expected) {

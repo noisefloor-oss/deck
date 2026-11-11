@@ -14,7 +14,7 @@ func TestDockerfileInstallsPinnedCrushCLI(t *testing.T) {
 	}
 	body := string(raw)
 	for _, required := range []string{
-		"ARG CRUSH_VERSION=0.99.0",
+		"ARG CRUSH_VERSION=0.100.0",
 		`"@charmland/crush@${CRUSH_VERSION}"`,
 		`test "$(crush --version)" = "crush version v${CRUSH_VERSION}"`,
 	} {

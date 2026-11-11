@@ -14,7 +14,7 @@
 # Copy the toolchain from the same digest-pinned, multi-architecture image
 # that builds Deck. A mutable download in the projects mount made `go` depend
 # on one host and let any session replace the compiler for every other one.
-FROM golang:1.26.10-bookworm@sha256:ee3901c61e423732605a51f1b8157c849ec01194ea0a274213b5202b2c11e7bf AS go-toolchain
+FROM golang:1.26.11-bookworm@sha256:dc40a13b61304647ed7e5d581d246b86413dfc29d63c6d018310feb93cd98fc0 AS go-toolchain
 
 # deck-base is a named build context. Compose can bind it either to a
 # published Deck image or directly to another service build, so a dependent
@@ -23,7 +23,7 @@ FROM deck-base AS runtime
 
 ARG NOISEDECK_RUNTIME_UID=1026
 ARG NOISEDECK_RUNTIME_GID=100
-ARG GO_VERSION=1.26.10
+ARG GO_VERSION=1.26.11
 
 USER root
 COPY --from=go-toolchain --chown=root:root /usr/local/go /usr/local/go

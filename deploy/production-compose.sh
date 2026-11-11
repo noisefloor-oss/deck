@@ -262,7 +262,7 @@ assert detect_backends_for_path(str(pathlib.Path.home()/".mempalace/palace")) ==
     test -f /home/agent/.omp/agent/skills/mempalace/SKILL.md
     test "$(command -v go)" = /usr/local/go/bin/go
     test "$(/bin/bash -lc "command -v go")" = /usr/local/go/bin/go
-    test "$(go version | awk "{print \$3}")" = go1.26.10
+    test "$(go version | awk "{print \$3}")" = go1.26.11
     test "$(go env GOTOOLCHAIN)" = local
     test ! -w /usr/local/go/bin/go
     command -v cc >/dev/null

@@ -53,7 +53,7 @@ func TestGoCacheBaselineTrustAndRestore(t *testing.T) {
 	cache, compile := false, false
 	for _, step := range seed.Steps {
 		if step.Name == "Restore reusable Go compilation baseline" {
-			cache = step.With["key"] == "deck-go-baseline-${{ runner.arch }}-1.26.10-${{ hashFiles('go.sum') }}-${{ github.sha }}" && step.With["restore-keys"] == "deck-go-baseline-${{ runner.arch }}-1.26.10-${{ hashFiles('go.sum') }}-"
+			cache = step.With["key"] == "deck-go-baseline-${{ runner.arch }}-1.26.11-${{ hashFiles('go.sum') }}-${{ github.sha }}" && step.With["restore-keys"] == "deck-go-baseline-${{ runner.arch }}-1.26.11-${{ hashFiles('go.sum') }}-"
 		}
 		if step.Name == "Compile packages and test dependencies without executing tests" {
 			compile = strings.TrimSpace(step.Run) == "go list -deps -test -export ./... > /dev/null" && step.If == "steps.baseline.outputs.cache-hit != 'true'"
@@ -78,7 +78,7 @@ func TestGoCacheBaselineTrustAndRestore(t *testing.T) {
 		for _, step := range job.Steps {
 			if strings.HasPrefix(step.With["key"], "deck-go-") {
 				lines := strings.Split(strings.TrimSpace(step.With["restore-keys"]), "\n")
-				if len(lines) != 2 || !strings.Contains(lines[0], "github.job") || lines[1] != "deck-go-baseline-${{ runner.arch }}-1.26.10-${{ hashFiles('go.sum') }}-" {
+				if len(lines) != 2 || !strings.Contains(lines[0], "github.job") || lines[1] != "deck-go-baseline-${{ runner.arch }}-1.26.11-${{ hashFiles('go.sum') }}-" {
 					t.Errorf("%s must restore its own lane before the matching trusted baseline", name)
 				}
 				count++

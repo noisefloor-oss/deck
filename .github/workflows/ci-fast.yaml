@@ -97,10 +97,10 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: deck-go-${{ runner.arch }}-1.26.10-${{ github.job }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          key: deck-go-${{ runner.arch }}-1.26.11-${{ github.job }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
           restore-keys: |
-            deck-go-${{ runner.arch }}-1.26.10-${{ github.job }}-${{ hashFiles('go.sum') }}-
-            deck-go-baseline-${{ runner.arch }}-1.26.10-${{ hashFiles('go.sum') }}-
+            deck-go-${{ runner.arch }}-1.26.11-${{ github.job }}-${{ hashFiles('go.sum') }}-
+            deck-go-baseline-${{ runner.arch }}-1.26.11-${{ hashFiles('go.sum') }}-
 
       - name: Check public archive contents and Markdown links
         run: python3 -B .github/scripts/test_metrics.py run --suite documentation --output "$RUNNER_TEMP/test-metrics/documentation.json" -- go test -count=1 ./deploy/export/
@@ -224,6 +224,7 @@ jobs:
         working-directory: web
         timeout-minutes: 8
         run: |
+          sudo sh ../deploy/ubuntu-mirror.sh
           pnpm exec playwright install --with-deps chromium             || pnpm exec playwright install --with-deps chromium
 
       - name: Run the browser probes
@@ -256,9 +257,9 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: deck-browser-go-${{ runner.arch }}-1.26.10-${{ hashFiles('go.sum') }}-${{ matrix.shard }}-${{ github.sha }}
+          key: deck-browser-go-${{ runner.arch }}-1.26.11-${{ hashFiles('go.sum') }}-${{ matrix.shard }}-${{ github.sha }}
           restore-keys: |
-            deck-browser-go-${{ runner.arch }}-1.26.10-${{ hashFiles('go.sum') }}-${{ matrix.shard }}-
+            deck-browser-go-${{ runner.arch }}-1.26.11-${{ hashFiles('go.sum') }}-${{ matrix.shard }}-
 
       - name: Test workspace browser cryptography against the Go gateway
         if: matrix.shard == 'gateway'
@@ -309,10 +310,10 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: deck-go-${{ runner.arch }}-1.26.10-${{ github.job }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          key: deck-go-${{ runner.arch }}-1.26.11-${{ github.job }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
           restore-keys: |
-            deck-go-${{ runner.arch }}-1.26.10-${{ github.job }}-${{ hashFiles('go.sum') }}-
-            deck-go-baseline-${{ runner.arch }}-1.26.10-${{ hashFiles('go.sum') }}-
+            deck-go-${{ runner.arch }}-1.26.11-${{ github.job }}-${{ hashFiles('go.sum') }}-
+            deck-go-baseline-${{ runner.arch }}-1.26.11-${{ hashFiles('go.sum') }}-
 
       - name: Check reachable Go vulnerabilities
         run: |
@@ -324,7 +325,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ${{ runner.temp }}/deck-lint
-          key: golangci-lint-${{ env.GOLANGCI_LINT_VERSION }}-go-1.26.10-${{ runner.arch }}
+          key: golangci-lint-${{ env.GOLANGCI_LINT_VERSION }}-go-1.26.11-${{ runner.arch }}
 
       - name: Build pinned Go linter and reject new debt
         run: |
@@ -376,10 +377,10 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: deck-go-${{ runner.arch }}-1.26.10-${{ github.job }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          key: deck-go-${{ runner.arch }}-1.26.11-${{ github.job }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
           restore-keys: |
-            deck-go-${{ runner.arch }}-1.26.10-${{ github.job }}-${{ hashFiles('go.sum') }}-
-            deck-go-baseline-${{ runner.arch }}-1.26.10-${{ hashFiles('go.sum') }}-
+            deck-go-${{ runner.arch }}-1.26.11-${{ github.job }}-${{ hashFiles('go.sum') }}-
+            deck-go-baseline-${{ runner.arch }}-1.26.11-${{ hashFiles('go.sum') }}-
 
       # The tmux-backed suite is timing-sensitive against the runner image's
       # tmux, so every run installs the pinned build. The compiled binary is
@@ -397,7 +398,8 @@ jobs:
           if test -x "${dist}/usr/local/bin/tmux"; then
             sudo install -m 0755 "${dist}/usr/local/bin/tmux" /usr/local/bin/tmux
           else
-            sudo apt-get update
+            sudo sh deploy/ubuntu-mirror.sh
+            sudo apt-get -o APT::Update::Error-Mode=any update
             sudo apt-get install --yes build-essential libevent-dev libncurses-dev pkg-config
             archive="${RUNNER_TEMP}/tmux-${TMUX_VERSION}.tar.gz"
             source_dir="${RUNNER_TEMP}/tmux-${TMUX_VERSION}-src"
@@ -467,10 +469,10 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: deck-go-${{ runner.arch }}-1.26.10-${{ github.job }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          key: deck-go-${{ runner.arch }}-1.26.11-${{ github.job }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
           restore-keys: |
-            deck-go-${{ runner.arch }}-1.26.10-${{ github.job }}-${{ hashFiles('go.sum') }}-
-            deck-go-baseline-${{ runner.arch }}-1.26.10-${{ hashFiles('go.sum') }}-
+            deck-go-${{ runner.arch }}-1.26.11-${{ github.job }}-${{ hashFiles('go.sum') }}-
+            deck-go-baseline-${{ runner.arch }}-1.26.11-${{ hashFiles('go.sum') }}-
 
       - name: Check Go formatting
         run: test -z "$(gofmt -l .)"
@@ -524,10 +526,10 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: deck-go-${{ runner.arch }}-1.26.10-${{ github.job }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          key: deck-go-${{ runner.arch }}-1.26.11-${{ github.job }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
           restore-keys: |
-            deck-go-${{ runner.arch }}-1.26.10-${{ github.job }}-${{ hashFiles('go.sum') }}-
-            deck-go-baseline-${{ runner.arch }}-1.26.10-${{ hashFiles('go.sum') }}-
+            deck-go-${{ runner.arch }}-1.26.11-${{ github.job }}-${{ hashFiles('go.sum') }}-
+            deck-go-baseline-${{ runner.arch }}-1.26.11-${{ hashFiles('go.sum') }}-
 
       - name: Run experiment packages with the unconfined flag enabled
         run: |
@@ -590,7 +592,7 @@ jobs:
           CIHEAL_READ_TOKEN: canary-not-a-read-token
           NOISE_REVIEW_PRIVATE_KEY: canary-not-a-key
           HARNESS_BUMP_TOKEN: canary-not-a-token
-          JAIL_IMAGE: golang:1.26.10-bookworm@sha256:ee3901c61e423732605a51f1b8157c849ec01194ea0a274213b5202b2c11e7bf
+          JAIL_IMAGE: golang:1.26.11-bookworm@sha256:dc40a13b61304647ed7e5d581d246b86413dfc29d63c6d018310feb93cd98fc0
           JAIL_MODEL: canary-model
         run: |
           export JAIL_NODE="$(dirname "$(dirname "$(command -v node)")")"
@@ -640,7 +642,7 @@ jobs:
           GH_TOKEN: canary-not-a-token
           CIHEAL_READ_TOKEN: canary-not-a-read-token
           NOISE_REVIEW_PRIVATE_KEY: canary-not-a-key
-          JAIL_IMAGE: golang:1.26.10-bookworm@sha256:ee3901c61e423732605a51f1b8157c849ec01194ea0a274213b5202b2c11e7bf
+          JAIL_IMAGE: golang:1.26.11-bookworm@sha256:dc40a13b61304647ed7e5d581d246b86413dfc29d63c6d018310feb93cd98fc0
           JAIL_MODEL: canary-model
         run: |
           export JAIL_NODE="$(dirname "$(dirname "$(command -v node)")")"
@@ -710,16 +712,17 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: deck-go-${{ runner.arch }}-1.26.10-${{ github.job }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          key: deck-go-${{ runner.arch }}-1.26.11-${{ github.job }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
           restore-keys: |
-            deck-go-${{ runner.arch }}-1.26.10-${{ github.job }}-${{ hashFiles('go.sum') }}-
-            deck-go-baseline-${{ runner.arch }}-1.26.10-${{ hashFiles('go.sum') }}-
+            deck-go-${{ runner.arch }}-1.26.11-${{ github.job }}-${{ hashFiles('go.sum') }}-
+            deck-go-baseline-${{ runner.arch }}-1.26.11-${{ hashFiles('go.sum') }}-
 
       - name: Install the a2a client's one dependency
         # PyNaCl on the system interpreter, as the image installs it: the
         # host-key and sealed-chat tests refuse to run without it.
         run: |
-          sudo apt-get update
+          sudo sh deploy/ubuntu-mirror.sh
+          sudo apt-get -o APT::Update::Error-Mode=any update
           sudo apt-get install --yes --no-install-recommends python3-nacl
 
       - name: Run deploy package tests
@@ -778,10 +781,10 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: deck-go-${{ runner.arch }}-1.26.10-${{ github.job }}-${{ matrix.suite }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          key: deck-go-${{ runner.arch }}-1.26.11-${{ github.job }}-${{ matrix.suite }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
           restore-keys: |
-            deck-go-${{ runner.arch }}-1.26.10-${{ github.job }}-${{ matrix.suite }}-${{ hashFiles('go.sum') }}-
-            deck-go-baseline-${{ runner.arch }}-1.26.10-${{ hashFiles('go.sum') }}-
+            deck-go-${{ runner.arch }}-1.26.11-${{ github.job }}-${{ matrix.suite }}-${{ hashFiles('go.sum') }}-
+            deck-go-baseline-${{ runner.arch }}-1.26.11-${{ hashFiles('go.sum') }}-
 
       - name: Restore cached pinned tmux
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
@@ -795,7 +798,8 @@ jobs:
           if test -x "${dist}/usr/local/bin/tmux"; then
             sudo install -m 0755 "${dist}/usr/local/bin/tmux" /usr/local/bin/tmux
           else
-            sudo apt-get update
+            sudo sh deploy/ubuntu-mirror.sh
+            sudo apt-get -o APT::Update::Error-Mode=any update
             sudo apt-get install --yes build-essential libevent-dev libncurses-dev pkg-config
             archive="${RUNNER_TEMP}/tmux-${TMUX_VERSION}.tar.gz"
             source_dir="${RUNNER_TEMP}/tmux-${TMUX_VERSION}-src"
@@ -816,7 +820,8 @@ jobs:
 
       - name: Install export test dependencies
         run: |
-          sudo apt-get update
+          sudo sh deploy/ubuntu-mirror.sh
+          sudo apt-get -o APT::Update::Error-Mode=any update
           sudo apt-get install --yes --no-install-recommends python3-nacl
 
       - name: Extract the curated source archive

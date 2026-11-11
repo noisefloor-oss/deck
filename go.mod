@@ -1,6 +1,6 @@
 module github.com/noisefloor-oss/deck
 
-go 1.26.10
+go 1.26.11
 
 require (
 	filippo.io/age v1.2.1

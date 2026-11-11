@@ -13,7 +13,7 @@ func TestDockerfilePinsCommandCodeCLI(t *testing.T) {
 	}
 	dockerfile := string(raw)
 	for _, required := range []string{
-		"ARG COMMAND_CODE_VERSION=1.88.3",
+		"ARG COMMAND_CODE_VERSION=1.88.5",
 		"ARG COMMAND_CODE_SEMCONV_VERSION=1.43.0",
 		`npm install --prefix /opt/npm-harnesses/lib/command-code`,
 		`"@opentelemetry/semantic-conventions@${COMMAND_CODE_SEMCONV_VERSION}"`,

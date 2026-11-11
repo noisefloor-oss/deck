@@ -9,16 +9,16 @@ ARG NOISE_SDLC_VERSION=0.4.1
 ARG NOISE_A2A_REF=4ebda82d51ae5c4c185c3a49f05dbb3074f01dc4
 ARG NOISE_A2A_VERSION=0.1.0
 
-ARG KIMI_VERSION=2.5.1
+ARG KIMI_VERSION=2.5.3
 ARG OPENCODE_VERSION=1.19.5
-ARG COMMAND_CODE_VERSION=1.88.3
+ARG COMMAND_CODE_VERSION=1.88.5
 # Lift this pin once Command Code accepts named-only semantic-conventions exports.
 # Until then 1.44 makes it fail before even --version.
 ARG COMMAND_CODE_SEMCONV_VERSION=1.43.0
 ARG CLINE_VERSION=3.0.74
 ARG KILO_VERSION=7.8.27
-ARG QWEN_VERSION=0.26.7
-ARG CRUSH_VERSION=0.99.0
+ARG QWEN_VERSION=0.27.2
+ARG CRUSH_VERSION=0.100.0
 
 # A local named context overrides this empty input stage when fonts are supplied.
 FROM scratch AS licensed-fonts
@@ -67,6 +67,8 @@ FROM mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b201
 
 # Remove the older bundled Chromium so it cannot be selected accidentally.
 COPY --from=chrome-archive /chrome.zip /tmp/chrome.zip
+COPY deploy/ubuntu-mirror.sh /tmp/noisedeck-ubuntu-mirror.sh
+RUN sh /tmp/noisedeck-ubuntu-mirror.sh && rm /tmp/noisedeck-ubuntu-mirror.sh
 # USN-8956-1 fixes the Brotli decoder in Noble (CVE-2026-111497).
 # USN-8996-1 fixes APT package verification; disable vulnerable retries during the upgrade.
 RUN apt-get -o Acquire::Retries=0 update \
@@ -132,7 +134,7 @@ RUN test "$(node --version)" = "v24.22.1" \
     && rm /tmp/chrome-final-libraries \
     && chmod 0555 /opt/noise-browser/server.mjs
 
-FROM golang:1.26.10-bookworm@sha256:ee3901c61e423732605a51f1b8157c849ec01194ea0a274213b5202b2c11e7bf AS go-build
+FROM golang:1.26.11-bookworm@sha256:dc40a13b61304647ed7e5d581d246b86413dfc29d63c6d018310feb93cd98fc0 AS go-build
 
 ARG VERSION=dev
 WORKDIR /src
@@ -147,7 +149,7 @@ RUN --mount=type=cache,id=deck-go-build,target=/root/.cache/go-build,sharing=loc
     && /out/noise-deck version \
     && CGO_ENABLED=0 go build -o /out/noisedeck-provision ./cmd/noisedeck-provision
 
-FROM golang:1.26.10-bookworm@sha256:ee3901c61e423732605a51f1b8157c849ec01194ea0a274213b5202b2c11e7bf AS task-workload-latch-build
+FROM golang:1.26.11-bookworm@sha256:dc40a13b61304647ed7e5d581d246b86413dfc29d63c6d018310feb93cd98fc0 AS task-workload-latch-build
 WORKDIR /src
 COPY go.mod go.sum ./
 COPY cmd/task-workload-latch/ ./cmd/task-workload-latch/
@@ -156,7 +158,7 @@ RUN set -eu; \
     set +e; /out/task-workload-latch >/dev/null 2>&1; latch_status="$?"; set -e; \
     test "${latch_status}" -eq 64
 
-FROM golang:1.26.10-bookworm@sha256:ee3901c61e423732605a51f1b8157c849ec01194ea0a274213b5202b2c11e7bf AS noise-tasks-build
+FROM golang:1.26.11-bookworm@sha256:dc40a13b61304647ed7e5d581d246b86413dfc29d63c6d018310feb93cd98fc0 AS noise-tasks-build
 
 # The task engine is packaged from an exact reviewed revision. Its host and
 # compatibility shim are linked to the fixed libexec root selected here.
@@ -185,7 +187,7 @@ RUN --mount=type=secret,id=github_token \
     && install -d -m 0700 /out \
     && CGO_ENABLED=0 make package DESTDIR=/out PREFIX=/usr/local VERSION="${NOISE_TASKS_VERSION}"
 
-FROM golang:1.26.10-bookworm@sha256:ee3901c61e423732605a51f1b8157c849ec01194ea0a274213b5202b2c11e7bf AS a2a-build
+FROM golang:1.26.11-bookworm@sha256:dc40a13b61304647ed7e5d581d246b86413dfc29d63c6d018310feb93cd98fc0 AS a2a-build
 
 # Deck consumes the standalone client from an exact reviewed revision rather
 # than carrying a second copy and suite in this repository.
@@ -208,7 +210,7 @@ RUN --mount=type=secret,id=github_token \
     && install -d -m 0755 /out \
     && install -m 0555 /src/a2a/a2a.py /out/a2a
 
-FROM golang:1.26.10-bookworm@sha256:ee3901c61e423732605a51f1b8157c849ec01194ea0a274213b5202b2c11e7bf AS noise-sdlc-build
+FROM golang:1.26.11-bookworm@sha256:dc40a13b61304647ed7e5d581d246b86413dfc29d63c6d018310feb93cd98fc0 AS noise-sdlc-build
 
 # The SDLC catalog plugin is packaged from an exact reviewed revision, same
 # fetch contract as noise-tasks above. Its version is a source constant
@@ -237,7 +239,7 @@ RUN --mount=type=secret,id=github_token \
       -o /out/usr/local/libexec/noise/noise-sdlc ./cmd/noise-sdlc \
     && test "$(/out/usr/local/libexec/noise/noise-sdlc --version)" = "${NOISE_SDLC_VERSION}"
 
-FROM golang:1.26.10-bookworm@sha256:ee3901c61e423732605a51f1b8157c849ec01194ea0a274213b5202b2c11e7bf AS visual-diff-go
+FROM golang:1.26.11-bookworm@sha256:dc40a13b61304647ed7e5d581d246b86413dfc29d63c6d018310feb93cd98fc0 AS visual-diff-go
 
 FROM node:24.22.1-bookworm@sha256:6449e19d8184d84062525b6a7524def03146c2cb04a7f08b076680d0e8e4240a AS noise-visual-diff-build
 
@@ -288,7 +290,7 @@ RUN --mount=type=secret,id=github_token \
 # already pinned above, rather than a new image to trust. The link is static so
 # the runtime carries the binary alone, with no libevent or ncurses runtime to
 # drift underneath it.
-FROM golang:1.26.10-bookworm@sha256:ee3901c61e423732605a51f1b8157c849ec01194ea0a274213b5202b2c11e7bf AS tmux-build
+FROM golang:1.26.11-bookworm@sha256:dc40a13b61304647ed7e5d581d246b86413dfc29d63c6d018310feb93cd98fc0 AS tmux-build
 ARG TMUX_VERSION=3.6a
 ARG TMUX_SHA256=b6d8d9c76585db8ef5fa00d4931902fa4b8cbe8166f528f44fc403961a3f3759
 RUN set -eu; \
@@ -602,13 +604,13 @@ FROM core AS slim
 ARG TARGETARCH
 ARG NOISEDECK_RUNTIME_UID=1026
 ARG NOISEDECK_RUNTIME_GID=100
-ARG CLAUDE_CODE_VERSION=2.1.318
-ARG CLAUDE_BINARY_SHA256_AMD64=708c77b204db30086ff6f1ed34577bda03e1be74ced80557cbf7b54249ebf0bd
-ARG CLAUDE_BINARY_SHA256_ARM64=53a0d7e219d7b0804ecba5dbc002745e89f786cc946d2de85a6470d5b2d1fb06
+ARG CLAUDE_CODE_VERSION=2.1.322
+ARG CLAUDE_BINARY_SHA256_AMD64=bfb3703ad5380242328459bc62ada4bde8ae7ba57c6e1eeadb9c00e08874c478
+ARG CLAUDE_BINARY_SHA256_ARM64=f220ca50ea4f3222043ff83cc224a1262e0196e9897acc0871efa94235b0c1fd
 # These are the exact artifacts shipped by the image. Each descriptor's
 # comments record the last behavioral measurement for that provider, which is
 # not always the version pinned here.
-ARG CODEX_VERSION=0.166.0
+ARG CODEX_VERSION=0.167.1
 
 USER root
 ENV HOME=/root
@@ -679,19 +681,19 @@ ARG QWEN_VERSION
 ARG MIMO_VERSION=0.1.16
 ARG MIMO_SHA256_AMD64=2eb7863354a222d20d3319f5876711df85ef07b5e89bb644fdceaf3f81fd884a
 ARG MIMO_SHA256_ARM64=220c621eb61a175ba0bc8e9c45c217abfed8dace1f17111c3717bceb95ad2ab3
-ARG QODER_VERSION=1.1.83
-ARG CURSOR_AGENT_VERSION=2026.11.05-86047df
-ARG CURSOR_AGENT_SHA256_AMD64=170b77786cbf4c93064d64fff12b71a178b968730561c64afc2e8e752535442e
-ARG CURSOR_AGENT_SHA256_ARM64=131554bfdbf683d8ebfef83a2bb46ac4e5d060f198711040b07ed063c2471871
-ARG GROK_VERSION=1.0.70
+ARG QODER_VERSION=1.1.87
+ARG CURSOR_AGENT_VERSION=2026.11.11-043ef28
+ARG CURSOR_AGENT_SHA256_AMD64=5d82bd6e6f090b1804b8284fdc68050f0d588183cafc9d78365379e218ed650c
+ARG CURSOR_AGENT_SHA256_ARM64=e8199ea0b184c5985f1c7ecd8b1a43ea85d4e51367b12d0be70ec3d9dd354345
+ARG GROK_VERSION=1.0.77
 # Oh My Pi 18.13.3 requires Bun 1.4.4 or later.
 ARG BUN_VERSION=1.4.4
-ARG OMP_VERSION=18.16.0
+ARG OMP_VERSION=18.18.8
 ARG CRUSH_VERSION
-ARG PI_VERSION=1.5.0
-ARG DEVIN_VERSION=3000.11.234
-ARG DEVIN_SHA256_AMD64=201370cddd2924294e3ca6b46fd8ece49b5763953b644a1dd823fce5490cb41a
-ARG DEVIN_SHA256_ARM64=438ca7f8280b3ef0747afc406e827d9e182156000277a1660358ac4fbd04156e
+ARG PI_VERSION=1.5.2
+ARG DEVIN_VERSION=3000.12.43
+ARG DEVIN_SHA256_AMD64=6a19997b5fc2d6ba1a8c341d4e2b12f1b78cad5d415ee9c0ca413a8d52a99562
+ARG DEVIN_SHA256_ARM64=1eaa07d2181ed26f5789cf6b3617d39a2459c25f1bc5a51cc5cc703db7f95274
 
 USER root
 ENV HOME=/root

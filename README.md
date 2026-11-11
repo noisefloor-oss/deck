@@ -91,22 +91,22 @@ Code and Codex. Crush is bundled as a CLI, but has no Deck conversation picker.
 <!-- harness-pins:start -->
 | Harness | Pinned version | Pinned on (UTC) | Agent chat | Login helper | Attention badges |
 | --- | --- | --- | --- | --- | --- |
-| `claude` | `2.1.318` | 2026-11-04 | Live | None | Unknown |
-| `codex` | `0.166.0` | 2026-10-29 | Live | Browser callback | Unknown |
-| `kimi` | `2.5.1` | 2026-11-05 | Next turn | None | Unknown |
+| `claude` | `2.1.322` | 2026-11-10 | Live | None | Unknown |
+| `codex` | `0.167.1` | 2026-11-10 | Live | Browser callback | Unknown |
+| `kimi` | `2.5.3` | 2026-11-10 | Next turn | None | Unknown |
 | `opencode` | `1.19.5` | 2026-10-28 | Live | None | Unknown |
-| `command-code` | `1.88.3` | 2026-11-05 | Manual | None | Unknown |
+| `command-code` | `1.88.5` | 2026-11-06 | Manual | None | Unknown |
 | `cline` | `3.0.74` | 2026-10-27 | Manual | None | Unknown |
 | `kilo` | `7.8.27` | 2026-11-05 | Manual | None | Unknown |
-| `qwen` | `0.26.7` | 2026-11-04 | Manual | None | Unknown |
+| `qwen` | `0.27.2` | 2026-11-10 | Manual | None | Unknown |
 | `mimo` | `0.1.16` | 2026-10-27 | Manual | None | Unknown |
-| `qoder` | `1.1.83` | 2026-11-04 | Manual | None | Unknown |
-| `cursor-agent` | `2026.11.05-86047df` | 2026-11-05 | Manual | None | Unknown |
-| `devin` | `3000.11.234` | 2026-10-30 | Manual | None | Unknown |
-| `grok` | `1.0.70` | 2026-10-25 | Manual | None | Unknown |
-| `omp` | `18.16.0` | 2026-11-03 | Live | None | Unknown |
-| `pi` | `1.5.0` | 2026-11-02 | Live | ChatGPT, Anthropic | Input, ended turn |
-| `crush` | `0.99.0` | 2026-10-29 | Manual | None | Unknown |
+| `qoder` | `1.1.87` | 2026-11-11 | Manual | None | Unknown |
+| `cursor-agent` | `2026.11.11-043ef28` | 2026-11-11 | Manual | None | Unknown |
+| `devin` | `3000.12.43` | 2026-11-10 | Manual | None | Unknown |
+| `grok` | `1.0.77` | 2026-11-06 | Manual | None | Unknown |
+| `omp` | `18.18.8` | 2026-11-11 | Live | None | Unknown |
+| `pi` | `1.5.2` | 2026-11-10 | Live | ChatGPT, Anthropic | Input, ended turn |
+| `crush` | `0.100.0` | 2026-11-05 | Manual | None | Unknown |
 <!-- harness-pins:end -->
 
 Pinned on records when Deck adopted that version, not its upstream release

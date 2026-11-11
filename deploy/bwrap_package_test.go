@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/noisefloor-oss/deck/internal/supervisor"
+	"gopkg.in/yaml.v3"
 )
 
 const bwrapRecipe = "bwrap/build-bwrap.sh"
@@ -41,7 +43,9 @@ func TestBwrapRecipePinsClosedInputs(t *testing.T) {
 		"ZIG_SHA256=24aeeec8af16c381934a6cd7d95c807a8cb2cf7df9fa40d359aa884195c4716c",
 		"sha256sum --check --strict",
 		"--retry-all-errors",
-		"--connect-timeout 10 --max-time 90",
+		`--connect-timeout 10 --max-time "$max_time"`,
+		`--retry "$retries"`,
+		`fetch 300 0 "https://ziglang.org/`,
 		"SOURCE_DATE_EPOCH=1735689600",
 		"export SOURCE_DATE_EPOCH LC_ALL=C LANG=C TZ=UTC",
 		"umask 022",
@@ -49,6 +53,58 @@ func TestBwrapRecipePinsClosedInputs(t *testing.T) {
 		if !strings.Contains(recipe, required) {
 			t.Errorf("bwrap recipe is missing immutable pin %q", required)
 		}
+	}
+}
+
+// Exercise the recipe's actual fetch function: a failed source falls back,
+// while a successful transfer with the wrong bytes must fail closed.
+func TestBwrapFetchVerifiesFallbackBytes(t *testing.T) {
+	recipe := readBwrapRecipe(t)
+	start := strings.Index(recipe, "fetch() {")
+	if start < 0 {
+		t.Fatal("fetch function not found")
+	}
+	end := strings.Index(recipe[start:], "\nextract() {")
+	if end < 0 {
+		t.Fatal("fetch function not found")
+	}
+	dir := t.TempDir()
+	script := recipe[start:start+end] + `
+SRC=$1
+curl() {
+  case "$*" in
+    *"--retry 0"*"--max-time 300"*) ;;
+    *) echo "incorrect large archive transfer budget" >&2; return 91 ;;
+  esac
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      https://unavailable/*) return 28 ;;
+      --output) shift; printf '%s' "$FETCH_BYTES" >"$1"; return ;;
+    esac
+    shift
+  done
+  return 92
+}
+fetch 300 0 https://unavailable/zig.tar.xz "$2" https://fallback/zig.tar.xz
+`
+	run := func(bytes string) error {
+		cmd := exec.Command("sh", "-eu", "-c", script, "fetch-test", dir, "2689367b205c16ce32ed4200942b8b8b1e262dfc70d9bc9fbc77c49699a4f1df")
+		cmd.Env = append(os.Environ(), "FETCH_BYTES="+bytes)
+		out, err := cmd.CombinedOutput()
+		t.Logf("%s", out)
+		return err
+	}
+	if err := run("ok"); err != nil {
+		t.Fatalf("verified fallback failed: %v", err)
+	}
+	if err := os.Remove(filepath.Join(dir, "zig.tar.xz")); err != nil {
+		t.Fatal(err)
+	}
+	if err := run("tampered"); err == nil {
+		t.Fatal("unverified download accepted")
+	}
+	if err := run("ok"); err == nil {
+		t.Fatal("cached unverified bytes accepted")
 	}
 }
 
@@ -181,5 +237,46 @@ func TestBwrapDoubleBuildReproducesPinnedExecutable(t *testing.T) {
 	}
 	if observed[0] != pin {
 		t.Fatalf("linux/amd64 reproduced %s, supervisor pin is %s", observed[0], pin)
+	}
+}
+
+func TestBwrapProofStopsAfterFailedBuild(t *testing.T) {
+	var workflow struct {
+		Jobs map[string]struct{ Steps []struct{ Name, Run string } }
+	}
+	if err := yaml.Unmarshal(readWorkflow(t, "release-acceptance.yaml"), &workflow); err != nil {
+		t.Fatal(err)
+	}
+	proof := ""
+	for _, step := range workflow.Jobs["bwrap-proof"].Steps {
+		if step.Name == "Prove the pinned Bubblewrap executable identity" {
+			proof = step.Run
+		}
+	}
+	if proof == "" {
+		t.Fatal("proof step missing")
+	}
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "bin")
+	if err := os.Mkdir(bin, 0700); err != nil {
+		t.Fatal(err)
+	}
+	// A real failed container must escape tee and stop the loop immediately.
+	if err := os.WriteFile(filepath.Join(bin, "docker"), []byte("#!/bin/sh\necho called >> \"$CALL_LOG\"\nexit 42\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("bash", "-c", proof)
+	cmd.Env = append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH"), "RUNNER_TEMP="+dir, "GITHUB_ENV="+filepath.Join(dir, "env"), "GITHUB_RUN_ID=1", "GITHUB_RUN_ATTEMPT=1", "CALL_LOG="+filepath.Join(dir, "calls"))
+	out, err := cmd.CombinedOutput()
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 42 {
+		t.Fatalf("proof did not propagate build failure: %v\n%s", err, out)
+	}
+	calls, err := os.ReadFile(filepath.Join(dir, "calls"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(calls) != "called\n" {
+		t.Fatalf("proof continued after failed build: %q", calls)
 	}
 }
