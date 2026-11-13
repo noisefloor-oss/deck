@@ -165,26 +165,31 @@ full text below also applies to the Apache-licensed portions of yaml.v3.
 
 ### filippo.io/age
 
-Version: `v1.2.1`
+Version: `v1.3.2`
 
 SPDX: `BSD-3-Clause AND MIT`
 
-[Source](https://proxy.golang.org/filippo.io/age/@v/v1.2.1.zip)
+[Source](https://proxy.golang.org/filippo.io/age/@v/v1.3.2.zip)
 
 Copyright notices:
 
 ```text
 Copyright (c) 2017 Takatoshi Nakagawa
 Copyright (c) 2019 The age Authors
+Copyright 2019 Google LLC
 Copyright 2019 The age Authors
 Copyright 2019 The age Authors. All rights reserved.
 Copyright 2021 The age Authors. All rights reserved.
+Copyright 2022 Filippo Valsorda
+Copyright 2025 The age Authors. All rights reserved.
 ```
 
 `LICENSE`:
 
 ```text
 Copyright 2019 The age Authors
+Copyright 2019 Google LLC
+Copyright 2022 Filippo Valsorda
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are
@@ -238,13 +243,61 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
+### filippo.io/hpke
+
+Version: `v0.4.0`
+
+SPDX: `BSD-3-Clause`
+
+[Source](https://proxy.golang.org/filippo.io/hpke/@v/v0.4.0.zip)
+
+Copyright notices:
+
+```text
+Copyright 2009 The Go Authors.
+Copyright 2024 The Go Authors. All rights reserved.
+Copyright 2025 The Go Authors. All rights reserved.
+```
+
+`LICENSE`:
+
+```text
+Copyright 2009 The Go Authors.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+   * Redistributions of source code must retain the above copyright
+notice, this list of conditions and the following disclaimer.
+   * Redistributions in binary form must reproduce the above
+copyright notice, this list of conditions and the following disclaimer
+in the documentation and/or other materials provided with the
+distribution.
+   * Neither the name of Google LLC nor the names of its
+contributors may be used to endorse or promote products derived from
+this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
 ### github.com/coreos/go-oidc/v3
 
-Version: `v3.20.0`
+Version: `v3.21.0`
 
 SPDX: `Apache-2.0`
 
-[Source](https://proxy.golang.org/github.com/coreos/go-oidc/v3/@v/v3.20.0.zip)
+[Source](https://proxy.golang.org/github.com/coreos/go-oidc/v3/@v/v3.21.0.zip)
 
 Copyright notices:
 
@@ -512,11 +565,11 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ### github.com/fxamacker/cbor/v2
 
-Version: `v2.9.4`
+Version: `v2.10.0`
 
 SPDX: `MIT`
 
-[Source](https://proxy.golang.org/github.com/fxamacker/cbor/v2/@v/v2.9.4.zip)
+[Source](https://proxy.golang.org/github.com/fxamacker/cbor/v2/@v/v2.10.0.zip)
 
 Copyright notices:
 
@@ -553,11 +606,11 @@ SOFTWARE.
 
 ### github.com/go-jose/go-jose/v4
 
-Version: `v4.1.4`
+Version: `v4.1.9`
 
 SPDX: `Apache-2.0 AND BSD-3-Clause`
 
-[Source](https://proxy.golang.org/github.com/go-jose/go-jose/v4/@v/v4.1.4.zip)
+[Source](https://proxy.golang.org/github.com/go-jose/go-jose/v4/@v/v4.1.9.zip)
 
 Copyright notices:
 
@@ -568,6 +621,7 @@ Copyright 2010 The Go Authors. All rights reserved.
 Copyright 2011 The Go Authors. All rights reserved.
 Copyright 2014 Square Inc.
 Copyright 2018 Square Inc.
+Copyright 2026 The Go JOSE Authors.
 ```
 
 `LICENSE`:
@@ -1351,11 +1405,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ### github.com/mattn/go-colorable
 
-Version: `v0.1.14`
+Version: `v0.1.16`
 
 SPDX: `MIT`
 
-[Source](https://proxy.golang.org/github.com/mattn/go-colorable/@v/v0.1.14.zip)
+[Source](https://proxy.golang.org/github.com/mattn/go-colorable/@v/v0.1.16.zip)
 
 Copyright notices:
 
@@ -1391,11 +1445,11 @@ SOFTWARE.
 
 ### github.com/mattn/go-isatty
 
-Version: `v0.0.20`
+Version: `v0.0.24`
 
 SPDX: `MIT`
 
-[Source](https://proxy.golang.org/github.com/mattn/go-isatty/@v/v0.0.20.zip)
+[Source](https://proxy.golang.org/github.com/mattn/go-isatty/@v/v0.0.24.zip)
 
 Copyright notices:
 
@@ -1419,11 +1473,11 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 ### github.com/mattn/go-sqlite3
 
-Version: `v1.14.49`
+Version: `v1.14.53`
 
 SPDX: `MIT`
 
-[Source](https://proxy.golang.org/github.com/mattn/go-sqlite3/@v/v1.14.49.zip)
+[Source](https://proxy.golang.org/github.com/mattn/go-sqlite3/@v/v1.14.53.zip)
 
 Copyright notices:
 
@@ -1460,11 +1514,11 @@ SOFTWARE.
 
 ### github.com/pelletier/go-toml/v2
 
-Version: `v2.2.4`
+Version: `v2.4.3`
 
 SPDX: `MIT`
 
-[Source](https://proxy.golang.org/github.com/pelletier/go-toml/v2/@v/v2.2.4.zip)
+[Source](https://proxy.golang.org/github.com/pelletier/go-toml/v2/@v/v2.4.3.zip)
 
 Copyright notices:
 
@@ -1501,11 +1555,11 @@ SOFTWARE.
 
 ### github.com/philhofer/fwd
 
-Version: `v1.2.0`
+Version: `v1.2.1`
 
 SPDX: `MIT`
 
-[Source](https://proxy.golang.org/github.com/philhofer/fwd/@v/v1.2.0.zip)
+[Source](https://proxy.golang.org/github.com/philhofer/fwd/@v/v1.2.1.zip)
 
 Copyright notices:
 
@@ -1567,11 +1621,11 @@ SOFTWARE.
 
 ### github.com/tinylib/msgp
 
-Version: `v1.6.4`
+Version: `v1.6.5`
 
 SPDX: `MIT`
 
-[Source](https://proxy.golang.org/github.com/tinylib/msgp/@v/v1.6.4.zip)
+[Source](https://proxy.golang.org/github.com/tinylib/msgp/@v/v1.6.5.zip)
 
 Copyright notices:
 
@@ -1636,11 +1690,11 @@ SOFTWARE.
 
 ### golang.org/x/crypto
 
-Version: `v0.57.0`
+Version: `v0.59.0`
 
 SPDX: `BSD-3-Clause`
 
-[Source](https://proxy.golang.org/golang.org/x/crypto/@v/v0.57.0.zip)
+[Source](https://proxy.golang.org/golang.org/x/crypto/@v/v0.59.0.zip)
 
 Copyright notices:
 
@@ -1691,11 +1745,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ### golang.org/x/net
 
-Version: `v0.60.0`
+Version: `v0.62.0`
 
 SPDX: `BSD-3-Clause`
 
-[Source](https://proxy.golang.org/golang.org/x/net/@v/v0.60.0.zip)
+[Source](https://proxy.golang.org/golang.org/x/net/@v/v0.62.0.zip)
 
 Copyright notices:
 
@@ -1738,11 +1792,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ### golang.org/x/oauth2
 
-Version: `v0.36.0`
+Version: `v0.38.0`
 
 SPDX: `BSD-3-Clause`
 
-[Source](https://proxy.golang.org/golang.org/x/oauth2/@v/v0.36.0.zip)
+[Source](https://proxy.golang.org/golang.org/x/oauth2/@v/v0.38.0.zip)
 
 Copyright notices:
 
@@ -1787,11 +1841,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ### golang.org/x/sys
 
-Version: `v0.48.0`
+Version: `v0.50.0`
 
 SPDX: `BSD-3-Clause`
 
-[Source](https://proxy.golang.org/golang.org/x/sys/@v/v0.48.0.zip)
+[Source](https://proxy.golang.org/golang.org/x/sys/@v/v0.50.0.zip)
 
 Copyright notices:
 

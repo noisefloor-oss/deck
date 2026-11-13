@@ -65,8 +65,8 @@ func freshRelaunchCases() []freshRelaunchCase {
 			wantPaths:   []string{"~/.cursor"},
 			wantIdentity: ExecutableIdentity{
 				Interpreted:     true,
-				ExpectedProcExe: "/opt/cursor-agent/2026.11.11-043ef28/dist-package/node",
-				LaunchTarget:    "/opt/cursor-agent/2026.11.11-043ef28/dist-package/index.js",
+				ExpectedProcExe: "/opt/cursor-agent/2026.11.13-eacade1/dist-package/node",
+				LaunchTarget:    "/opt/cursor-agent/2026.11.13-eacade1/dist-package/index.js",
 				ObservedCmdline: "/usr/local/bin/cursor-agent --use-system-ca",
 			},
 		},

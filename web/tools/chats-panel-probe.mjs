@@ -328,6 +328,54 @@ try {
   near(place.top, place.end, "a repaint keeps a list at the newest row at the newest row", 4);
   await short.close();
 
+  // The session-row mark is a persistent button, not just an indicator. It
+  // opens the active session's ledger just like the top-right trigger.
+  const activeMark = page.locator('[data-session="sess-1"] [data-meta-chat]');
+  assert.equal(await activeMark.evaluate((el) => el.tagName), "BUTTON");
+  await activeMark.hover();
+  assert.equal(await activeMark.evaluate((el) => getComputedStyle(el).opacity), "1", "row hover does not hide the chat button");
+  assert.equal(await activeMark.evaluate((el) => getComputedStyle(el.closest("[data-session-meta]")).opacity), "1",
+    "marks inserted after the row render do not inherit the tick's hover fade");
+  await activeMark.click();
+  await page.waitForFunction(() => document.querySelector('[data-region="chats"]')?.getAttribute("data-open") === "true");
+  assert.equal(await trigger.getAttribute("aria-pressed"), "true");
+  assert.equal(await page.locator('[data-region="tasks"]').getAttribute("data-open"), "false");
+  await trigger.click();
+  await page.waitForFunction(() => document.querySelector('[data-region="chats"]')?.getAttribute("data-open") === "false");
+
+  // Another member's mark selects that session before opening its own ledger.
+  const otherSessionMark = page.locator('[data-session="sess-2"] [data-meta-chat]');
+  await otherSessionMark.click();
+  await page.waitForFunction(() => document.querySelector('[data-session="sess-2"]')?.getAttribute("aria-selected") === "true");
+  await page.waitForFunction(() => document.querySelector("[data-info-status]")?.textContent?.startsWith("codex-sess is in a chat"));
+  assert.equal(await panel.getAttribute("data-open"), "true");
+  assert.match(await room.locator("[data-chats-members]").textContent() ?? "", /codex-sess/);
+  assert.equal(await otherSessionMark.getAttribute("data-meta-chat"), "live", "opening the other session marks its rows seen");
+
+  // Reopening the current session and switching sessions while the panel is
+  // already open both refresh the replacement panel; no loading state sticks.
+  await otherSessionMark.click();
+  await room.waitFor();
+  assert.equal(await panel.getAttribute("data-open"), "true");
+  assert.match(await room.locator("[data-chats-members]").textContent() ?? "", /codex-sess/);
+  await activeMark.click();
+  await page.waitForFunction(() => document.querySelector('[data-session="sess-1"]')?.getAttribute("aria-selected") === "true");
+  await page.waitForFunction(() => document.querySelector("[data-info-status]")?.textContent?.startsWith("claude-sess is in a chat"));
+  await room.waitFor();
+  assert.equal(await panel.getAttribute("data-open"), "true");
+  assert.match(await room.locator("[data-chats-members]").textContent() ?? "", /claude-sess/);
+
+  // The deterministic forced-hover capture follows the same split: the chat
+  // button and its parent stay visible while only the other metadata fades.
+  const forced = await context.newPage();
+  forced.on("pageerror", (error) => pageErrors.push(error.message));
+  await forced.goto(`${origin}/preview.html?hover=session`, { waitUntil: "networkidle" });
+  const forcedMark = forced.locator('[data-session="sess-1"] [data-meta-chat]');
+  await forcedMark.waitFor();
+  assert.equal(await forcedMark.evaluate((el) => getComputedStyle(el.closest("[data-session-meta]")).opacity), "1");
+  assert.equal(await forced.locator('[data-session="sess-1"] [data-meta-rest]').evaluate((el) => getComputedStyle(el).opacity), "0");
+  await forced.close();
+
   assert.deepEqual(pageErrors, [], "no page errors");
   console.log("chats-panel-probe: ok");
 } finally {

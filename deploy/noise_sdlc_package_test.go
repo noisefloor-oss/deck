@@ -14,8 +14,8 @@ func TestDockerfileInstallsPinnedNoiseSdlcPlugin(t *testing.T) {
 	}
 	body := string(raw)
 	for _, required := range []string{
-		"ARG NOISE_SDLC_REF=abadbafa9f8a8fd3f41013efeb57e8ae55ecc9e2",
-		"ARG NOISE_SDLC_VERSION=0.4.1",
+		"ARG NOISE_SDLC_REF=b34149d25f6ca679277c710b2eab1216c65b1a3b",
+		"ARG NOISE_SDLC_VERSION=0.5.0",
 		"https://github.com/noisefloor-oss/sdlc.git",
 		`test "$(git -C /src/noise-sdlc rev-parse HEAD)" = "${NOISE_SDLC_REF}"`,
 		"CGO_ENABLED=0 go build -trimpath",

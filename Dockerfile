@@ -1,24 +1,24 @@
 # syntax=docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e
 
-ARG NOISE_TASKS_REF=a03efe15d6bfcd68fa3cc812d612c63306736149
-ARG NOISE_TASKS_VERSION=2.10.1
-ARG NOISE_VISUAL_DIFF_REF=9b5b0348791991f37e2cb5a4078f17ae55b7c644
-ARG NOISE_VISUAL_DIFF_VERSION=0.14.1
-ARG NOISE_SDLC_REF=abadbafa9f8a8fd3f41013efeb57e8ae55ecc9e2
-ARG NOISE_SDLC_VERSION=0.4.1
-ARG NOISE_A2A_REF=4ebda82d51ae5c4c185c3a49f05dbb3074f01dc4
-ARG NOISE_A2A_VERSION=0.1.0
+ARG NOISE_TASKS_REF=3172edd94b6ca468817e6f7d4eeada6d8671e08f
+ARG NOISE_TASKS_VERSION=2.11.0
+ARG NOISE_VISUAL_DIFF_REF=5e16c74a04acfa647f608aece43821def8417c1d
+ARG NOISE_VISUAL_DIFF_VERSION=0.14.3
+ARG NOISE_SDLC_REF=b34149d25f6ca679277c710b2eab1216c65b1a3b
+ARG NOISE_SDLC_VERSION=0.5.0
+ARG NOISE_A2A_REF=a8c556043cfd59ca434b58cf8893758f72e326b5
+ARG NOISE_A2A_VERSION=0.2.2
 
-ARG KIMI_VERSION=2.5.3
+ARG KIMI_VERSION=2.6.2
 ARG OPENCODE_VERSION=1.19.5
-ARG COMMAND_CODE_VERSION=1.88.5
+ARG COMMAND_CODE_VERSION=1.89.0
 # Lift this pin once Command Code accepts named-only semantic-conventions exports.
 # Until then 1.44 makes it fail before even --version.
 ARG COMMAND_CODE_SEMCONV_VERSION=1.43.0
 ARG CLINE_VERSION=3.0.74
 ARG KILO_VERSION=7.8.27
-ARG QWEN_VERSION=0.27.2
-ARG CRUSH_VERSION=0.100.0
+ARG QWEN_VERSION=0.27.3
+ARG CRUSH_VERSION=0.101.0
 
 # A local named context overrides this empty input stage when fonts are supplied.
 FROM scratch AS licensed-fonts
@@ -53,17 +53,17 @@ RUN --mount=type=bind,from=licensed-fonts,target=/run/noisedeck-fonts \
 # Chrome security updates can arrive between Playwright releases. These
 # archives contain the fixed browser for each supported Linux architecture.
 FROM scratch AS chrome-amd64
-ADD --checksum=sha256:e6c94490f0b6b337225aeb2d2a5034858516b7017356980ba94f5176d8774a50 https://storage.googleapis.com/chrome-for-testing-public/156.0.8078.47/linux64/chrome-linux64.zip /chrome.zip
+ADD --checksum=sha256:dba9cc838e1ce269c33ea68170881127bd15d078fc3ca5891c90802819a4d7c7 https://storage.googleapis.com/chrome-for-testing-public/158.0.8127.36/linux64/chrome-linux64.zip /chrome.zip
 
 FROM scratch AS chrome-arm64
-ADD --checksum=sha256:9e37000e3ee2731e45e475a6a2eac587d3c0ee5f8aef7cab5211ecd52cf3fb7b https://storage.googleapis.com/chrome-for-testing-public/156.0.8078.47/linux-arm64/chrome-linux-arm64.zip /chrome.zip
+ADD --checksum=sha256:f811b64a50cbc73f94fda7b3f3b3bf62be5d9409b3207e6ead9b61e6706afffe https://storage.googleapis.com/chrome-for-testing-public/158.0.8127.36/linux-arm64/chrome-linux-arm64.zip /chrome.zip
 
 FROM chrome-${TARGETARCH} AS chrome-archive
 
 # Keep the upstream Chromium libraries, but exclude its unused Firefox/WebKit
 # engines, WebKit media plugins and npm tooling. The server needs only the
 # lockfile-resolved Playwright package and its playwright-core dependency.
-FROM mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea AS browser
+FROM mcr.microsoft.com/playwright:v1.65.0-noble@sha256:9beb546099e11f52d62e505537914870e01a67e0e6b00ae41da4775324e73dbe AS browser
 
 # Remove the older bundled Chromium so it cannot be selected accidentally.
 COPY --from=chrome-archive /chrome.zip /tmp/chrome.zip
@@ -84,7 +84,7 @@ RUN apt-get -o Acquire::Retries=0 update \
     && mkdir -p /opt/noise-browser \
     && mv /tmp/chrome/chrome-* /opt/noise-browser/chrome \
     && rm -rf /tmp/chrome /tmp/chrome.zip \
-    && test "$(/opt/noise-browser/chrome/chrome --version | awk '{print $NF}')" = "156.0.8078.47" \
+    && test "$(/opt/noise-browser/chrome/chrome --version | awk '{print $NF}')" = "158.0.8127.36" \
     && ldd /opt/noise-browser/chrome/chrome > /tmp/chrome-libraries \
     && ! grep -q "not found" /tmp/chrome-libraries \
     && rm /tmp/chrome-libraries \
@@ -126,8 +126,8 @@ COPY --chmod=0555 deploy/browser-entrypoint.sh /opt/noise-browser/entrypoint.sh
 ENTRYPOINT ["/opt/noise-browser/entrypoint.sh"]
 COPY deploy/browser-server.mjs /opt/noise-browser/server.mjs
 COPY deploy/browser-versions.json /opt/noise-browser/browser-versions.json
-RUN test "$(node --version)" = "v24.22.1" \
-    && test "$(node -p "require('/opt/noise-browser/node_modules/playwright/package.json').version")" = "1.64.1" \
+RUN test "$(node --version)" = "v26.13.1" \
+    && test "$(node -p "require('/opt/noise-browser/node_modules/playwright/package.json').version")" = "1.65.0" \
     && node --check /opt/noise-browser/server.mjs \
     && ldd /opt/noise-browser/chrome/chrome > /tmp/chrome-final-libraries \
     && ! grep -q "not found" /tmp/chrome-final-libraries \
@@ -241,7 +241,7 @@ RUN --mount=type=secret,id=github_token \
 
 FROM golang:1.26.11-bookworm@sha256:dc40a13b61304647ed7e5d581d246b86413dfc29d63c6d018310feb93cd98fc0 AS visual-diff-go
 
-FROM node:24.22.1-bookworm@sha256:6449e19d8184d84062525b6a7524def03146c2cb04a7f08b076680d0e8e4240a AS noise-visual-diff-build
+FROM node:24.22.3-bookworm@sha256:9d266751ca3d7fdbe651c878ffd5ad0a42fed49a18c283509267c97f025b7496 AS noise-visual-diff-build
 
 # The SDK supports Visual Diff's anchored file-server helper.
 # Keep the SDK in this build stage; only the resulting SEA enters runtime.
@@ -604,13 +604,13 @@ FROM core AS slim
 ARG TARGETARCH
 ARG NOISEDECK_RUNTIME_UID=1026
 ARG NOISEDECK_RUNTIME_GID=100
-ARG CLAUDE_CODE_VERSION=2.1.322
-ARG CLAUDE_BINARY_SHA256_AMD64=bfb3703ad5380242328459bc62ada4bde8ae7ba57c6e1eeadb9c00e08874c478
-ARG CLAUDE_BINARY_SHA256_ARM64=f220ca50ea4f3222043ff83cc224a1262e0196e9897acc0871efa94235b0c1fd
+ARG CLAUDE_CODE_VERSION=2.1.325
+ARG CLAUDE_BINARY_SHA256_AMD64=0dc4f4a9a165fc60746d7ae8489712e5fc352f1e7ad4eb22e7141bd0812eb0cf
+ARG CLAUDE_BINARY_SHA256_ARM64=7b6e484b1989a5a14a4b354709ccc8672518a3ec5b9ccd7981fc6254327fde67
 # These are the exact artifacts shipped by the image. Each descriptor's
 # comments record the last behavioral measurement for that provider, which is
 # not always the version pinned here.
-ARG CODEX_VERSION=0.167.1
+ARG CODEX_VERSION=0.169.0
 
 USER root
 ENV HOME=/root
@@ -678,22 +678,22 @@ ARG COMMAND_CODE_VERSION
 ARG CLINE_VERSION
 ARG KILO_VERSION
 ARG QWEN_VERSION
-ARG MIMO_VERSION=0.1.16
-ARG MIMO_SHA256_AMD64=2eb7863354a222d20d3319f5876711df85ef07b5e89bb644fdceaf3f81fd884a
-ARG MIMO_SHA256_ARM64=220c621eb61a175ba0bc8e9c45c217abfed8dace1f17111c3717bceb95ad2ab3
-ARG QODER_VERSION=1.1.87
-ARG CURSOR_AGENT_VERSION=2026.11.11-043ef28
-ARG CURSOR_AGENT_SHA256_AMD64=5d82bd6e6f090b1804b8284fdc68050f0d588183cafc9d78365379e218ed650c
-ARG CURSOR_AGENT_SHA256_ARM64=e8199ea0b184c5985f1c7ecd8b1a43ea85d4e51367b12d0be70ec3d9dd354345
+ARG MIMO_VERSION=0.1.17
+ARG MIMO_SHA256_AMD64=92b0d0e5e7cc93691a072aa34a6496d01799e84ae0f13f369cdc14a07a35d66a
+ARG MIMO_SHA256_ARM64=c7685012abae6ab63e1b38ba52666ea8bac4a0fd33e2b86bd8ea2de726b80a43
+ARG QODER_VERSION=1.1.89
+ARG CURSOR_AGENT_VERSION=2026.11.13-eacade1
+ARG CURSOR_AGENT_SHA256_AMD64=c02e4321f20d691ee03af94d29948dc3a81c6c34e7328da7bb1afade4c75812f
+ARG CURSOR_AGENT_SHA256_ARM64=e4ba0611045a24d1cf78f021d34c19461680fc7234c19c1f981f1cc169f70cdc
 ARG GROK_VERSION=1.0.77
 # Oh My Pi 18.13.3 requires Bun 1.4.4 or later.
 ARG BUN_VERSION=1.4.4
-ARG OMP_VERSION=18.18.8
+ARG OMP_VERSION=18.20.0
 ARG CRUSH_VERSION
 ARG PI_VERSION=1.5.2
-ARG DEVIN_VERSION=3000.12.43
-ARG DEVIN_SHA256_AMD64=6a19997b5fc2d6ba1a8c341d4e2b12f1b78cad5d415ee9c0ca413a8d52a99562
-ARG DEVIN_SHA256_ARM64=1eaa07d2181ed26f5789cf6b3617d39a2459c25f1bc5a51cc5cc703db7f95274
+ARG DEVIN_VERSION=3000.12.57
+ARG DEVIN_SHA256_AMD64=0946784ef886d716e82a8026f76933bf0a6e4f0a804a23722bb62047e8c07d4a
+ARG DEVIN_SHA256_ARM64=e0f03ce263e30940122547f73e1c57d4f163391553fd37c6c856b366463d766f
 
 USER root
 ENV HOME=/root

@@ -179,7 +179,15 @@ const root = document.querySelector<HTMLDivElement>("#app")!;
 root.innerHTML = workspaceLayout();
 
 // Sidebar.
-const sidebarModel = new SidebarModel(api, { onProvidersChanged: () => sidebar.renderNewSessionPicker() });
+const sidebarModel = new SidebarModel(api, {
+  onProvidersChanged: () => sidebar.renderNewSessionPicker(),
+  onOpenChats: (sessionID) => {
+    const alreadyOpen = panels.isOpen("chats");
+    mountChats(sessionID);
+    panels.set("chats");
+    if (alreadyOpen) void chats.open().then(() => paintChatFacts());
+  },
+});
 // Title bar: the session identity left — the selected session's own name,
 // "claude" at rest — the two docked-panel triggers and
 // the more control right; the more control is an anchored popover. The chip
@@ -497,20 +505,35 @@ void (async () => {
 })();
 // The Chats ledger on the fixture: the live room with an uncertain
 // recipient, read for the selected session's agent.
-const chatsModel = new ChatsPanelModel(api, previewSession.id);
-const chats = new ChatsPanel(region(root, "chats-body"), chatsModel, {
+const chatSeen = new Map<string, Map<string, string | null>>();
+const chatSeenFor = (sessionID: string): Map<string, string | null> => {
+  let seen = chatSeen.get(sessionID);
+  if (seen === undefined) {
+    seen = new Map();
+    chatSeen.set(sessionID, seen);
+  }
+  return seen;
+};
+let chatsModel = new ChatsPanelModel(api, previewSession.id, {}, chatSeenFor(previewSession.id));
+let chats = new ChatsPanel(region(root, "chats-body"), chatsModel, {
   onClose: () => { panels.close(); focusPanelTrigger(root, "titlebar", "chats"); },
 });
+const mountChats = (sessionID: string): void => {
+  chats.dispose();
+  chatsModel = new ChatsPanelModel(api, sessionID, {}, chatSeenFor(sessionID));
+  chats = new ChatsPanel(region(root, "chats-body"), chatsModel, {
+    onClose: () => { panels.close(); focusPanelTrigger(root, "titlebar", "chats"); },
+  });
+};
 // The sidebar marks every session in a live chat from the content-free
-// index, as the live shell does. The selected session's mark reads the
-// panel model's own seen state, so opening the panel clears both accents
-// in the same tick; the other sessions have seen nothing in the fixture.
+// index, as the live shell does. Each session's mark reads its own seen
+// state, so opening its panel clears both accents in the same tick.
 let chatIndex: ChatIndex | null = null;
 const paintChatMarks = (): void => {
   if (chatIndex === null) return;
   const sessions = Object.values(fixtureSessions).flat();
   sidebar.setChatMarks(chatMarks(chatIndex, chatHandles(chatIndex, sessions), (sessionID, chatID) =>
-    sessionID === previewSession.id ? chatsModel.seenLastRow(chatID) : undefined));
+    chatSeen.get(sessionID)?.get(chatID)));
 };
 const paintChatFacts = (): void => {
   for (const trigger of root.querySelectorAll<HTMLElement>('[data-titlebar-chats], [data-titlebar-panels], [data-panel-choice="chats"]')) trigger.setAttribute("data-unseen", chatsModel.unseen && !panels.isOpen("chats") ? "true" : "false");

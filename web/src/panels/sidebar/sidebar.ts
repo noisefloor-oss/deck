@@ -22,6 +22,7 @@ import { ApiError } from "../../api/http.ts";
 import { lucideIcon } from "../../ui/icons.ts";
 import { escapeHtml } from "../../lib/escape.ts";
 import { formatSince } from "../../lib/format.ts";
+import * as hints from "../../lib/hints.ts";
 import { isVerifiedRunningSession, sessionNeedsAttention, sessionStaysListed } from "../../ui/session-status.ts";
 import { applyAutoColors } from "../../lib/auto-color.ts";
 import { operatorProjectColorKey } from "../../lib/session-colors.ts";
@@ -111,13 +112,13 @@ export function sessionMetaHtml(session: SessionSummary, streaming: boolean, cha
     ? `<span data-meta-spinner role="img" aria-label="output streaming"
       class="block h-[11px] w-[11px] flex-none animate-row-spinner rounded-circle border-[1.5px] border-border-strong border-t-text-secondary"></span>`
     : "";
-  // The chat mark sits ahead of the tick or spinner: an 11px
+  // The chat button sits ahead of the tick or spinner: an 11px
   // message-square, tertiary while the chat is live, accent while it holds
   // messages the user has not seen. No count.
   const mark = chat === null
     ? ""
-    : `<span data-meta-chat="${chat}" role="img" aria-label="${chat === "unseen" ? "in a chat with unseen messages" : "in a chat"}"
-      class="mr-1.5 flex h-[11px] w-[11px] flex-none items-center justify-center ${chat === "unseen" ? "text-accent" : "text-text-tertiary"}">${lucideIcon("message-square", 11)}</span>`;
+    : `<button type="button" data-meta-chat="${chat}" aria-label="${chat === "unseen" ? "Open chats with unseen messages" : "Open chats"}" data-hint="${hints.WATCH_CHATS}"
+      class="mr-1.5 flex h-7 w-[11px] flex-none items-center justify-center ${chat === "unseen" ? "text-accent" : "text-text-tertiary"} hover:text-text-primary">${lucideIcon("message-square", 11)}</button>`;
   const tick = sessionRowMetaHtml(session);
   const trailing = `${spinner}${spinning && tick !== "" ? `<span data-meta-tick class="hidden">${tick}</span>` : tick}`;
   // With a mark in the row, the tick and the spinner share one fixed
@@ -135,7 +136,9 @@ export function sessionMetaHtml(session: SessionSummary, streaming: boolean, cha
   const conversation = needsInput || unseen
     ? `<span data-conversation-attention="${needsInput ? "needs_input" : "ended"}" role="img" aria-label="${needsInput ? "Agent needs input" : "Unseen ended turn"}" class="mr-1.5 flex h-4 w-4 flex-none items-center justify-center rounded-full ${needsInput ? "bg-warning text-text-on-accent" : "border border-accent text-accent"}">${needsInput ? "?" : "✓"}</span>`
     : "";
-  return `${conversation}${mark}${attention}${slot}`;
+  const rest = `${conversation}${attention}${slot}`;
+  if (rest === "") return mark;
+  return `${mark}<span data-meta-rest class="flex items-center transition-opacity duration-[110ms] ease-[ease] group-focus-visible:opacity-0 group-has-focus-visible:opacity-0 group-hover:opacity-0">${rest}</span>`;
 }
 
 // There is deliberately no hardcoded provider list here. Which harnesses
@@ -153,6 +156,7 @@ export interface SidebarCallbacks {
   onRenameProject?: (projectID: string) => void;
   onRemoveProject?: (projectID: string) => void;
   onSelectSession?: (sessionID: string, keyboard: boolean) => void;
+  onOpenChats?: (sessionID: string) => void;
   onDeselectSession?: (sessionID: string) => void;
   onCreateSession?: (sessionID: string, codexLoginHelper?: boolean) => void;
   onRenameSession?: (sessionID: string) => void;
@@ -457,6 +461,20 @@ export class SidebarModel {
   // on a focused row from a click: a keyboard selection must leave focus
   // where the keyboard is, so downstream focus moves key off it.
   select(sessionID: string, keyboard = false): boolean {
+    if (!this.selectable(sessionID)) return false;
+    this.selectedSessionID = sessionID;
+    this.cb.onSelectSession?.(sessionID, keyboard);
+    return true;
+  }
+
+  openChats(sessionID: string): boolean {
+    if (!this.selectable(sessionID)) return false;
+    this.selectedSessionID = sessionID;
+    this.cb.onOpenChats?.(sessionID);
+    return true;
+  }
+
+  private selectable(sessionID: string): boolean {
     const session = this.groups
       .flatMap((group) => group.sessions)
       .find((candidate) => candidate.id === sessionID);
@@ -465,10 +483,7 @@ export class SidebarModel {
     // A stale row is not listed by the server, so it refuses too: the rail
     // draws it inert, and the keyboard must not reach what the pointer
     // cannot.
-    if (this.stale || session === undefined || !sessionStaysListed(session)) return false;
-    this.selectedSessionID = sessionID;
-    this.cb.onSelectSession?.(sessionID, keyboard);
-    return true;
+    return !this.stale && session !== undefined && sessionStaysListed(session);
   }
 
   // rename records the user's own label for a session row, then

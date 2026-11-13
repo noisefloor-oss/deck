@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { Sidebar } from "./sidebar-dom.ts";
-import { sessionRowMetaHtml } from "./sidebar.ts";
+import { sessionMetaHtml, sessionRowMetaHtml } from "./sidebar.ts";
 import type { ProjectWithSessions, SidebarModel } from "./sidebar.ts";
 import type { ApiClient } from "../../api/contracts.ts";
 import type { SessionSummary } from "../../api/sessions.ts";
@@ -389,7 +389,7 @@ test("a meta tick that paints a new bucket forces the next render to repaint", (
       tick.refreshSessionMeta();
       assert.equal(
         metaSpan.innerHTML,
-        sessionRowMetaHtml(session, t0 + 5_000),
+        sessionMetaHtml(session, false),
         "the meta tick did not paint the crossed bucket into the span",
       );
 

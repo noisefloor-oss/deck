@@ -5,8 +5,9 @@ import * as hints from "../../lib/hints.ts";
 import { escapeHtml } from "../../lib/escape.ts";
 
 // sessionActionControlsHtml is the session row's whole trailing edge:
-// the age tick, which fades out on hover, and the ONE
-// ellipsis control that fades in over it — .session-menu-trigger in
+// the age tick, which fades out on hover, the chat button, which stays
+// available, and the ONE ellipsis control that fades in over the tick —
+// .session-menu-trigger in
 // app.css owns that reveal. The button is 28px (--control-h-sm) with a
 // colour-only hover: row icon buttons get no wash, so the
 // glyph just steps to primary. Absolute placement is what keeps the
@@ -36,7 +37,7 @@ import { escapeHtml } from "../../lib/escape.ts";
 export function sessionActionControlsHtml(sessionID: string, metaHtml: string, selected: boolean): string {
   const id = escapeHtml(sessionID);
   return `
-    <span data-session-meta="${id}" class="session-evidence flex flex-none items-center text-micro font-medium leading-[normal] ${selected ? "text-text-secondary" : "text-text-tertiary"} transition-opacity duration-[110ms] ease-[ease] group-focus-visible:opacity-0 group-has-focus-visible:opacity-0 group-hover:opacity-0">${metaHtml}</span>
+    <span data-session-meta="${id}" class="session-evidence flex flex-none items-center text-micro font-medium leading-[normal] ${selected ? "text-text-secondary" : "text-text-tertiary"} transition-opacity duration-[110ms] ease-[ease]">${metaHtml}</span>
     <span class="session-menu-trigger">
       <button type="button" data-session-menu="${id}" aria-label="Session menu" data-hint="${hints.RENAME_RECOLOR_CLOSE_SESSION}" aria-haspopup="menu" aria-expanded="false"
         class="grid h-7 w-7 place-items-center rounded-control-sm text-text-tertiary transition-colors hover:text-text-primary pointer-coarse:h-10 pointer-coarse:w-10">${ellipsisGlyph()}</button>

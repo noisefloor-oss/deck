@@ -825,7 +825,7 @@ func TestBrowserOverlayTagMatchesPlaywrightClient(t *testing.T) {
 	if err := json.Unmarshal(versionsRaw, &versions); err != nil {
 		t.Fatal(err)
 	}
-	if versions.Playwright != want || versions.Chromium != "156.0.8078.47" {
+	if versions.Playwright != want || versions.Chromium != "158.0.8127.36" {
 		t.Fatalf("browser qualification pin disagrees with lockfile or security baseline: %+v", versions)
 	}
 
@@ -845,8 +845,8 @@ func TestBrowserOverlayTagMatchesPlaywrightClient(t *testing.T) {
 		t.Errorf("browser target does not pin the upstream playwright %s image by digest", want)
 	}
 	for _, archive := range []struct{ arch, platform, digest string }{
-		{"amd64", "linux64", "e6c94490f0b6b337225aeb2d2a5034858516b7017356980ba94f5176d8774a50"},
-		{"arm64", "linux-arm64", "9e37000e3ee2731e45e475a6a2eac587d3c0ee5f8aef7cab5211ecd52cf3fb7b"},
+		{"amd64", "linux64", "dba9cc838e1ce269c33ea68170881127bd15d078fc3ca5891c90802819a4d7c7"},
+		{"arm64", "linux-arm64", "f811b64a50cbc73f94fda7b3f3b3bf62be5d9409b3207e6ead9b61e6706afffe"},
 	} {
 		pin := "ADD --checksum=sha256:" + archive.digest + " https://storage.googleapis.com/chrome-for-testing-public/" + versions.Chromium + "/" + archive.platform + "/chrome-" + archive.platform + ".zip /chrome.zip"
 		if !strings.Contains(string(dockerfile), "FROM scratch AS chrome-"+archive.arch) || !strings.Contains(string(dockerfile), pin) {

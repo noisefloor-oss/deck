@@ -588,6 +588,21 @@ test("select reports whether the keyboard made the selection", async () => {
   assert.deepEqual(reported, [false, true]);
 });
 
+test("opening chats selects the session and reports only chat intent", async () => {
+  const selected: string[] = [];
+  const opened: string[] = [];
+  const m = new SidebarModel(fakeApi(), {
+    onSelectSession: (id) => selected.push(id),
+    onOpenChats: (id) => opened.push(id),
+  });
+  await m.refresh();
+  assert.equal(m.openChats("missing"), false);
+  assert.equal(m.openChats("s1"), true);
+  assert.equal(m.selectedSessionID, "s1");
+  assert.deepEqual(selected, []);
+  assert.deepEqual(opened, ["s1"]);
+});
+
 test("a session in limbo stays listed and selected; an ended one leaves", async () => {
   let presentation: SessionSummary["presentation_state"] = "running";
   const deselected: string[] = [];
@@ -1399,7 +1414,8 @@ test("selecting a session dismisses the sidebar only on narrow viewports", () =>
 
 test("a chat mark puts the tick in a fixed slot so marks line up across rows", () => {
   const withMark = sessionMetaHtml(sessions.p1![0]!, false, "live");
-  assert.match(withMark, /data-meta-chat="live"/);
+  assert.match(withMark, /<button type="button" data-meta-chat="live" aria-label="Open chats"/);
+  assert.match(withMark, /data-meta-rest[^>]*group-hover:opacity-0/, "only the non-chat metadata fades on hover");
   assert.match(withMark, /data-meta-slot[^>]*\bw-\[26px\][^>]*justify-end[^>]*overflow-hidden/, "a fixed width, not a minimum: a wide tick is clipped rather than moving the mark");
   const withoutMark = sessionMetaHtml(sessions.p1![0]!, false, null);
   assert.doesNotMatch(withoutMark, /data-meta-slot/, "a row without a mark keeps its natural trailing edge");

@@ -13,9 +13,9 @@ func TestDockerfilePinsCursorAgentCLI(t *testing.T) {
 	}
 	dockerfile := string(raw)
 	for _, required := range []string{
-		"ARG CURSOR_AGENT_VERSION=2026.11.11-043ef28",
-		"ARG CURSOR_AGENT_SHA256_AMD64=5d82bd6e6f090b1804b8284fdc68050f0d588183cafc9d78365379e218ed650c",
-		"ARG CURSOR_AGENT_SHA256_ARM64=e8199ea0b184c5985f1c7ecd8b1a43ea85d4e51367b12d0be70ec3d9dd354345",
+		"ARG CURSOR_AGENT_VERSION=2026.11.13-eacade1",
+		"ARG CURSOR_AGENT_SHA256_AMD64=c02e4321f20d691ee03af94d29948dc3a81c6c34e7328da7bb1afade4c75812f",
+		"ARG CURSOR_AGENT_SHA256_ARM64=e4ba0611045a24d1cf78f021d34c19461680fc7234c19c1f981f1cc169f70cdc",
 		"https://downloads.cursor.com/lab/${CURSOR_AGENT_VERSION}/linux/${cursor_arch}/agent-cli-package.tar.gz",
 		`test "$(cursor-agent --version)" = "${CURSOR_AGENT_VERSION}"`,
 		"cursor-agent --help >/tmp/cursor-agent-help",

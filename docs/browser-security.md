@@ -1,8 +1,8 @@
 # Browser security updates
 
-The browser image pairs Playwright 1.64.1 with Chrome for Testing
-156.0.8078.47. Playwright's 1.64.1 bundle contains Chromium 156.0.8078.4,
-which predates the [October 20 security release](https://chromereleases.googleblog.com/2026/10/stable-channel-update-for-desktop_02018666648.html).
+The browser image pairs Playwright 1.65.0 with Chrome for Testing
+158.0.8127.36. Playwright's 1.65.0 bundle contains Chromium 158.0.8127.18,
+which predates the [November 11 security release](https://chromereleases.googleblog.com/2026/11/stable-channel-update-for-desktop_01744469280.html).
 Matching the Playwright client and service versions alone does not establish
 that Chromium contains those fixes.
 

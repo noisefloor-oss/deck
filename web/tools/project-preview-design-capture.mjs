@@ -1,5 +1,5 @@
 // Keep an explicit rounded crop and reject frames that omit visible text or
-// controls or change layout. Visual Diff 0.14.1 rounds both reference and
+// controls or change layout. Visual Diff 0.14.3 rounds both reference and
 // implementation boxes; these containment and layout guards remain useful.
 export default async function setup(page) {
   const state = new URL(page.url()).searchParams.get("project-preview") ?? "";

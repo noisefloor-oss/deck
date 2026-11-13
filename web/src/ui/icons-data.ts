@@ -1,9 +1,9 @@
 // GENERATED FILE — do not edit. Regenerate with:
 //   node tools/generate-icons.mjs
-// Source: lucide-static 1.33.0 (the version pinned in pnpm-lock.yaml).
+// Source: lucide-static 1.72.0 (the version pinned in pnpm-lock.yaml).
 // icons.test.ts fails if this file drifts from the installed package.
 
-export const LUCIDE_VERSION = "1.33.0";
+export const LUCIDE_VERSION = "1.72.0";
 
 export type IconName =
   | "arrow-down"
@@ -60,9 +60,9 @@ export const ICON_PATHS: Record<IconName, string> = {
   "chevron-up":
     `<path d="m18 15-6-6-6 6"/>`,
   "circle-check":
-    `<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>`,
+    `<circle cx="12" cy="12" r="10"/><path d="m16 9-5.5 5.5L8 12"/>`,
   "circle-help":
-    `<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>`,
+    `<circle cx="12" cy="12" r="10"/><path d="M9 9.5a3 2.5 0 016 0c0 2-2 2-3 3.5"/><path d="M12 17h.01"/>`,
   "columns-2":
     `<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M12 3v18"/>`,
   "corner-down-left":

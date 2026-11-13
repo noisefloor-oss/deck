@@ -11,7 +11,7 @@
   opacity: 1;
   pointer-events: auto;
 }
-[data-preview-hover="session"] [data-session][aria-selected="true"] .session-evidence {
+[data-preview-hover="session"] [data-session][aria-selected="true"] [data-meta-rest] {
   opacity: 0;
 }
 [data-preview-hover="row-controls"] [data-project-row] [data-project-actions] {

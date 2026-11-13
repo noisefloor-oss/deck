@@ -34,7 +34,7 @@ type taskBinaries struct {
 	shim       string
 }
 
-const tasksIntegrationVersion = "2.10.1"
+const tasksIntegrationVersion = "2.11.0"
 
 // buildTaskBinaries compiles a complete fixed-libexec installation. Go's
 // build cache makes repeat builds within a test run cheap.

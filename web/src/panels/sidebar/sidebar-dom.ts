@@ -1525,11 +1525,15 @@ export class Sidebar {
       );
       if (!el) continue;
       el.querySelectorAll<HTMLElement>("[data-session]").forEach((s) => {
-        s.addEventListener("click", () => {
+        s.addEventListener("click", (event) => {
           // A tap while any row rests swiped-open is the tap-away that
           // closes it, never a selection.
           if (this.openSwipeID !== null) {
             this.setSwipeOpen(null);
+            return;
+          }
+          if ((event.target as HTMLElement).closest("[data-meta-chat]") !== null) {
+            this.selectSession(s.dataset.session!, false, true);
             return;
           }
           this.selectSession(s.dataset.session!, false);
@@ -1749,7 +1753,7 @@ export class Sidebar {
     return true;
   }
 
-  private selectSession(sessionID: string, restoreFocus: boolean): void {
+  private selectSession(sessionID: string, restoreFocus: boolean, openChats = false): void {
     if (this.renamingSession === sessionID) return;
     // Context comes from where the row sits, not from whether selecting it
     // worked: attachability is not parentage. A row that names no project
@@ -1760,7 +1764,8 @@ export class Sidebar {
       this.selectedProjectID = null;
       this.contextProjectID = owner;
     }
-    if (!this.model.select(sessionID, restoreFocus)) return;
+    const selected = openChats ? this.model.openChats(sessionID) : this.model.select(sessionID, restoreFocus);
+    if (!selected) return;
     if (typeof window !== "undefined" && dismissOnSelect(window.matchMedia(MOBILE_QUERY).matches)) {
       this.setCollapsed(true);
       return;
@@ -3927,12 +3932,10 @@ export class Sidebar {
                 autocapitalize="none" autocomplete="off" spellcheck="false"
                 class="font-input h-[19px] min-w-0 flex-1 text-body font-medium text-text-primary focus:outline-none">`
             : `<span class="min-w-0 flex-1 truncate text-body leading-[normal] ${selected ? "font-medium text-text-primary" : "text-text-secondary"}">${sessionName}</span>
-          <!-- The meta cell and the menu trigger trade places on hover:
-               the tick fades out (group-hover:opacity-0 above) and the
-               trigger fades in from .session-menu-trigger. Both moves
-               are opacity-only, so nothing travels sideways: the tick
-               hugs the row's content edge and the trigger overlays it
-               from the row's right edge. -->
+          <!-- The tick and the menu trigger trade places on hover while
+               the chat button stays available. Both moves are opacity-only,
+               so nothing travels sideways: the tick hugs the row's content
+               edge and the trigger overlays it from the row's right edge. -->
           ${sessionActionControlsHtml(s.id, metaHtml, selected)}`}
           </div>
         </li>`;

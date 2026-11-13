@@ -494,6 +494,20 @@ export class LiveWorkspace {
         if (!keyboard) this.focusRequest.request();
         void this.selectSession(id);
       },
+      onOpenChats: (id) => {
+        this.rememberSession(id);
+        if (this.selectedSessionID === id) {
+          this.panels.set("chats");
+          return;
+        }
+        const selection = this.selectionEpoch + 1;
+        const gestures = this.panels.gestures;
+        void this.selectSession(id).then(() => {
+          // A later selection or panel gesture owns the surface instead.
+          if (this.disposed || this.selectionEpoch !== selection || this.selectedSessionID !== id || this.panels.gestures !== gestures) return;
+          this.panels.set("chats");
+        });
+      },
       onDeselectSession: (id) => {
         if (this.selectedSessionID !== id) return;
         this.suppressAutoSelect = true;

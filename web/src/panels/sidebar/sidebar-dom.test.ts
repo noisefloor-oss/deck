@@ -318,8 +318,8 @@ test("session actions carry one hover-revealed menu trigger beside the evidence 
 });
 
 // The ENTIRE motion budget for row chrome is the 110ms opacity
-// hover-reveal: the delayed delete controls and the evidence
-// cell fade, and nothing else animates on the row. These three utilities are
+// hover-reveal: the delayed delete controls and the non-chat metadata fade,
+// and nothing else animates on the row. These three utilities are
 // the source classes that produce `transition: opacity 110ms ease`; the real
 // verification is the built CSS: `grep -o "110ms" dist/assets/*.css`.
 test("the row hover-reveal is a 110ms opacity transition", () => {
@@ -329,13 +329,8 @@ test("the row hover-reveal is a 110ms opacity transition", () => {
   assert.match(evidence![0], /transition-opacity/);
   assert.match(evidence![0], /duration-\[110ms\]/);
   assert.match(evidence![0], /ease-\[ease\]/);
-  assert.match(evidence![0], /group-hover:opacity-0/);
-  // The tick fades for exactly what reveals the trigger over it: hover, and
-  // keyboard focus on the row or on the trigger inside it. focus-within
-  // would add a mouse click, which reveals nothing and would leave the
-  // row's trailing edge empty.
-  assert.match(evidence![0], /group-focus-visible:opacity-0/);
-  assert.match(evidence![0], /group-has-focus-visible:opacity-0/);
+  assert.doesNotMatch(evidence![0], /group-hover:opacity-0|group-focus-visible:opacity-0|group-has-focus-visible:opacity-0/,
+    "the parent never hides a chat button inserted by a later metadata patch");
   assert.ok(!evidence![0].includes("group-focus-within:"), "a mouse click does not fade the tick");
   assert.ok(!html.includes("transition-transform"), "no geometry motion on row controls");
 });

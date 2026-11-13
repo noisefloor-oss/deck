@@ -8,8 +8,8 @@ import (
 )
 
 const (
-	pinnedTasksRef     = "a03efe15d6bfcd68fa3cc812d612c63306736149"
-	pinnedTasksVersion = "2.10.1"
+	pinnedTasksRef     = "3172edd94b6ca468817e6f7d4eeada6d8671e08f"
+	pinnedTasksVersion = "2.11.0"
 )
 
 func TestRepositoryCarriesNoTaskStateProjection(t *testing.T) {

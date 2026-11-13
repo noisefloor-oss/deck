@@ -102,7 +102,7 @@ try {
       { id: "session-1", project_id: "project-1", display_name: "alpha-one", provider: "claude", status: "ready", presentation_state: "running", generation: 1, created_at: "2026-08-01T00:00:00Z", updated_at: "2026-08-01T00:00:00Z" },
     ],
     "project-2": [
-      { id: "session-2", project_id: "project-2", display_name: "beta-one", provider: "codex", status: "ready", presentation_state: "running", generation: 1, created_at: "2026-08-01T00:00:00Z", updated_at: "2026-08-01T00:00:00Z" },
+      { id: "session-2", project_id: "project-2", display_name: "beta-one", provider: "codex", status: "ready", presentation_state: "running", generation: 1, created_at: "2026-08-01T00:00:00Z", updated_at: "2026-08-01T00:00:00Z", last_output_at: "2026-08-01T00:00:00Z" },
     ],
   };
 
@@ -174,7 +174,7 @@ try {
   const projectCluster = () => page.locator('[data-project="project-2"] [data-project-actions]');
   const sessionCluster = () => page.locator('[data-session="session-2"] .session-menu-trigger');
   // The tick the trigger overlays: hidden exactly while the trigger shows.
-  const sessionTick = () => page.locator('[data-session-meta="session-2"]');
+  const sessionTick = () => page.locator('[data-session-meta="session-2"] [data-meta-rest]');
   const tickOpacity = () => sessionTick().evaluate((el) => getComputedStyle(el).opacity);
   const activeElement = () => page.evaluate(() => {
     const el = document.activeElement;
