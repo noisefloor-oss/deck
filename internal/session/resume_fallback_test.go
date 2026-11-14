@@ -4,9 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/noisefloor-oss/deck/internal/hookcapture"
 	"github.com/noisefloor-oss/deck/internal/inputgate"
 	"github.com/noisefloor-oss/deck/internal/lease"
 	"github.com/noisefloor-oss/deck/internal/provider"
@@ -189,6 +192,91 @@ func TestRetrievedProviderWithNoCapturedIdentityRelaunchesInPlace(t *testing.T) 
 	}
 	if len(rows) != 1 {
 		t.Fatalf("session rows = %d, want 1: recovery created a second card", len(rows))
+	}
+}
+
+type freshRetrievedDescriptor struct {
+	*attestedResumeDescriptor
+	launches int
+	resumes  int
+}
+
+func (d *freshRetrievedDescriptor) NewSessionArgs(provider.LaunchSpec) ([]string, error) {
+	d.launches++
+	script := `printf '%s' "$NOISEDECK_SESSION_HOOK_TOKEN" > "$1"; sleep 300`
+	return []string{d.executable, "-c", script, "launch", d.tokenFile}, nil
+}
+
+func (d *freshRetrievedDescriptor) ResumeSessionArgs(spec provider.ResumeSpec) ([]string, error) {
+	d.resumes++
+	return d.attestedResumeDescriptor.ResumeSessionArgs(spec)
+}
+
+// A fresh retrieved-identity recovery starts a new conversation, but it must
+// still wire startup capture. Without a new grant every later recovery sees no
+// identity and discards the new conversation again.
+func TestFreshIDCapture(t *testing.T) {
+	base := sleeperDescriptor()
+	base.name = provider.Codex
+	base.contract = provider.IdentityRetrieved
+	desc := &freshRetrievedDescriptor{attestedResumeDescriptor: &attestedResumeDescriptor{
+		fakeDescriptor: base,
+		tokenFile:      t.TempDir() + "/token",
+		idFile:         t.TempDir() + "/native-id",
+	}}
+	mgr, repo, _, projectID := newTestEnv(t, desc)
+	workDir := t.TempDir()
+	mgr.SetResumeDeps(lease.NewManager(repo.db), inputgate.New(),
+		func(context.Context, string) (string, error) { return workDir, nil })
+	captures, err := hookcapture.NewService(repo, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mgr.SetHookCaptureDeps(captures, "http://127.0.0.1:8837")
+
+	ctx := context.Background()
+	created, err := mgr.Create(ctx, CreateSpec{
+		ProjectID: projectID, Provider: provider.Codex, WorkDir: workDir,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	crashAndObserve(t, mgr, created)
+	revived, _, err := mgr.Recover(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("fresh recovery: %v", err)
+	}
+	if revived.GenerationResumed {
+		t.Fatal("a recovery with no recorded identity resumed instead of launching fresh")
+	}
+	rawToken, err := os.ReadFile(desc.tokenFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := strings.TrimSpace(string(rawToken))
+	if token == "" {
+		t.Fatal("fresh retrieved-identity recovery did not supply a startup capture token")
+	}
+	const nativeID = "12345678-1234-4abc-8abc-123456789abc"
+	if got := postCapture(t, captures, token,
+		captureBody(nativeID, hookcapture.ExpectedSourceStartup, workDir)); got != 204 {
+		t.Fatalf("fresh conversation identity capture = %d, want 204", got)
+	}
+	crashAndObserve(t, mgr, revived)
+	resumed, _, err := mgr.Recover(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("second recovery: %v", err)
+	}
+	if !resumed.GenerationResumed || resumed.NativeSessionID == nil || *resumed.NativeSessionID != nativeID {
+		t.Fatalf("second recovery = resumed %v native %v, want exact %q",
+			resumed.GenerationResumed, resumed.NativeSessionID, nativeID)
+	}
+	if desc.launches != 2 || desc.resumes != 1 {
+		t.Fatalf("launches = %d resumes = %d, want initial plus fresh launches and one exact resume",
+			desc.launches, desc.resumes)
+	}
+	if got := strings.TrimSpace(readTestFile(t, desc.idFile)); got != nativeID {
+		t.Fatalf("second recovery native id = %q, want %q", got, nativeID)
 	}
 }
 

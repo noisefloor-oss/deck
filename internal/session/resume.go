@@ -413,20 +413,23 @@ func (m *Manager) recoverAdmitted(ctx context.Context, id, suppliedWorkDir strin
 			// model replied, so a forgotten or refused id is never replayed —
 			// and, when the provider tracks identity through its hook, a
 			// startup grant so the new conversation is tracked from its first
-			// entry.
+			// entry. A retrieved provider needs the same grant: without it the
+			// new conversation has no recorded identity and the next recovery
+			// launches fresh again.
 			if desc.IdentityContract() == provider.IdentityAssigned {
 				freshAssignedID, err = m.newID()
 				if err != nil {
 					return nil, fmt.Errorf("session %s: generate fresh assigned identity: %w", id, err)
 				}
-				if declaresStructuredHookCapture(desc) && m.captures != nil && m.captureURLBase != "" {
-					preparedCredential, preparedGrant, prepareErr := m.captures.PrepareLaunchGrant(
-						source.ID, source.Provider, workDir, source.Generation+1, marker)
-					if prepareErr != nil {
-						return nil, prepareErr
-					}
-					credential, grant = preparedCredential, &preparedGrant
+			}
+			if (desc.IdentityContract() == provider.IdentityRetrieved || declaresStructuredHookCapture(desc)) &&
+				m.captures != nil && m.captureURLBase != "" {
+				preparedCredential, preparedGrant, prepareErr := m.captures.PrepareLaunchGrant(
+					source.ID, source.Provider, workDir, source.Generation+1, marker)
+				if prepareErr != nil {
+					return nil, prepareErr
 				}
+				credential, grant = preparedCredential, &preparedGrant
 			}
 		} else if _, attested := resumeAttestationSource(desc); attested {
 			if m.captures == nil || m.captureURLBase == "" {
