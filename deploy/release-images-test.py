@@ -2,6 +2,7 @@ import argparse
 import contextlib
 import copy
 import importlib.util
+import io
 import json
 import os
 import pathlib
@@ -29,6 +30,55 @@ def document(sha=SHA):
 
 
 class ReleaseImagesTest(unittest.TestCase):
+    def test_api_recovers_from_transient_failures(self):
+        for method in ("GET", "DELETE"):
+            for code in (500, 502, 503, 504):
+                with self.subTest(method=method, code=code), patch.dict(os.environ, GH_TOKEN="test-only"), \
+                     patch.object(module.time, "sleep") as sleep:
+                    failure = module.urllib.error.HTTPError("https://api.github.com/example", code, "temporary", {}, None)
+                    with patch.object(module.urllib.request, "urlopen", side_effect=[failure, io.BytesIO(b'{"ok":true}')]) as request:
+                        self.assertEqual(module.api("example", method=method), {"ok": True})
+                    self.assertEqual(request.call_count, 2)
+                    self.assertEqual(request.call_args.args[0].get_method(), method)
+                    sleep.assert_called_once_with(1)
+
+    def test_api_retries_transport_failures_without_disclosing_details(self):
+        failures = [module.urllib.error.URLError("sensitive transport detail"), TimeoutError("sensitive timeout")]
+        with patch.dict(os.environ, GH_TOKEN="test-only"), patch.object(module.time, "sleep") as sleep, \
+             patch.object(module.urllib.request, "urlopen", side_effect=failures + [io.BytesIO(b"")]) as request:
+            self.assertIsNone(module.api("example", method="DELETE"))
+            self.assertEqual(request.call_count, 3)
+            self.assertEqual([c.args[0] for c in sleep.call_args_list], [1, 2])
+
+    def test_api_retries_are_bounded_and_keep_permanent_errors_visible(self):
+        for code in (401, 403, 404, 422, 429, 502):
+            for method in ("GET", "DELETE", "POST"):
+                with self.subTest(code=code, method=method), patch.dict(os.environ, GH_TOKEN="test-only"), \
+                     patch.object(module.time, "sleep") as sleep:
+                    failure = module.urllib.error.HTTPError("https://api.github.com/example", code, "sensitive response", {}, None)
+                    with patch.object(module.urllib.request, "urlopen", side_effect=failure) as request, \
+                         self.assertRaisesRegex(RuntimeError, "^GitHub API " + method + " example returned HTTP " + str(code) + "$"):
+                        module.api("example", method=method)
+                    retryable = code == 502 and method in ("GET", "DELETE")
+                    self.assertEqual(request.call_count, 4 if retryable else 1)
+                    self.assertEqual([c.args[0] for c in sleep.call_args_list], [1, 2, 4] if retryable else [])
+
+    def test_api_transport_exhaustion_is_bounded(self):
+        with patch.dict(os.environ, GH_TOKEN="test-only"), patch.object(module.time, "sleep") as sleep, \
+             patch.object(module.urllib.request, "urlopen", side_effect=module.urllib.error.URLError("sensitive detail")) as request, \
+             self.assertRaisesRegex(RuntimeError, "^GitHub API GET example failed during transport$"):
+            module.api("example")
+        self.assertEqual(request.call_count, 4)
+        self.assertEqual(sleep.call_count, 3)
+
+    def test_cleanup_accepts_a_delete_completed_before_a_retry(self):
+        failure = module.urllib.error.HTTPError("https://api.github.com/example", 502, "temporary", {}, None)
+        missing = module.urllib.error.HTTPError("https://api.github.com/example", 404, "gone", {}, None)
+        with patch.dict(os.environ, GH_TOKEN="test-only"), patch.object(module.time, "sleep"), \
+             patch.object(module.urllib.request, "urlopen", side_effect=[failure, missing]) as request:
+            self.assertIsNone(module.api("example", method="DELETE", missing_ok=True))
+        self.assertEqual(request.call_count, 2)
+
     def test_compare_api_failure_names_the_failed_source_comparison(self):
         path = 'repos/example/deck/compare/' + SHA + '...main'
         failure = module.urllib.error.HTTPError('https://api.github.com/' + path, 404, 'not found', {}, None)
@@ -282,6 +332,7 @@ class ReleaseImagesTest(unittest.TestCase):
         deleted = []
         def api(path, method='GET', **kwargs):
             if method == 'DELETE':
+                self.assertTrue(kwargs.get('missing_ok'))
                 deleted.append(path)
                 return None
             role = path.split('/packages/container/')[1].split('/')[0].removeprefix(PREFIX + '-')

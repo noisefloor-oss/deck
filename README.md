@@ -91,20 +91,20 @@ Code and Codex. Crush is bundled as a CLI, but has no Deck conversation picker.
 <!-- harness-pins:start -->
 | Harness | Pinned version | Pinned on (UTC) | Agent chat | Login helper | Attention badges |
 | --- | --- | --- | --- | --- | --- |
-| `claude` | `2.1.325` | 2026-11-13 | Live | None | Unknown |
+| `claude` | `2.1.326` | 2026-11-17 | Live | None | Unknown |
 | `codex` | `0.169.0` | 2026-11-13 | Live | Browser callback | Unknown |
 | `kimi` | `2.6.2` | 2026-11-13 | Next turn | None | Unknown |
 | `opencode` | `1.19.5` | 2026-10-28 | Live | None | Unknown |
-| `command-code` | `1.89.0` | 2026-11-13 | Manual | None | Unknown |
+| `command-code` | `1.89.2` | 2026-11-17 | Manual | None | Unknown |
 | `cline` | `3.0.74` | 2026-10-27 | Manual | None | Unknown |
 | `kilo` | `7.8.27` | 2026-11-05 | Manual | None | Unknown |
-| `qwen` | `0.27.3` | 2026-11-13 | Manual | None | Unknown |
+| `qwen` | `0.27.4` | 2026-11-15 | Manual | None | Unknown |
 | `mimo` | `0.1.17` | 2026-11-13 | Manual | None | Unknown |
 | `qoder` | `1.1.89` | 2026-11-13 | Manual | None | Unknown |
 | `cursor-agent` | `2026.11.13-eacade1` | 2026-11-13 | Manual | None | Unknown |
 | `devin` | `3000.12.57` | 2026-11-12 | Manual | None | Unknown |
 | `grok` | `1.0.77` | 2026-11-06 | Manual | None | Unknown |
-| `omp` | `18.20.0` | 2026-11-13 | Live | None | Unknown |
+| `omp` | `18.22.0` | 2026-11-17 | Live | None | Unknown |
 | `pi` | `1.5.2` | 2026-11-10 | Live | ChatGPT, Anthropic | Input, ended turn |
 | `crush` | `0.101.0` | 2026-11-12 | Manual | None | Unknown |
 <!-- harness-pins:end -->

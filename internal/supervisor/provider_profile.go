@@ -103,9 +103,9 @@ func builtInProviderProfile(name provider.Name) (ProviderProfileV1, error) {
 	var executableDigest string
 	switch runtime.GOARCH {
 	case "amd64":
-		executableDigest = "0dc4f4a9a165fc60746d7ae8489712e5fc352f1e7ad4eb22e7141bd0812eb0cf"
+		executableDigest = "b6b3647d981130dc44fc670846ae97b6cde531ffb667cf9c4d17cfcafb38cb37"
 	case "arm64":
-		executableDigest = "7b6e484b1989a5a14a4b354709ccc8672518a3ec5b9ccd7981fc6254327fde67"
+		executableDigest = "98d56f6ffe53469767a74864a38eaf359d62ef557a8de1b1ad524d61a66ec119"
 	default:
 		return ProviderProfileV1{}, fmt.Errorf(
 			"%w: claude on linux/%s", ErrUnsupportedProviderProfile, runtime.GOARCH)
@@ -115,7 +115,7 @@ func builtInProviderProfile(name provider.Name) (ProviderProfileV1, error) {
 		Schema:                    ProviderProfileSchemaV1,
 		Provider:                  provider.Claude,
 		DescriptorRevision:        ClaudeDescriptorRevisionV1,
-		TestedVersion:             "2.1.325",
+		TestedVersion:             "2.1.326",
 		RuntimeRelativeExecutable: "usr/local/bin/claude",
 		ExecutableSHA256:          executableDigest,
 	}, nil

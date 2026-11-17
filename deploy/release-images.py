@@ -10,6 +10,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.request
 
@@ -102,15 +103,21 @@ def api(path, method="GET", missing_ok=False):
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
     })
-    try:
-        with urllib.request.urlopen(req, timeout=30) as response:
-            body = response.read()
-            return json.loads(body) if body else None
-    except urllib.error.HTTPError as error:
-        error.close()
-        if missing_ok and error.code == 404:
-            return None
-        raise RuntimeError("GitHub API " + method + " " + path + " returned HTTP " + str(error.code)) from None
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as response:
+                body = response.read()
+                return json.loads(body) if body else None
+        except urllib.error.HTTPError as error:
+            error.close()
+            if missing_ok and error.code == 404:
+                return None
+            if method not in ("GET", "DELETE") or error.code not in (500, 502, 503, 504) or attempt == 3:
+                raise RuntimeError("GitHub API " + method + " " + path + " returned HTTP " + str(error.code)) from None
+        except (urllib.error.URLError, TimeoutError):
+            if method not in ("GET", "DELETE") or attempt == 3:
+                raise RuntimeError("GitHub API " + method + " " + path + " failed during transport") from None
+        time.sleep(2 ** attempt)
 
 
 def private_package(reg, name, missing_ok=False):
@@ -210,7 +217,7 @@ def prune_registry(documents, catalogs, reg, prefix):
             page += 1
         for version in versions:
             if version["name"] not in digests:
-                api("orgs/" + owner + "/packages/container/" + name + "/versions/" + str(version["id"]), method="DELETE")
+                api("orgs/" + owner + "/packages/container/" + name + "/versions/" + str(version["id"]), method="DELETE", missing_ok=True)
 
 
 def write_build_env(root):
