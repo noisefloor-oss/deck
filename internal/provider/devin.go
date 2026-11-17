@@ -7,17 +7,18 @@ import (
 )
 
 // The contracts below were measured against Devin 3000.5.20 and re-measured
-// against 3000.6.14 by the conformance probe.
+// against 3000.13.4 by the conformance probe.
 
 // DevinDescriptor transports Cognition's real interactive Devin CLI. Devin
 // allocates an opaque session id and reports it through its documented
-// SessionStart hook before the first prompt. Exact resume uses --resume.
+// SessionStart hook before the first prompt. Exact resume uses --resume; the
+// next explicit prompt's UserPromptSubmit attests the requested identity.
+// Devin 3000.13.4 does not emit SessionStart on resume.
 //
-// Devin (re-measured on 3000.6.14) silently starts a new session when --resume names an unknown
-// id. The documented hook's source field is therefore an attestation boundary:
-// the successor stays provisional until source=resume carries the exact id
-// Deck requested. source=startup or a different id fails closed and permits
-// cleanup only of that successor's complete runtime tuple.
+// Devin silently starts a new session when --resume names an unknown id.
+// Deck resumes best effort with the recorded native id; the conformance probe
+// verifies exact resume through an explicit prompt rather than a process-launch
+// attestation.
 type DevinDescriptor struct {
 	execPath     string
 	hookPath     string
@@ -54,8 +55,6 @@ func (d *DevinDescriptor) IdentityHook() IdentityHook {
 		RequiresNativeTrust: false,
 	}
 }
-
-func (d *DevinDescriptor) ExactResumeHookSource() string { return "resume" }
 
 func (d *DevinDescriptor) NewSessionArgs(spec LaunchSpec) ([]string, error) {
 	if spec.SessionID != "" {
@@ -97,8 +96,8 @@ func (d *DevinDescriptor) RequiredConfigPaths() []string {
 
 func (d *DevinDescriptor) ExecutableIdentity() ExecutableIdentity {
 	return ExecutableIdentity{
-		ExpectedProcExe: "/opt/devin/3000.12.57/bin/devin",
-		LaunchTarget:    "/opt/devin/3000.12.57/bin/devin",
+		ExpectedProcExe: "/opt/devin/3000.13.4/bin/devin",
+		LaunchTarget:    "/opt/devin/3000.13.4/bin/devin",
 		ObservedCmdline: "/usr/local/bin/devin",
 	}
 }

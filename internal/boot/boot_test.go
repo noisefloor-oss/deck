@@ -199,7 +199,7 @@ func TestBuildProvidersRegistersCommandCode(t *testing.T) {
 	}
 }
 
-func TestBuildProvidersRegistersDevinResumeAttestor(t *testing.T) {
+func TestBuildProvidersOmitsDevinResumeAttestor(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.Providers = config.Providers{Devin: config.Provider{
 		Executable:   "/usr/local/bin/devin",
@@ -211,9 +211,8 @@ func TestBuildProvidersRegistersDevinResumeAttestor(t *testing.T) {
 	if !ok {
 		t.Fatalf("providers = %v, want devin", got)
 	}
-	attestor, ok := d.(provider.ResumeIdentityAttestationDescriptor)
-	if !ok || attestor.ExactResumeHookSource() != "resume" {
-		t.Fatalf("devin resume attestor = %T", d)
+	if _, ok := d.(provider.ResumeIdentityAttestationDescriptor); ok {
+		t.Fatalf("devin registered a resume SessionStart grant that 3000.13.4 does not emit: %T", d)
 	}
 }
 

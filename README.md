@@ -102,7 +102,7 @@ Code and Codex. Crush is bundled as a CLI, but has no Deck conversation picker.
 | `mimo` | `0.1.17` | 2026-11-13 | Manual | None | Unknown |
 | `qoder` | `1.1.89` | 2026-11-13 | Manual | None | Unknown |
 | `cursor-agent` | `2026.11.13-eacade1` | 2026-11-13 | Manual | None | Unknown |
-| `devin` | `3000.12.57` | 2026-11-12 | Manual | None | Unknown |
+| `devin` | `3000.13.4` | 2026-11-17 | Manual | None | Unknown |
 | `grok` | `1.0.77` | 2026-11-06 | Manual | None | Unknown |
 | `omp` | `18.22.0` | 2026-11-17 | Live | None | Unknown |
 | `pi` | `1.5.2` | 2026-11-10 | Live | ChatGPT, Anthropic | Input, ended turn |

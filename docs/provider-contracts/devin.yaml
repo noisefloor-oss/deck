@@ -6,11 +6,11 @@
 # terminal output and provider history/state are never identity sources.
 
 provider: devin
-version_tested: "3000.6.14"
-build_tested: "18033302"
-measured_on: "2026-09-06"
+version_tested: "3000.13.4"
+build_tested: "d9a56503ce88"
+measured_on: "2026-11-17"
 # The identity, resume, unknown-id fallback, injection and SIGTERM claims
-# below were re-measured on 3000.6.14 by the conformance probe
+# below were re-measured on 3000.13.4 by the conformance probe
 # (scripts/provider-spike/conformance/devin_test.go); each earlier version
 # named in a note is where that behaviour was first observed. Containment
 # and modal input were not re-measured and stay at their recorded versions.
@@ -28,8 +28,8 @@ runtime_compatibility_probe:
 
 executable:
   launch_path: "/usr/local/bin/devin"
-  resolved_at_launch: "/opt/devin/3000.12.57/bin/devin"
-  proc_exe: "/opt/devin/3000.12.57/bin/devin"
+  resolved_at_launch: "/opt/devin/3000.13.4/bin/devin"
+  proc_exe: "/opt/devin/3000.13.4/bin/devin"
   proc_cmdline: "/usr/local/bin/devin"
   usable_runtime_executable_evidence: true
 
@@ -51,11 +51,12 @@ identity:
     console_role: verify-and-refuse
   exact_resume_verified: true
   exact_resume_attestation:
-    source: resume
+    source: UserPromptSubmit
     native_id: exact-requested-id
+    note: "3000.13.4 emits no SessionStart on resume; the next explicit prompt attests the requested identity"
   unknown_id_fails_loudly: false
   unknown_id_behavior: "starts a different new session with source=startup"
-  fallback_safety: "candidate remains provisional; mismatch revokes the grant before exact-tuple cleanup"
+  fallback_safety: "Deck resumes best effort with the recorded native id; the conformance probe verifies the requested identity through an explicit prompt rather than a process-launch attestation"
   workspace_trust:
     provider_check_disabled: true
     authority: "the explicit Deck project/provider launch gesture and Deck's outer project policy"
@@ -77,8 +78,8 @@ injection:
   multiline: true
   active_turn_input: queued
   active_turn_verified: true
-  active_turn_note: "3000.4.25 rejected mid-turn input; 3000.5.20 and 3000.6.14 queue it silently — no hook fires while the turn runs — and UserPromptSubmit fires at dequeue, when the queued message is processed after the turn ends, executing it exactly once"
-  prompt_hook_timing: at-dequeue
+  active_turn_note: "3000.4.25 rejected mid-turn input; 3000.5.20 and 3000.6.14 fired UserPromptSubmit at dequeue; 3000.13.4 fires it at acceptance and still executes the queued command exactly once after the active turn ends"
+  prompt_hook_timing: at-accept
 
 modal_prompts:
   input_during_modal: unmeasured

@@ -16,13 +16,13 @@ func devinDescriptor(t *testing.T) *DevinDescriptor {
 	return d
 }
 
-func TestDevinDescriptorLaunchResumeAndAttestation(t *testing.T) {
+func TestDevinDescriptorLaunchResume(t *testing.T) {
 	d := devinDescriptor(t)
 	if d.Name() != Devin || d.IdentityContract() != IdentityRetrieved {
 		t.Fatalf("descriptor identity = %s/%s", d.Name(), d.IdentityContract())
 	}
-	if got := d.ExactResumeHookSource(); got != "resume" {
-		t.Fatalf("resume hook source = %q", got)
+	if _, ok := any(d).(interface{ ExactResumeHookSource() string }); ok {
+		t.Fatal("Devin still declares a resume SessionStart grant that 3000.13.4 does not emit")
 	}
 	if got := d.IdentityHook(); got.Event != "SessionStart" || got.SessionIDField != "session_id" ||
 		got.Timing != IdentityHookAtProcessLaunch || got.RequiresNativeTrust {

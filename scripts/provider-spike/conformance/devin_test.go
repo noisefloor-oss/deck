@@ -50,7 +50,7 @@ type devinHarness struct {
 
 // TestDevinProviderContract is an opt-in black-box contract test for the real
 // authenticated CLI. Identity evidence comes only from Devin's documented
-// SessionStart hook. The test never captures or parses terminal output,
+// SessionStart and UserPromptSubmit hooks. The test never captures or parses terminal output,
 // provider state, session lists, transcripts, or provider logs.
 func TestDevinProviderContract(t *testing.T) {
 	if os.Getenv(realDevinEnv) != "1" {
@@ -92,22 +92,20 @@ func TestDevinProviderContract(t *testing.T) {
 	// it behind the running turn (3000.4.25 rejected it outright). The queued
 	// message must belong to the same attested session and must execute
 	// exactly once, after the active command has finished.
-	// Measured on both: a mid-turn submission is queued silently — no
-	// hook fires while the turn is running — and UserPromptSubmit fires at
-	// dequeue, when the queued message is processed after the turn ends.
-	// An event before the end sentinel would mean at-accept timing (or a
-	// post-turn submission); either way this run did not measure the
-	// recorded contract and must fail.
-	if early, ok := h.waitOptionalEvent(10 * time.Second); ok {
-		h.requirePromptEvent(early, startup.SessionID)
-		t.Fatalf("prompt hook fired while the turn was active: end_exists=%t", fileExists(end))
+	// 3000.13.4 fires UserPromptSubmit when it accepts a mid-turn message;
+	// the command still has to run exactly once after the active turn ends.
+	// Require the event while the first command is still active; an event
+	// that arrives only after completion is the older at-dequeue contract.
+	// The sentinels independently prove execution order.
+	early, ok := h.waitOptionalEvent(10 * time.Second)
+	if !ok {
+		t.Fatal("UserPromptSubmit did not fire while the first command was active")
 	}
+	h.requirePromptEvent(early, startup.SessionID)
 	if fileExists(end) {
 		t.Fatal("the first turn ended inside the quiet window; queuing was not exercised")
 	}
 	h.waitFile(end, 60*time.Second)
-	dequeued := h.waitEvent(60 * time.Second)
-	h.requirePromptEvent(dequeued, startup.SessionID)
 	h.waitFile(queued, 120*time.Second)
 	time.Sleep(20 * time.Second)
 	data, err := os.ReadFile(queued)
@@ -118,8 +116,12 @@ func TestDevinProviderContract(t *testing.T) {
 	h.stop(fresh)
 
 	resumed := h.launch(ctx, "devin-resume", 2, []string{"--resume", startup.SessionID})
-	resumeEvent := h.waitEvent(30 * time.Second)
-	h.requireEvent(resumeEvent, "resume", startup.SessionID)
+	if resumeEvent, ok := h.waitOptionalEvent(15 * time.Second); ok {
+		t.Fatalf("3000.13.4 unexpectedly emitted resume SessionStart: source=%q", resumeEvent.Source)
+	}
+	h.submit(resumed.PaneID, "Reply with exactly: NOISEDECK-RESUME-OK.")
+	resumePrompt := h.waitEvent(30 * time.Second)
+	h.requirePromptEvent(resumePrompt, startup.SessionID)
 	h.stop(resumed)
 
 	unknownID := differentDevinID(startup.SessionID)
@@ -131,7 +133,7 @@ func TestDevinProviderContract(t *testing.T) {
 	}
 	h.stop(unknown)
 
-	t.Logf(`devin_contract={"version":%q,"hook_identity":true,"exact_resume":true,"unknown_id_fallback":"startup_new_id","bracketed_paste":true,"multiline":true,"active_turn":"queued","prompt_hook_timing":"at_dequeue","sigterm":"signal_15","terminal_output_parsing":false}`, h.version)
+	t.Logf(`devin_contract={"version":%q,"hook_identity":true,"exact_resume":true,"unknown_id_fallback":"startup_new_id","bracketed_paste":true,"multiline":true,"active_turn":"queued","prompt_hook_timing":"at_accept","sigterm":"signal_15","terminal_output_parsing":false}`, h.version)
 }
 
 func newDevinHarness(t *testing.T) *devinHarness {
