@@ -96,8 +96,8 @@ func (d *DevinDescriptor) RequiredConfigPaths() []string {
 
 func (d *DevinDescriptor) ExecutableIdentity() ExecutableIdentity {
 	return ExecutableIdentity{
-		ExpectedProcExe: "/opt/devin/3000.13.4/bin/devin",
-		LaunchTarget:    "/opt/devin/3000.13.4/bin/devin",
+		ExpectedProcExe: "/opt/devin/3000.14.30821/bin/devin",
+		LaunchTarget:    "/opt/devin/3000.14.30821/bin/devin",
 		ObservedCmdline: "/usr/local/bin/devin",
 	}
 }
