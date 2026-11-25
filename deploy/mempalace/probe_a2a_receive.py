@@ -116,6 +116,7 @@ class Probe:
             MAILBOX.replace("__BODY__", json.dumps(INVITE_BODY)).replace("__DELAY__", str(mail_delay_s))
         )
         self.process: subprocess.Popen | None = None
+        self.pty_master: int | None = None
 
     def env(self, extra: dict[str, str]) -> dict[str, str]:
         env = {key: value for key, value in os.environ.items() if key in ("PATH", "LANG", "TERM", "TMPDIR")}
@@ -135,8 +136,9 @@ class Probe:
         if pty:
             import pty
             main, follower = pty.openpty()
+            self.pty_master = main
             kwargs = {"stdin": follower}
-            stdout = stderr = None  # a pty merges the streams
+            stdout = stderr = follower  # a pty merges the streams
         self.process = subprocess.Popen(
             argv, cwd=str(cwd or self.root / "cwd"), env=env,
             stdin=(subprocess.PIPE if not pty else kwargs["stdin"]),
@@ -149,6 +151,11 @@ class Probe:
                 target=lambda: self._drain(main), daemon=True
             ).start()
         return self.process
+
+    def write_pty(self, text: str) -> None:
+        if self.pty_master is None:
+            raise RuntimeError("the harness has no interactive terminal")
+        os.write(self.pty_master, text.encode())
 
     def _drain(self, fd: int) -> None:
         try:

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Isolated probe: does Kimi Code's a2a Stop-hook receive path still work?
 
-Runs the real `kimi` CLI (headless `-p` mode) against a throwaway HOME whose
+Runs the real interactive `kimi` CLI in a PTY against a throwaway HOME whose
 config.toml carries the a2a lifecycle hooks (same shape configure.py
 installs, pointed at a local wrapper that execs the synthetic mailbox), and
 against a loopback dummy model server that records every request body.
@@ -21,7 +21,7 @@ PASS requires all of:
 The UserPromptSubmit hook is deliberately NOT installed: the synthetic
 mailbox serves exactly one invitation and the `prompt` hook consumes (acks)
 it at turn start, which would make the Stop path unobservable.  Kimi fires
-UserPromptSubmit for print-mode prompts too (origin kind "user"), so the
+UserPromptSubmit for interactive prompts too (origin kind "user"), so the
 probe isolates the Stop-hook backstop, which is the suspected regression.
 
 Usage: probe_a2a_kimi.py [--keep]     (run from any directory)
@@ -29,6 +29,7 @@ Usage: probe_a2a_kimi.py [--keep]     (run from any directory)
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sys
@@ -226,7 +227,8 @@ def _diagnostics(probe: Probe, log: ModelLog) -> str:
     calls = json.dumps(probe.calls(), indent=1)
     hookstdin = sorted(p.name for p in probe.root.glob("hookstdin-*.json"))
     requests = [f"{i:03d}: {body[:200]!r}" for i, body in enumerate(log.snapshot())]
-    return (f"kimi stdout tail: {_tail(probe.root / 'stdout')}\n"
+    output = probe.root / "pty.log" if (probe.root / "pty.log").exists() else probe.root / "stdout"
+    return (f"kimi output tail: {_tail(output)}\n"
             f"kimi stderr tail: {_tail(probe.root / 'stderr')}\n"
             f"mailbox calls: {calls}\n"
             f"hook stdin payloads: {hookstdin}\n"
@@ -261,7 +263,15 @@ def run(probe: Probe) -> None:
     (kimi_home / "config.toml").write_text(
         CONFIG.format(port=server.server_address[1], hooks=hooks))
 
-    # 4. Run the real CLI headless. The proxy points at a closed loopback
+    # 4. Seed the exact per-directory trust record the interactive CLI reads.
+    #    This is provisioning, not an answer injected into its trust modal.
+    cwd = probe.root / "cwd"
+    trust = kimi_home / "workspace-trust" / (
+        f"wd_{cwd.name}_{hashlib.sha256(str(cwd).encode()).hexdigest()[:12]}")
+    trust.parent.mkdir(parents=True, exist_ok=True)
+    trust.write_text(json.dumps({"root": str(cwd), "trustedAt": int(time.time() * 1000)}))
+
+    # 5. Run the real interactive CLI. The proxy points at a closed loopback
     #    port so any external call (telemetry, update check) fails instantly;
     #    NO_PROXY keeps the dummy model server direct. Dummy key only.
     closed_port = free_port()
@@ -271,31 +281,43 @@ def run(probe: Probe) -> None:
         "NO_PROXY": "127.0.0.1,localhost",
         "no_proxy": "127.0.0.1,localhost",
     })
-    probe.spawn(["kimi", "-p", PROMPT, "--output-format", "text"], env)
+    probe.spawn(["kimi"], env, cwd=cwd, pty=True)
+    time.sleep(3)
+    probe.write_pty(PROMPT)
+    time.sleep(0.2)
+    probe.write_pty("\r")
 
     try:
-        # (c) the CLI must finish on its own: turn 1, blocked stop, turn 2, exit.
         deadline = time.monotonic() + 180
         while time.monotonic() < deadline:
-            if probe.process.poll() is not None:
-                break
             if probe.mark("hookstdin-stop.json") and any(
                     WAKE in body for body in log.snapshot()):
-                # wake delivered; allow a generous finish window, then re-check
-                finish_by = time.monotonic() + 60
-                while time.monotonic() < finish_by and probe.process.poll() is None:
-                    time.sleep(0.2)
                 break
+            if probe.process.poll() is not None:
+                raise AssertionError(
+                    "kimi exited before the Stop-hook continuation reached the model; "
+                    + _diagnostics(probe, log))
             time.sleep(0.2)
-        alive = probe.process.poll() is None
-        exit_code = probe.process.returncode
-        if alive:
+        else:
             raise AssertionError(
-                "kimi never finished after the Stop hook ran; "
+                "kimi never delivered the Stop-hook continuation; "
                 + _diagnostics(probe, log))
-        if exit_code != 0:
+
+        # The synthetic mailbox is now acknowledged, so the second turn can
+        # finish without another block. Exit through Kimi's own TUI command.
+        time.sleep(1)
+        probe.write_pty("/exit")
+        time.sleep(0.2)
+        probe.write_pty("\r")
+        deadline = time.monotonic() + 30
+        while probe.process.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.2)
+        if probe.process.poll() is None:
+            raise AssertionError("kimi did not exit through its native /exit command")
+        if probe.process.returncode != 0:
             raise AssertionError(
-                f"kimi exited {exit_code}, not cleanly; " + _diagnostics(probe, log))
+                f"kimi exited {probe.process.returncode}, not cleanly; "
+                + _diagnostics(probe, log))
     finally:
         probe.stop()
         server.shutdown()
@@ -324,7 +346,7 @@ def run(probe: Probe) -> None:
     print(f"PASS [kimi]: Stop hook blocked turn end, the wake line reached the "
           f"model automatically (request {prompt_at} -> {wake_at}), and the "
           f"CLI exited cleanly; invitation body {INVITE_BODY!r} delivered with "
-          "no terminal input or provider credentials")
+          "no follow-up terminal input or provider credentials")
 
 
 def main() -> None:

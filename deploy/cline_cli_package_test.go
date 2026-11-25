@@ -16,7 +16,7 @@ func TestDockerfileInstallsPinnedClineCLI(t *testing.T) {
 	}
 	body := string(raw)
 	for _, required := range []string{
-		"ARG CLINE_VERSION=3.0.74",
+		"ARG CLINE_VERSION=3.0.75",
 		`"cline@${CLINE_VERSION}"`,
 		`test "$(cline --version)" = "${CLINE_VERSION}"`,
 		"cline --help",

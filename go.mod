@@ -9,7 +9,7 @@ require (
 	github.com/fxamacker/cbor/v2 v2.10.0
 	github.com/go-webauthn/webauthn v0.18.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
-	github.com/gorilla/websocket v1.5.3
+	github.com/gorilla/websocket v1.5.4-0.20240701034025-d67f41855da4
 	github.com/mattn/go-sqlite3 v1.14.53
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/rs/zerolog v1.35.1
