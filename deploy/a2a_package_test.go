@@ -13,8 +13,8 @@ func TestA2APackagePinsStandaloneSource(t *testing.T) {
 	}
 	body := string(raw)
 	for _, required := range []string{
-		"ARG NOISE_A2A_REF=a8c556043cfd59ca434b58cf8893758f72e326b5",
-		"ARG NOISE_A2A_VERSION=0.2.2",
+		"ARG NOISE_A2A_REF=e700d903213827538ff70b764f748151bf0b3e6b",
+		"ARG NOISE_A2A_VERSION=0.2.3",
 		"ARG NOISE_A2A_REPO=https://github.com/noisefloor-oss/a2a.git",
 		`git clone --no-checkout "${NOISE_A2A_REPO}" /src/a2a`,
 		`test "$(git -C /src/a2a rev-parse HEAD)" = "${NOISE_A2A_REF}"`,

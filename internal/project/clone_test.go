@@ -16,8 +16,10 @@ import (
 
 // fakeGit stands in for git clone: it prints progress the way git does
 // (carriage-return rewrites), creates the destination with a partial file,
-// then obeys a marker beside the destination — AUTH fails like a refused
-// key, STALL waits to be cancelled, and otherwise it finishes the clone.
+// then obeys a marker beside the destination — REFUSE fails before a byte
+// is written, the way an unreachable or missing remote leaves the
+// destination empty, AUTH fails like a refused key, STALL waits to be
+// cancelled, and otherwise it finishes the clone.
 func fakeGit(t *testing.T) string {
 	t.Helper()
 	script := filepath.Join(t.TempDir(), "git")
@@ -25,6 +27,10 @@ func fakeGit(t *testing.T) string {
 # args: clone --progress -- URL .  (git clones into its working directory,
 # which the runner holds open by descriptor)
 dest="$(pwd -P)"
+if [ -f "$(dirname "$dest")/REFUSE" ]; then
+  printf 'fatal: repository %s not found\n' "$4" >&2
+  exit 128
+fi
 mkdir -p "$dest/.git"
 # What git would see: the environment it was handed, and a helper child
 # that inherits its pipes the way ssh or git-remote-https would.
@@ -204,6 +210,135 @@ func TestARefusedKeyIsNamedAndDiscardRemovesThePartial(t *testing.T) {
 	}
 	if _, err := c.Get(job.ID); !errors.Is(err, ErrCloneNotFound) {
 		t.Fatalf("discard forgets the job: %v", err)
+	}
+}
+
+func TestRetryingAFailedCloneAtItsEmptyDestinationRetiresTheOldJob(t *testing.T) {
+	c, root, registered := testCloner(t)
+	refuse := filepath.Join(root, "REFUSE")
+	if err := os.WriteFile(refuse, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(root, "private")
+	first, err := c.Start(CloneRequest{URL: "git@github.com:fable/private.git", Destination: dest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	failed := waitFor(t, c, first.ID, CloneFailed)
+	if failed.Failure != CloneRefused {
+		t.Fatalf("an early failure is a refusal: %+v", failed)
+	}
+	entries, err := os.ReadDir(dest)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("an early failure leaves the destination empty: %v %d", err, len(entries))
+	}
+	// The retry the dialog offers: a new clone at the failed job's own
+	// empty destination. The old job is retired exactly as a discard would
+	// retire it, never orphaned with its anchor unlinked beneath it.
+	if err := os.Remove(refuse); err != nil {
+		t.Fatal(err)
+	}
+	retry, err := c.Start(CloneRequest{URL: "git@github.com:fable/private.git", Destination: dest})
+	if err != nil {
+		t.Fatalf("retry at the failed clone's own empty destination: %v", err)
+	}
+	if retry.ID == first.ID {
+		t.Fatalf("a retry is a new job, not the failed one: %+v", retry)
+	}
+	if _, err := c.Get(first.ID); !errors.Is(err, ErrCloneNotFound) {
+		t.Fatalf("the retired job is forgotten: %v", err)
+	}
+	done := waitFor(t, c, retry.ID, CloneDone)
+	if done.ProjectID == "" || len(*registered) != 1 {
+		t.Fatalf("the retried clone registers once: %+v %d", done, len(*registered))
+	}
+	if _, err := os.Stat(filepath.Join(dest, "README.md")); err != nil {
+		t.Fatalf("the retried clone is on disk: %v", err)
+	}
+}
+
+func TestARetryNeverDeletesWhatLandedInTheEmptyDestination(t *testing.T) {
+	c, root, _ := testCloner(t)
+	refuse := filepath.Join(root, "REFUSE")
+	if err := os.WriteFile(refuse, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(root, "private")
+	first, err := c.Start(CloneRequest{URL: "git@github.com:fable/private.git", Destination: dest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, c, first.ID, CloneFailed)
+	// Work lands in the failed clone's empty destination between the
+	// retry's emptiness check and the retired directory's removal. A retry
+	// replaces an empty directory only: the work stays, the old job keeps
+	// its claim, and the start is refused the way any occupied
+	// destination is.
+	c.beforeRemove = func(job CloneJob) {
+		if job.ID == first.ID {
+			if err := os.WriteFile(filepath.Join(dest, "operator-work.txt"), []byte("keep"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if _, err := c.Start(CloneRequest{URL: "git@github.com:fable/private.git", Destination: dest}); !errors.Is(err, ErrCloneDestNotEmpty) {
+		t.Fatalf("a destination that gained work refuses the retry: %v", err)
+	}
+	c.beforeRemove = nil
+	if got, err := os.ReadFile(filepath.Join(dest, "operator-work.txt")); err != nil || string(got) != "keep" {
+		t.Fatalf("the work is untouched: %v %q", err, got)
+	}
+	if _, err := c.Get(first.ID); err != nil {
+		t.Fatalf("the old job keeps its claim: %v", err)
+	}
+	if err := c.Discard(first.ID); err != nil {
+		t.Fatalf("the old job is still discardable: %v", err)
+	}
+	if _, err := os.Stat(dest); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("an explicit discard removes what a retry would not: %v", err)
+	}
+}
+
+func TestARetryNeverDeletesAFileSwappedOntoTheTomb(t *testing.T) {
+	c, root, _ := testCloner(t)
+	refuse := filepath.Join(root, "REFUSE")
+	if err := os.WriteFile(refuse, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(root, "private")
+	first, err := c.Start(CloneRequest{URL: "git@github.com:fable/private.git", Destination: dest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, c, first.ID, CloneFailed)
+	// The retired directory is swapped off its tomb name and a file takes
+	// the name. The removal is a directory-only rmdir: the file is never
+	// deleted, the start fails, and the old job keeps its claim.
+	tombed := ""
+	var swapErr error
+	c.afterTombCheck = func(tomb string) {
+		tombed = tomb
+		if err := os.Rename(tomb, tomb+"-moved"); err != nil {
+			swapErr = err
+			return
+		}
+		swapErr = os.WriteFile(tomb, []byte("keep"), 0o644)
+	}
+	if _, err := c.Start(CloneRequest{URL: "git@github.com:fable/private.git", Destination: dest}); !errors.Is(err, ErrInvalidDir) {
+		t.Fatalf("a file swapped onto the tomb refuses the retry: %v", err)
+	}
+	c.afterTombCheck = nil
+	if swapErr != nil {
+		t.Fatal(swapErr)
+	}
+	if got, err := os.ReadFile(tombed); err != nil || string(got) != "keep" {
+		t.Fatalf("the swapped file is untouched: %v %q", err, got)
+	}
+	if entries, err := os.ReadDir(tombed + "-moved"); err != nil || len(entries) != 0 {
+		t.Fatalf("the retired directory stands where the swap moved it, empty: %v %d", err, len(entries))
+	}
+	if _, err := c.Get(first.ID); err != nil {
+		t.Fatalf("the old job keeps its claim: %v", err)
 	}
 }
 

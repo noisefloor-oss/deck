@@ -6,8 +6,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/noisefloor-oss/deck/internal/supervisor"
 	"gopkg.in/yaml.v3"
@@ -206,17 +208,30 @@ func TestBwrapDoubleBuildReproducesPinnedExecutable(t *testing.T) {
 		t.Fatal(err)
 	}
 	image := pinnedGoBuildImage(t)
+	proof := t.TempDir()
+	t.Cleanup(func() {
+		// The builder runs as root, so only a container can remove its outputs
+		// before Go removes the host temporary directory.
+		cmd := exec.Command(docker, "run", "--rm", "--volume", proof+":/proof", image, "sh", "-c", "find /proof -mindepth 1 -delete")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Errorf("clean container-owned proof files: %v\n%s", err, out)
+		}
+	})
+	sharedZig := filepath.Join(proof, "shared-src", "zig-x86_64-linux-0.14.1.tar.xz")
 
 	pin, err := supervisor.ResolveBubblewrapExecutableSHA256("linux", "amd64")
 	if err != nil {
 		t.Fatalf("resolve linux/amd64 pin: %v", err)
 	}
 	var observed []string
+	var firstModTime time.Time
 	for run := 1; run <= 2; run++ {
 		cmd := exec.Command(docker, "run", "--rm",
 			"--volume", root+":/src", "--workdir", "/src",
+			"--volume", proof+":/proof",
 			"--env", "TMPDIR=/tmp",
-			image, "deploy/bwrap/build-bwrap.sh", "amd64", "/tmp/bwrap-amd64-proof")
+			"--env", "BWRAP_SHARED_SRC=/proof/shared-src",
+			image, "deploy/bwrap/build-bwrap.sh", "amd64", "/proof/build-"+strconv.Itoa(run))
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("linux/amd64 build %d: %v\n%s", run, err, out)
@@ -231,12 +246,51 @@ func TestBwrapDoubleBuildReproducesPinnedExecutable(t *testing.T) {
 			t.Fatalf("linux/amd64 build %d reported no executable digest:\n%s", run, out)
 		}
 		observed = append(observed, digest)
+		info, err := os.Stat(sharedZig)
+		if err != nil {
+			t.Fatalf("linux/amd64 build %d did not leave a shared Zig archive: %v", run, err)
+		}
+		if run == 1 {
+			firstModTime = info.ModTime()
+		} else if !info.ModTime().Equal(firstModTime) {
+			t.Fatal("second build downloaded Zig again instead of reusing the verified archive")
+		}
 	}
 	if observed[0] != observed[1] {
 		t.Fatalf("linux/amd64 builds differ: %s != %s", observed[0], observed[1])
 	}
 	if observed[0] != pin {
 		t.Fatalf("linux/amd64 reproduced %s, supervisor pin is %s", observed[0], pin)
+	}
+}
+
+func TestBwrapProofSharesSourceArchives(t *testing.T) {
+	recipe := readBwrapRecipe(t)
+	if !strings.Contains(recipe, `SRC="${BWRAP_SHARED_SRC:-$WORK/src}"`) {
+		t.Fatal("recipe does not accept a shared source archive directory")
+	}
+	var workflow struct {
+		Jobs map[string]struct{ Steps []struct{ Name, Run string } }
+	}
+	if err := yaml.Unmarshal(readWorkflow(t, "release-acceptance.yaml"), &workflow); err != nil {
+		t.Fatal(err)
+	}
+	proof := ""
+	for _, step := range workflow.Jobs["bwrap-proof"].Steps {
+		if step.Name == "Prove the pinned Bubblewrap executable identity" {
+			proof = step.Run
+		}
+	}
+	if proof == "" {
+		t.Fatal("proof step missing")
+	}
+	if got := strings.Count(proof, "--env BWRAP_SHARED_SRC=/proof/shared-src"); got != 1 {
+		t.Fatalf("proof shares source archives %d times, want one setting for both builds", got)
+	}
+	for _, required := range []string{"for run in 1 2; do", `"/proof/build-${run}"`} {
+		if !strings.Contains(proof, required) {
+			t.Fatalf("proof does not preserve two independent clean builds: missing %q", required)
+		}
 	}
 }
 

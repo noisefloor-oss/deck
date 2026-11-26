@@ -93,19 +93,19 @@ Code and Codex. Crush is bundled as a CLI, but has no Deck conversation picker.
 | --- | --- | --- | --- | --- | --- |
 | `claude` | `2.1.332` | 2026-11-25 | Live | None | Unknown |
 | `codex` | `0.172.0` | 2026-11-24 | Live | Browser callback | Unknown |
-| `kimi` | `2.7.3` | 2026-11-24 | Next turn | None | Unknown |
+| `kimi` | `2.8.0` | 2026-11-25 | Next turn | None | Unknown |
 | `opencode` | `1.19.6` | 2026-11-17 | Live | None | Unknown |
 | `command-code` | `1.93.3` | 2026-11-25 | Manual | None | Unknown |
 | `cline` | `3.0.75` | 2026-11-21 | Manual | None | Unknown |
 | `kilo` | `7.8.32` | 2026-11-21 | Manual | None | Unknown |
 | `qwen` | `0.28.4` | 2026-11-22 | Manual | None | Unknown |
 | `mimo` | `0.1.17` | 2026-11-13 | Manual | None | Unknown |
-| `qoder` | `1.1.97` | 2026-11-24 | Manual | None | Unknown |
+| `qoder` | `1.1.98` | 2026-11-25 | Manual | None | Unknown |
 | `cursor-agent` | `2026.11.22-e9042b2` | 2026-11-22 | Manual | None | Unknown |
 | `devin` | `3000.14.30821` | 2026-11-17 | Manual | None | Unknown |
 | `grok` | `1.0.92` | 2026-11-21 | Manual | None | Unknown |
 | `omp` | `19.1.1` | 2026-11-23 | Live | None | Unknown |
-| `pi` | `1.6.0` | 2026-11-20 | Live | ChatGPT, Anthropic | Input, ended turn |
+| `pi` | `1.6.1` | 2026-11-25 | Live | ChatGPT, Anthropic | Input, ended turn |
 | `crush` | `0.102.0` | 2026-11-19 | Manual | None | Unknown |
 <!-- harness-pins:end -->
 

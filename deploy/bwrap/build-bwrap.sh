@@ -71,7 +71,10 @@ SOURCE_DATE_EPOCH=1735689600
 export SOURCE_DATE_EPOCH LC_ALL=C LANG=C TZ=UTC
 umask 022
 
-SRC="$WORK/src"
+# Release acceptance shares verified source archives between its two clean
+# builds. Compilation and packaging stay per build, and every reuse repeats
+# the hash check.
+SRC="${BWRAP_SHARED_SRC:-$WORK/src}"
 BOOT="$WORK/bootstrap"
 SYS="$WORK/sysroot-$ARCH"
 OUT="$WORK/out"

@@ -225,14 +225,39 @@ func (c *Cloner) Start(req CloneRequest) (*CloneJob, error) {
 	if err != nil {
 		return nil, err
 	}
-	// A running job's destination is taken even while it is still empty —
-	// git has not written yet — so the duplicate check comes before any
-	// directory is published, or the second start would take the first's.
-	for _, run := range c.jobs {
-		if run.job.Destination == dest && run.job.Status == CloneRunning {
+	// A live job's destination is taken even while it is still empty — git
+	// has not written yet. Completed jobs release it. A stopped or failed
+	// job still holds its directory for Resume or Discard: a new start over
+	// one with content fails below at publishLeaf, and over an empty one
+	// retires the old job through an empty-only removal. Retrying a failed
+	// clone's own empty destination is how the dialog retries a failure,
+	// and it must never unlink the old job's anchor beneath it — nor delete
+	// anything that arrived in the directory since the emptiness check.
+	for id, run := range c.jobs {
+		if run.job.Destination != dest {
+			continue
+		}
+		switch run.job.Status {
+		case CloneRunning:
 			a.close()
 			return nil, fmt.Errorf("%w: %s", ErrCloneInProgress, dest)
+		case CloneDone:
+			continue
 		}
+		entries, err := run.anchor.leafEntries()
+		if err != nil {
+			a.close()
+			return nil, err
+		}
+		if len(entries) != 0 {
+			continue // the partial occupies its destination; publishLeaf refuses it
+		}
+		if err := c.removeEmpty(run); err != nil {
+			a.close()
+			return nil, err
+		}
+		run.anchor.close()
+		delete(c.jobs, id)
 	}
 	if err := c.publishLeaf(&a); err != nil {
 		a.close()
@@ -779,11 +804,71 @@ func (c *Cloner) removePartial(run *cloneRun) error {
 		c.afterTombCheck(filepath.Join(a.base, tomb))
 	}
 	// The one operation left by name is an rmdir of a random name that
-	// exists for this call only, and rmdir refuses anything with contents:
-	// the most an actor swapping onto it can lose is an empty directory
-	// they themselves placed under a name only this call uses.
-	if err := a.root.Remove(tomb); err != nil {
+	// exists for this call only, and rmdir refuses anything with contents
+	// or that is not a directory: the most an actor swapping onto it can
+	// lose is an empty directory they themselves placed under a name only
+	// this call uses.
+	if err := removeDir(a.root, tomb); err != nil {
 		return fmt.Errorf("%w: cannot remove %s: %w", ErrInvalidDir, run.job.Destination, err)
+	}
+	_ = a.leaf.Close()
+	run.anchor.leaf = nil
+	return nil
+}
+
+// removeEmpty retires a stopped or failed job whose held directory is
+// empty, for a new start over its destination. Unlike a discard, a retry
+// is authorized to replace an empty directory only, so nothing is
+// cleared: the name moves to a tomb and rmdir refuses anything that
+// arrived since the caller's emptiness check, in which case the name is
+// put back with its contents and the old job keeps its claim.
+func (c *Cloner) removeEmpty(run *cloneRun) error {
+	a := run.anchor
+	if a.root == nil || a.leaf == nil {
+		return fmt.Errorf("%w: %s", ErrOutsideRoots, run.job.Destination)
+	}
+	if c.beforeRemove != nil {
+		c.beforeRemove(run.job)
+	}
+	id, err := c.newID()
+	if err != nil {
+		return err
+	}
+	tomb := filepath.Join(filepath.Dir(a.rel), ".clone-tomb-"+id)
+	switch err := a.root.Rename(a.rel, tomb); {
+	case errors.Is(err, os.ErrNotExist):
+		// Nothing at the name: the directory was already taken away.
+		_ = a.leaf.Close()
+		run.anchor.leaf = nil
+		return nil
+	case err != nil:
+		return fmt.Errorf("%w: cannot remove %s: %w", ErrInvalidDir, run.job.Destination, err)
+	}
+	arrived, err := a.root.Lstat(tomb)
+	held, herr := a.leaf.Stat()
+	if err != nil || herr != nil || !os.SameFile(arrived, held) {
+		// Someone else's directory was under the clone's name. It goes back.
+		if rerr := a.root.Rename(tomb, a.rel); rerr != nil {
+			c.log.Error().Err(rerr).Str("tomb", tomb).Msg("could not restore a substituted directory")
+		}
+		return fmt.Errorf("%w: %s no longer names the clone's directory", ErrInvalidDir, run.job.Destination)
+	}
+	if c.afterTombCheck != nil {
+		c.afterTombCheck(filepath.Join(a.base, tomb))
+	}
+	// rmdir refuses a directory with contents and anything that is not a
+	// directory: what arrived since the emptiness check goes back with the
+	// name, and a file or link swapped onto the tomb is never removed.
+	switch err := removeDir(a.root, tomb); {
+	case err == nil:
+	case errors.Is(err, syscall.ENOTEMPTY) || errors.Is(err, syscall.EEXIST):
+		if rerr := a.root.Rename(tomb, a.rel); rerr != nil {
+			c.log.Error().Err(rerr).Str("tomb", tomb).Msg("could not restore a directory that would not remove")
+			return fmt.Errorf("%w: cannot restore %s: %w", ErrInvalidDir, run.job.Destination, rerr)
+		}
+		return fmt.Errorf("%w: %s", ErrCloneDestNotEmpty, run.job.Destination)
+	default:
+		return fmt.Errorf("%w: %s changed while being retired", ErrInvalidDir, run.job.Destination)
 	}
 	_ = a.leaf.Close()
 	run.anchor.leaf = nil

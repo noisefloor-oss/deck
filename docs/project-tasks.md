@@ -1,8 +1,8 @@
 # Project tasks
 
 Task boards are driven by the bundled Tasks engine, not by Deck itself.
-The image pins Tasks v2.11.0 at commit
-`3172edd94b6ca468817e6f7d4eeada6d8671e08f` and uses `noise tasks` as its
+The image pins Tasks v2.11.1 at commit
+`8819ac2c08e00c7f3757882b82e9f5d0ca83a8ff` and uses `noise tasks` as its
 command-line interface.
 
 Deck discovers each project's task state through the engine's versioned,
@@ -10,11 +10,11 @@ read-only `noise tasks context --json` schema 5 contract. The only
 task-state authority is the repository-family SQLite store at
 `<git-common-dir>/noise-tasks/tasks.sqlite`. Linked worktrees of one
 repository share current revisions and claims, and no file inside a
-worktree is task state. Tasks 2.11.0 uses SQLite store schema 6; the context
+worktree is task state. Tasks 2.11.1 uses SQLite store schema 6; the context
 JSON schema remains 5. Migration or adoption recovery blocks access until
 the engine completes recovery.
 
-Before the first mutation with Tasks 2.11.0, stop family writers, create and
+Before the first mutation with Tasks 2.11.1, stop family writers, create and
 verify a backup, and update every checkout and linked worktree to the same
 release. The first mutation upgrades store schema 5 to 6; older binaries then
 refuse that store. Read-only context inspection does not perform the upgrade.

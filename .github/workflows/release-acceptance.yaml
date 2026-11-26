@@ -102,11 +102,13 @@ jobs:
           echo "BWRAP_PROOF_ROOT=${proof_root}" >>"${GITHUB_ENV}"
           image="golang:1.26.11-bookworm@sha256:dc40a13b61304647ed7e5d581d246b86413dfc29d63c6d018310feb93cd98fc0"
           : > "${proof_root}/amd64"
+          # Reuse the verified source archives so the 49 MB Zig download happens once.
           for run in 1 2; do
             docker run --rm \
               --volume "${PWD}:/src:Z" --workdir /src \
               --volume "${proof_root}:/proof:Z" \
               --env TMPDIR=/tmp \
+              --env BWRAP_SHARED_SRC=/proof/shared-src \
               "${image}" deploy/bwrap/build-bwrap.sh amd64 "/proof/build-${run}" \
               | tee -a "${proof_root}/amd64"
           done
